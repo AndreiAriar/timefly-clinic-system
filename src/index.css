@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+.hero-section {
+  background-image: url(/timefly_bg.png);
+}
+
+.staff-hero-section {
+  background-image: url(/timefly_staff_bg.png);
+}
