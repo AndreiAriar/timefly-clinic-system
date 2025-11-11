@@ -454,7 +454,7 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 />
               </div>
               <p className="text-gray-400 text-sm">
-                Real-time healthcare access for everyone, everywhere.
+                 TimeFly - Clinic Scheduling and Queue Management 
               </p>
             </div>
 

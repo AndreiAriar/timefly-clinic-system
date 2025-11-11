@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Edit2, Trash2, User, Mail, Phone, Stethoscope } from 'lucide-react';
-import { collection, query, getDocs, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import { Search, Filter, Plus, Edit2, Trash2, User, Mail, Phone, Stethoscope, Calendar } from 'lucide-react';
+import { collection, query, getDocs, deleteDoc, doc, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import DoctorModal from './DoctorModal';
 import { toast } from 'react-toastify';
@@ -13,13 +13,26 @@ interface Doctor {
   phone: string;
   photo: string;
   isActive: boolean;
+  maxSlots?: number;
+  maxSlotsPerDate?: { [date: string]: number };
+  availableSlots?: { [date: string]: string[] };
+  unavailableDates?: { [date: string]: boolean };
   createdAt: string;
   updatedAt: string;
+}
+
+interface Appointment {
+  id: string;
+  doctorId: string;
+  status: string;
+  date: string;
+  time: string;
 }
 
 const DoctorsTab = () => {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [filteredDoctors, setFilteredDoctors] = useState<Doctor[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [specialtyFilter, setSpecialtyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -40,6 +53,7 @@ const DoctorsTab = () => {
 
   useEffect(() => {
     loadDoctors();
+    loadAppointments();
   }, []);
 
   useEffect(() => {
@@ -89,6 +103,64 @@ const DoctorsTab = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadAppointments = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const appointmentsRef = collection(db, 'appointments');
+      const q = query(
+        appointmentsRef,
+        where('status', '==', 'confirmed'),
+        where('date', '==', today)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      const appointmentsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Appointment[];
+      
+      setAppointments(appointmentsData);
+    } catch (error) {
+      console.error('Error loading appointments:', error);
+    }
+  };
+
+  const getDoctorAppointments = (doctorId: string) => {
+    return appointments.filter(appointment => appointment.doctorId === doctorId);
+  };
+
+  const getDoctorSlotCount = (doctorId: string) => {
+    const doctorAppointments = getDoctorAppointments(doctorId);
+    return doctorAppointments.length;
+  };
+
+  const getDoctorTotalSlots = (doctor: Doctor) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Check if doctor is completely unavailable today
+    if (doctor.unavailableDates?.[today]) {
+      return 0;
+    }
+    
+    // Get date-specific max slots or fallback to global maxSlots
+    const dateSpecificSlots = doctor.maxSlotsPerDate?.[today];
+    const globalSlots = doctor.maxSlots || 8;
+    const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
+    
+    // Subtract unavailable time slots
+    const unavailableTimeSlots = doctor.availableSlots?.[today] || [];
+    const availableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
+    
+    return availableSlots;
+  };
+
+  const isDoctorAvailable = (doctor: Doctor) => {
+    const slotCount = getDoctorSlotCount(doctor.id);
+    const totalSlots = getDoctorTotalSlots(doctor);
+    
+    return doctor.isActive && totalSlots > 0 && slotCount < totalSlots;
   };
 
   const handleAddDoctor = () => {
@@ -190,7 +262,7 @@ const DoctorsTab = () => {
               </select>
             </div>
 
-            {/* Status Filter - Updated to Available/Unavailable */}
+            {/* Status Filter */}
             <div>
               <label htmlFor="statusFilter" className="block text-sm font-medium text-gray-700 mb-2">
                 <Filter className="inline w-4 h-4 mr-1" />
@@ -255,67 +327,123 @@ const DoctorsTab = () => {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {filteredDoctors.map((doctor) => (
-              <div key={doctor.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3">
-                  <div className="text-white">
-                    <p className="text-sm font-medium">Doctor</p>
-                    <p className="text-lg font-bold">Dr. {doctor.name.split(' ')[0]}</p>
-                  </div>
-                </div>
+            {filteredDoctors.map((doctor) => {
+              const slotCount = getDoctorSlotCount(doctor.id);
+              const totalSlots = getDoctorTotalSlots(doctor);
+              const available = isDoctorAvailable(doctor);
 
-                <div className="p-4 space-y-3">
-                  <div className="flex items-start gap-3">
-                    {doctor.photo ? (
-                      <img
-                        src={doctor.photo}
-                        alt={`Dr. ${doctor.name}`}
-                        className="w-16 h-16 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center">
-                        <User className="w-8 h-8 text-indigo-600" />
+              return (
+                <div key={doctor.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition relative">
+                  {/* Availability Tag - Top Right */}
+                  <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-medium z-10 ${
+                    available 
+                      ? 'bg-green-100 text-green-800 border border-green-200' 
+                      : 'bg-red-100 text-red-800 border border-red-200'
+                  }`}>
+                    {available ? 'Available' : 'Unavailable'}
+                  </div>
+
+                  <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3">
+                    <div className="text-white">
+                      <p className="text-sm font-medium">Doctor</p>
+                      <p className="text-lg font-bold">Dr. {doctor.name.split(' ')[0]}</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="relative">
+                        {doctor.photo ? (
+                          <>
+                            <img
+                              src={doctor.photo}
+                              alt={`Dr. ${doctor.name}`}
+                              className="w-16 h-16 rounded-full object-cover"
+                            />
+                            {/* Availability Badge */}
+                            <div className={`absolute -top-1 -right-1 w-6 h-6 rounded-full border-2 border-white ${
+                              available ? 'bg-green-500' : 'bg-red-500'
+                            }`} />
+                          </>
+                        ) : (
+                          <div className="relative">
+                            <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center">
+                              <User className="w-8 h-8 text-indigo-600" />
+                            </div>
+                            {/* Availability Badge */}
+                            <div className={`absolute -top-1 -right-1 w-6 h-6 rounded-full border-2 border-white ${
+                              available ? 'bg-green-500' : 'bg-red-500'
+                            }`} />
+                          </div>
+                        )}
                       </div>
-                    )}
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900">Dr. {doctor.name}</h3>
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
-                        <Stethoscope className="w-4 h-4" />
-                        {doctor.specialty}
-                      </p>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900">Dr. {doctor.name}</h3>
+                        <p className="text-sm text-gray-500 flex items-center gap-1">
+                          <Stethoscope className="w-4 h-4" />
+                          {doctor.specialty}
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2 pt-2 border-t">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Mail className="w-4 h-4" />
-                      <span className="truncate">{doctor.email}</span>
+                    {/* Slot Counter */}
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <Calendar className="w-4 h-4" />
+                          <span>Today's Appointments</span>
+                        </div>
+                        <span className="font-semibold text-indigo-600">
+                          {slotCount} / {totalSlots}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                        <div 
+                          className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${totalSlots > 0 ? (slotCount / totalSlots) * 100 : 0}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Phone className="w-4 h-4" />
-                      <span>{doctor.phone}</span>
-                    </div>
-                  </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 pt-3">
+                    <div className="space-y-2 pt-2 border-t">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Mail className="w-4 h-4" />
+                        <span className="truncate">{doctor.email}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Phone className="w-4 h-4" />
+                        <span>{doctor.phone}</span>
+                      </div>
+                    </div>
+
+                    {/* Status Indicator */}
+                    <div className="flex justify-between items-center pt-2">
+                      <span className="text-xs text-gray-500">
+                        {doctor.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+
+                        {/* Action Buttons */}
+                  <div className="flex justify-center items-center gap-4 pt-3">
                     <button
                       onClick={() => handleEditDoctor(doctor)}
-                      className="flex-1 px-3 py-2 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700 transition flex items-center justify-center gap-1"
+                      className="px-4 py-2 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium"
                     >
                       <Edit2 className="w-4 h-4" />
                       Edit
                     </button>
                     <button
                       onClick={() => handleDeleteDoctor(doctor)}
-                      className="px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-1"
+                      className="px-4 py-2 text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium"
                     >
                       <Trash2 className="w-4 h-4" />
+                      Delete
                     </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -73,7 +73,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }: ForgotPasswordModalProps) => {
 
   return (
     <div className="fixed inset-0 z-[1000] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="forgot-password-title">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+      <div className="flex items-center justify-center min-h-screen px-4 text-center sm:block sm:p-0">
         {/* Backdrop - Transparent with blur */}
         <div 
           className="fixed inset-0 backdrop-blur-sm transition-opacity"
@@ -81,8 +81,11 @@ const ForgotPasswordModal = ({ isOpen, onClose }: ForgotPasswordModalProps) => {
           aria-hidden="true"
         ></div>
 
+        {/* Modal positioning spacer - crucial for vertical centering */}
+        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
         {/* Modal - Centered */}
-        <div className="inline-block align-center bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full relative z-[1001]">
+        <div className="inline-block align-middle bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full relative z-[1001]">
           <div className="bg-indigo-600 px-6 py-4">
             <div className="flex items-center justify-between">
               <h3 id="forgot-password-title" className="text-xl font-bold text-white">

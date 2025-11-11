@@ -212,7 +212,7 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                placeholder="John Doe"
+                placeholder="Tyler Durden"
                 disabled={success || loading}
               />
             </div>
