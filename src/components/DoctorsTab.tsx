@@ -342,8 +342,7 @@ const DoctorsTab = () => {
                   }`}>
                     {available ? 'Available' : 'Unavailable'}
                   </div>
-
-                  <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3">
+                    <div className="bg-blue-500 px-4 py-3">
                     <div className="text-white">
                       <p className="text-sm font-medium">Doctor</p>
                       <p className="text-lg font-bold">Dr. {doctor.name.split(' ')[0]}</p>

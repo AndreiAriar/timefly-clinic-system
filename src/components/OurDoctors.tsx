@@ -208,19 +208,19 @@ const OurDoctors = () => {
               return (
                 <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 relative">
                   {/* Availability Tag - Top Right */}
-                  <div className={`absolute top-4 right-4 px-4 py-2 rounded-full text-sm font-semibold z-10 ${
+                  <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-semibold z-10 ${
                     available 
                       ? 'bg-green-100 text-green-800 border border-green-200' 
                       : 'bg-red-100 text-red-800 border border-red-200'
                   }`}>
-                    {available ? '✅ Available Today' : '❌ Unavailable Today'}
+                    {available ? 'Available Today' : 'Unavailable Today'}
                   </div>
 
                   {/* Header with Gradient */}
                   <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-4">
-                    <div className="text-white text-center">
+                    <div className="text-white text-left">
                       <p className="text-sm font-medium opacity-90">Specialist Doctor</p>
-                      <p className="text-xl font-bold">Dr. {doctor.name.split(' ')[0]}</p>
+                      <p className="text-xl font-bold">Dr. {doctor.name}</p>
                     </div>
                   </div>
 
@@ -236,7 +236,7 @@ const OurDoctors = () => {
                               className="w-24 h-24 rounded-full object-cover border-4 border-indigo-100"
                             />
                             {/* Availability Badge */}
-                            <div className={`absolute -top-1 -right-1 w-7 h-7 rounded-full border-3 border-white ${
+                            <div className={`absolute -top-1 -right-1 w-6 h-6 rounded-full border-2 border-white ${
                               available ? 'bg-green-500' : 'bg-red-500'
                             }`} />
                           </>
@@ -246,7 +246,7 @@ const OurDoctors = () => {
                               <User className="w-10 h-10 text-indigo-600" />
                             </div>
                             {/* Availability Badge */}
-                            <div className={`absolute -top-1 -right-1 w-7 h-7 rounded-full border-3 border-white ${
+                            <div className={`absolute -top-1 -right-1 w-6 h-6 rounded-full border-2 border-white ${
                               available ? 'bg-green-500' : 'bg-red-500'
                             }`} />
                           </div>
