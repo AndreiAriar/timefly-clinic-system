@@ -421,19 +421,18 @@ const DoctorsTab = () => {
                         {doctor.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </div>
-
-                        {/* Action Buttons */}
+                  {/* Action Buttons */}
                   <div className="flex justify-center items-center gap-4 pt-3">
                     <button
                       onClick={() => handleEditDoctor(doctor)}
-                      className="px-4 py-2 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium"
+                      className="px-4 py-2 text-gray-700 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium"
                     >
                       <Edit2 className="w-4 h-4" />
                       Edit
                     </button>
                     <button
                       onClick={() => handleDeleteDoctor(doctor)}
-                      className="px-4 py-2 text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium"
+                      className="px-4 py-2 text-gray-700 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium"
                     >
                       <Trash2 className="w-4 h-4" />
                       Delete
