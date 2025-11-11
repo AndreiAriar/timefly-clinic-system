@@ -139,8 +139,8 @@ const Home = () => {
             {/* Pending Appointments Card */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-orange-100 rounded-lg">
-                  <Clock className="w-8 h-8 text-orange-600" />
+                <div className="p-3 bg-yellow-100 rounded-lg">
+                  <Clock className="w-8 h-8 text-yellow-600" />
                 </div>
                 <span className="text-sm font-medium text-gray-500">Pending</span>
               </div>

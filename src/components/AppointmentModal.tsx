@@ -6,6 +6,12 @@ import { db } from '../firebase/config';
 interface AppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  preFilledData?: {
+    doctor: string;
+    appointmentDate: string;
+    timeSlot: string;
+  };
+  onBookingComplete?: () => void;
 }
 
 interface TimeSlot {
@@ -40,8 +46,7 @@ interface Doctor {
   isActive: boolean;
 }
 
-
-const AppointmentModal = ({ isOpen, onClose }: AppointmentModalProps) => {
+const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }: AppointmentModalProps) => {
   const [formData, setFormData] = useState({
     fullName: '',
     age: '',
@@ -85,6 +90,18 @@ const AppointmentModal = ({ isOpen, onClose }: AppointmentModalProps) => {
     'Other (Please Specify)'
   ];
   
+  // NEW: Set pre-filled data when modal opens or preFilledData changes
+  useEffect(() => {
+    if (isOpen && preFilledData) {
+      setFormData(prev => ({
+        ...prev,
+        doctor: preFilledData.doctor,
+        appointmentDate: preFilledData.appointmentDate,
+        timeSlot: preFilledData.timeSlot
+      }));
+    }
+  }, [isOpen, preFilledData]);
+
 // Load doctors from Firebase
 const loadDoctors = async () => {
   try {
@@ -189,48 +206,44 @@ const isPastTime = (date: string, time: string): boolean => {
   return appointmentDateTime <= now;
 };
 
-// Add this function to check if a slot is available considering calendar settings
-const isSlotAvailable = async (doctor: string, date: string, timeSlot: string): Promise<boolean> => {
-  try {
-    // Check if doctor is active
-    const doctorsRef = collection(db, 'doctors');
-    const doctorQuery = query(doctorsRef, where('name', '==', doctor));
-    const doctorSnapshot = await getDocs(doctorQuery);
-    
-    if (doctorSnapshot.empty) return false;
-    
-    const doctorData = doctorSnapshot.docs[0].data();
-    
-    // Check if doctor is active
-    if (!doctorData.isActive) return false;
-    
-    // Check if slot is manually made unavailable
-    const availableSlots = doctorData.availableSlots || {};
-    const dateSlots = availableSlots[date] || [];
-    if (!dateSlots.includes(timeSlot)) return false;
-    
-    // Check if slot is already booked
-    const appointmentsRef = collection(db, 'appointments');
-    const appointmentQuery = query(
-      appointmentsRef,
-      where('doctor', '==', doctor),
-      where('appointmentDate', '==', date),
-      where('timeSlot', '==', timeSlot)
-    );
-    const appointmentSnapshot = await getDocs(appointmentQuery);
-    
-    return appointmentSnapshot.empty;
-  } catch (error) {
-    console.error('Error checking slot availability:', error);
-    return false;
-  }
-};
-
 const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
+  console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
+  
   const slots: TimeSlot[] = [];
   const startHour = 8;
   const endHour = 17;
+  
+  // Get booked slots
   const bookedSlots = await getBookedTimeSlots(doctor, appointmentDate);
+  console.log('📋 Booked slots:', bookedSlots);
+  
+  // Get doctor data for calendar settings
+  const doctorsRef = collection(db, 'doctors');
+  const doctorQuery = query(doctorsRef, where('name', '==', doctor));
+  const doctorSnapshot = await getDocs(doctorQuery);
+  
+  let unavailableTimeSlots: string[] = [];
+  let isDoctorUnavailable = false;
+  
+  if (!doctorSnapshot.empty) {
+    const doctorData = doctorSnapshot.docs[0].data();
+    
+    // Check if doctor is unavailable on this date
+    const unavailableDates = doctorData.unavailableDates || {};
+    isDoctorUnavailable = unavailableDates[appointmentDate] === true;
+    
+    // Get unavailable time slots for this date
+    unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
+    console.log('⛔ Doctor unavailable on date:', isDoctorUnavailable);
+    console.log('⛔ Unavailable time slots:', unavailableTimeSlots);
+  }
+  
+  // If doctor is completely unavailable on this date, return empty slots
+  if (isDoctorUnavailable) {
+    console.log('❌ Doctor is unavailable on this date');
+    setAvailableTimeSlots([]);
+    return;
+  }
 
   if (priorityLevel === 'normal') {
     // Normal: 1-hour slots (8:00, 9:00, 10:00, etc.)
@@ -238,14 +251,15 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
       const timeString = `${hour.toString().padStart(2, '0')}:00`;
       const isBooked = bookedSlots.includes(timeString);
       const isPast = isPastTime(appointmentDate, timeString);
-      const isCalendarAvailable = await isSlotAvailable(doctor, appointmentDate, timeString);
+      const isUnavailable = unavailableTimeSlots.includes(timeString);
       
-      // Only add if not in the past and available in calendar
-      if (!isPast && isCalendarAvailable) {
+      // ✅ FIXED: Show slot even if unavailable, just mark it as not available
+      if (!isPast) {
         slots.push({
           time: timeString,
-          available: !isBooked
+          available: !isBooked && !isUnavailable
         });
+        console.log(`  ${timeString}: ${!isBooked && !isUnavailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable})`);
       }
     }
   } else if (priorityLevel === 'urgent') {
@@ -254,43 +268,45 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
       const timeString = `${hour.toString().padStart(2, '0')}:30`;
       const isBooked = bookedSlots.includes(timeString);
       const isPast = isPastTime(appointmentDate, timeString);
-      const isCalendarAvailable = await isSlotAvailable(doctor, appointmentDate, timeString);
+      const isUnavailable = unavailableTimeSlots.includes(timeString);
       
-      if (!isPast && isCalendarAvailable) {
+      if (!isPast) {
         slots.push({
           time: timeString,
-          available: !isBooked,
+          available: !isBooked && !isUnavailable,
           isBuffer: true,
           bufferType: 'urgent'
         });
       }
     }
   } else if (priorityLevel === 'emergency') {
-    // Emergency: 15-minute buffer slots (8:15, 9:15, 10:15, etc.)
+    // Emergency: 15-minute buffer slots (8:15, 8:45, 9:15, 9:45, etc.)
     for (let hour = startHour; hour < endHour; hour++) {
-      const timeString = `${hour.toString().padStart(2, '0')}:15`;
-      const isBooked = bookedSlots.includes(timeString);
-      const isPast = isPastTime(appointmentDate, timeString);
-      const isCalendarAvailable = await isSlotAvailable(doctor, appointmentDate, timeString);
+      // :15 slots
+      const timeString15 = `${hour.toString().padStart(2, '0')}:15`;
+      const isBooked15 = bookedSlots.includes(timeString15);
+      const isPast15 = isPastTime(appointmentDate, timeString15);
+      const isUnavailable15 = unavailableTimeSlots.includes(timeString15);
       
-      if (!isPast && isCalendarAvailable) {
+      if (!isPast15) {
         slots.push({
-          time: timeString,
-          available: !isBooked,
+          time: timeString15,
+          available: !isBooked15 && !isUnavailable15,
           isBuffer: true,
           bufferType: 'emergency'
         });
       }
       
+      // :45 slots
       const timeString45 = `${hour.toString().padStart(2, '0')}:45`;
       const isBooked45 = bookedSlots.includes(timeString45);
       const isPast45 = isPastTime(appointmentDate, timeString45);
-      const isCalendarAvailable45 = await isSlotAvailable(doctor, appointmentDate, timeString45);
+      const isUnavailable45 = unavailableTimeSlots.includes(timeString45);
       
-      if (!isPast45 && isCalendarAvailable45) {
+      if (!isPast45) {
         slots.push({
           time: timeString45,
-          available: !isBooked45,
+          available: !isBooked45 && !isUnavailable45,
           isBuffer: true,
           bufferType: 'emergency'
         });
@@ -298,8 +314,10 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
     }
   }
 
+  console.log(`✅ Generated ${slots.length} time slots`);
   setAvailableTimeSlots(slots);
 }, [getBookedTimeSlots]);
+
   useEffect(() => {
     if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
       generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
@@ -329,6 +347,8 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
       reader.readAsDataURL(file);
     }
   };
+
+// UPDATED: Handle booking completion
 const handleSubmit = async () => {
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
@@ -379,6 +399,11 @@ const handleSubmit = async () => {
     
     const actualQueueNumber = appointmentDoc.docs[0]?.data().queueNumber || 1;
     setQueueNumber(actualQueueNumber);
+
+    // Call onBookingComplete if provided
+    if (onBookingComplete) {
+      onBookingComplete();
+    }
 
     setTimeout(() => {
       handleClose();

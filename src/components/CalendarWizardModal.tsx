@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X, Users, Calendar, Clock, ArrowRight, ArrowLeft, Eye } from 'lucide-react';
-import { collection, query, getDocs, where } from 'firebase/firestore';
+import { X, Calendar, ChevronLeft, ChevronRight, User, Clock, ArrowLeft } from 'lucide-react';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { toast } from 'react-toastify';
+import AppointmentModal from './AppointmentModal'; // Keep this import
 
+// ============= Interfaces =============
 interface Doctor {
   id: string;
   name: string;
@@ -12,102 +15,98 @@ interface Doctor {
   photo: string;
   isActive: boolean;
   maxSlots: number;
+  maxSlotsPerDate?: { [date: string]: number };
   availableSlots: { [date: string]: string[] };
+  unavailableDates?: { [date: string]: boolean };
+  createdAt: string;
 }
 
 interface Appointment {
   id: string;
-  doctor: string;
   appointmentDate: string;
-  timeSlot: string;
+  appointmentTime: string;
   status: string;
+  doctor: string;
+  doctorId: string;
+  patientName: string;
+  patientAge: number;
+  patientPhoto?: string;
+  priority: string;
+  createdAt: string;
 }
 
-const CalendarWizardModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-  const [currentStep, setCurrentStep] = useState(1);
+interface CalendarWizardModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onBookingComplete?: () => void;
+}
+
+// ============= Main Component =============
+const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWizardModalProps) => {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
 
+  // Load doctors and appointments
   useEffect(() => {
     if (isOpen) {
-      loadDoctors();
-      loadAppointments();
+      loadData();
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  const loadDoctors = async () => {
+  const loadData = async () => {
+    setIsLoading(true);
     try {
       const doctorsRef = collection(db, 'doctors');
-      const q = query(doctorsRef, where('isActive', '==', true));
-      const querySnapshot = await getDocs(q);
-      
-      const doctorsData = querySnapshot.docs.map(doc => ({
+      const doctorsSnapshot = await getDocs(doctorsRef);
+      const doctorsData = doctorsSnapshot.docs.map(doc => ({
         id: doc.id,
-        maxSlots: 10,
-        availableSlots: {},
         ...doc.data()
       })) as Doctor[];
-      
-      setDoctors(doctorsData);
+      setDoctors(doctorsData.filter(d => d.isActive));
+
+      const appointmentsRef = collection(db, 'appointments');
+      const appointmentsSnapshot = await getDocs(appointmentsRef);
+      const appointmentsData = appointmentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Appointment[];
+      setAppointments(appointmentsData);
     } catch (error) {
-      console.error('Error loading doctors:', error);
+      console.error('Error loading data:', error);
+      toast.error('Failed to load calendar data');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadAppointments = async () => {
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(appointmentsRef);
-      const querySnapshot = await getDocs(q);
-      
-      const appointmentsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-      
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
-    }
+  // ============= Helper Functions =============
+  const formatDate = (dateString: string): string => {
+    const dateObj = new Date(dateString);
+    return dateObj.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   };
 
-  const getBookedSlotsForDoctor = (doctorName: string, date: string) => {
-    return appointments.filter(
-      apt => apt.doctor === doctorName && 
-             apt.appointmentDate === date && 
-             apt.status !== 'cancelled'
-    ).map(apt => apt.timeSlot);
+  const formatTo12Hour = (time24: string): string => {
+    const [hours, minutes] = time24.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
   };
 
-  const getAvailableSlotsForDoctor = (doctor: Doctor, date: string) => {
-    const bookedSlots = getBookedSlotsForDoctor(doctor.name, date);
-    const manuallyUnavailable = doctor.availableSlots?.[date] || [];
-    const allSlots = generateTimeSlots();
-    
-    return allSlots.filter(slot => 
-      !bookedSlots.includes(slot) && 
-      manuallyUnavailable.includes(slot)
-    );
-  };
-
-  const generateTimeSlots = () => {
-    const slots = [];
+  const generateTimeSlots = (): string[] => {
+    const slots: string[] = [];
     for (let hour = 8; hour < 17; hour++) {
       for (let minute = 0; minute < 60; minute += 30) {
         const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
@@ -117,343 +116,456 @@ const CalendarWizardModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: ()
     return slots;
   };
 
-  const convertTo12Hour = (time24: string): string => {
-    const [hours, minutes] = time24.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hours12 = hours % 12 || 12;
-    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  const getDaysInMonth = (date: Date): number => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   };
 
-  const totalSlots = doctors.reduce((sum, doctor) => sum + (doctor.maxSlots || 10), 0);
-  const totalBookedSlots = appointments.filter(
-    apt => apt.appointmentDate === selectedDate && apt.status !== 'cancelled'
-  ).length;
-  const totalAvailableSlots = totalSlots - totalBookedSlots;
-
-  const handleClose = () => {
-    setCurrentStep(1);
-    setSelectedDate(new Date().toISOString().split('T')[0]);
-    setSelectedDoctor(null);
-    onClose();
+  const getFirstDayOfMonth = (date: Date): number => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   };
 
-  const nextStep = () => setCurrentStep(prev => prev + 1);
-  const prevStep = () => setCurrentStep(prev => prev - 1);
+  const generateCalendarDays = (): string[] => {
+    const daysInMonth = getDaysInMonth(currentMonth);
+    const days: string[] = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const year = currentMonth.getFullYear();
+      const month = String(currentMonth.getMonth() + 1).padStart(2, '0');
+      const dayStr = String(day).padStart(2, '0');
+      days.push(`${year}-${month}-${dayStr}`);
+    }
+    return days;
+  };
+
+  const getBookedSlotsForDate = (date: string): number => {
+    return appointments.filter(
+      apt => apt.appointmentDate === date && apt.status !== 'cancelled'
+    ).length;
+  };
+
+  const getTotalSlotsForDate = (date: string): number => {
+    return doctors.reduce((total, doctor) => {
+      if (!doctor.isActive) return total;
+      if (doctor.unavailableDates?.[date]) return total;
+      
+      const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
+      const dateSpecificSlots = maxSlotsPerDate[date];
+      const globalSlots = doctor.maxSlots || 0;
+      const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
+      
+      const unavailableTimeSlots = doctor.availableSlots?.[date] || [];
+      const availableSlotsCount = Math.max(0, maxSlots - unavailableTimeSlots.length);
+      
+      return total + availableSlotsCount;
+    }, 0);
+  };
+
+  const getAvailableSlotsForDoctor = (doctor: Doctor, date: string): number => {
+    if (doctor.unavailableDates?.[date]) return 0;
+    
+    const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
+    const dateSpecificSlots = maxSlotsPerDate[date];
+    const globalSlots = doctor.maxSlots || 0;
+    const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
+    
+    const unavailableTimeSlots = doctor.availableSlots?.[date] || [];
+    const bookedSlots = appointments.filter(
+      apt => apt.appointmentDate === date && 
+             apt.doctorId === doctor.id && 
+             apt.status !== 'cancelled'
+    ).length;
+    
+    return Math.max(0, maxSlots - unavailableTimeSlots.length - bookedSlots);
+  };
+
+  const isTimeSlotAvailable = (time: string): boolean => {
+    if (!selectedDoctor || !selectedDate) return false;
+    
+    // Check if time is in doctor's unavailable slots
+    const unavailableSlots = selectedDoctor.availableSlots?.[selectedDate] || [];
+    if (unavailableSlots.includes(time)) return false;
+    
+    // Check if time is already booked
+    const isBooked = appointments.some(
+      apt => apt.appointmentDate === selectedDate &&
+             apt.appointmentTime === time &&
+             apt.doctorId === selectedDoctor.id &&
+             apt.status !== 'cancelled'
+    );
+    
+    return !isBooked;
+  };
+
+  // ============= Event Handlers =============
+  const handleDateSelect = (date: string) => {
+    const isPast = new Date(date) < new Date(new Date().toISOString().split('T')[0]);
+    if (isPast) {
+      toast.warning('Cannot book appointments for past dates');
+      return;
+    }
+    
+    const totalSlots = getTotalSlotsForDate(date);
+    if (totalSlots === 0) {
+      toast.warning('No doctors available on this date');
+      return;
+    }
+    
+    setSelectedDate(date);
+    setStep(2);
+  };
+
+  const handleDoctorSelect = (doctor: Doctor) => {
+    const availableSlots = getAvailableSlotsForDoctor(doctor, selectedDate!);
+    if (availableSlots === 0) {
+      toast.warning('No available slots for this doctor on the selected date');
+      return;
+    }
+    
+    setSelectedDoctor(doctor);
+    setStep(3);
+  };
+
+const handleTimeSelect = (time: string) => {
+  if (!isTimeSlotAvailable(time)) {
+    toast.warning('This time slot is no longer available');
+    return;
+  }
+  
+  setSelectedTime(time);
+  // Open the AppointmentModal with pre-filled data
+  setIsAppointmentModalOpen(true);
+  // Only close the calendar modal visually without resetting data
+};
+
+const handleAppointmentModalClose = () => {
+  setIsAppointmentModalOpen(false);
+  setSelectedTime(null);
+  // Don't reset other states so user can go back if needed
+};
+
+  const handleAppointmentBooked = () => {
+    // Refresh data when appointment is booked
+    loadData();
+    if (onBookingComplete) onBookingComplete();
+    handleClose();
+  };
+
+ const handleClose = () => {
+  // Only reset when actually closing the entire wizard
+  setStep(1);
+  setSelectedDate(null);
+  setSelectedDoctor(null);
+  setSelectedTime(null);
+  setIsAppointmentModalOpen(false);
+  onClose();
+};
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prev => {
+      const newMonth = new Date(prev);
+      if (direction === 'prev') {
+        newMonth.setMonth(prev.getMonth() - 1);
+      } else {
+        newMonth.setMonth(prev.getMonth() + 1);
+      }
+      return newMonth;
+    });
+  };
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
 
   if (!isOpen) return null;
 
+  // ============= Render =============
   return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto" role="dialog" aria-modal="true">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div 
-          className="fixed inset-0 backdrop-blur-sm transition-opacity"
-          onClick={handleClose}
-          aria-hidden="true"
-        ></div>
-
-        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full relative z-[101]">
+    <>
+     <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
           {/* Header */}
-          <div className="bg-indigo-600 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Eye className="w-6 h-6 text-white" />
-                <h3 className="text-2xl font-bold text-white">
-                  {currentStep === 1 && 'View Calendar Overview'}
-                  {currentStep === 2 && 'Select a Doctor'}
-                  {currentStep === 3 && 'Doctor Availability'}
-                </h3>
-              </div>
-              <button
-                onClick={handleClose}
-                className="text-white hover:text-gray-200 transition"
-              >
-                <X className="w-6 h-6" />
-              </button>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-700">
+            <div>
+              <h2 className="text-2xl font-bold text-white">
+                {step === 1 && 'Select Date'}
+                {step === 2 && 'Choose Doctor'}
+                {step === 3 && 'Pick Time Slot'}
+              </h2>
+              <p className="text-blue-100 text-sm mt-1">
+                {step === 1 && 'View appointment availability and select a date'}
+                {step === 2 && 'Select your preferred doctor'}
+                {step === 3 && `Available slots for Dr. ${selectedDoctor?.name} on ${selectedDate ? new Date(selectedDate).toLocaleDateString() : ''}`}
+              </p>
             </div>
-            
-            {/* Progress Steps */}
-            <div className="flex justify-center mt-4">
-              <div className="flex items-center">
-                {[1, 2, 3].map((step) => (
-                  <div key={step} className="flex items-center">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      step === currentStep
-                        ? 'bg-white text-indigo-600'
-                        : step < currentStep
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-300 text-gray-600'
-                    }`}>
-                      {step}
-                    </div>
-                    {step < 3 && (
-                      <div className={`w-12 h-1 mx-2 ${
-                        step < currentStep ? 'bg-green-500' : 'bg-gray-300'
-                      }`}></div>
-                    )}
-                  </div>
-                ))}
+            <button
+            onClick={handleClose}
+            className="p-2 rounded-lg transition text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          </div>
+
+          {/* Progress Steps */}
+          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <div className="flex items-center justify-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                  step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+                }`}>
+                  1
+                </div>
+                <span className={`text-sm font-medium ${step >= 1 ? 'text-blue-600' : 'text-gray-500'}`}>
+                  DATE
+                </span>
+              </div>
+              
+              <div className={`h-1 w-16 rounded ${step >= 2 ? 'bg-blue-600' : 'bg-gray-200'}`} />
+              
+              <div className="flex items-center gap-2">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                  step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+                }`}>
+                  2
+                </div>
+                <span className={`text-sm font-medium ${step >= 2 ? 'text-blue-600' : 'text-gray-500'}`}>
+                  DOCTOR
+                </span>
+              </div>
+              
+              <div className={`h-1 w-16 rounded ${step >= 3 ? 'bg-blue-600' : 'bg-gray-200'}`} />
+              
+              <div className="flex items-center gap-2">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                  step >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+                }`}>
+                  3
+                </div>
+                <span className={`text-sm font-medium ${step >= 3 ? 'text-blue-600' : 'text-gray-500'}`}>
+                  TIME
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="px-6 py-8 max-h-[calc(100vh-200px)] overflow-y-auto">
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6">
             {isLoading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading calendar...</p>
+              <div className="flex items-center justify-center h-96">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading...</p>
+                </div>
               </div>
             ) : (
               <>
-                {/* Step 1: Calendar Overview */}
-                {currentStep === 1 && (
-                  <div className="space-y-6">
-                    <div className="text-center mb-6">
-                      <h4 className="text-xl font-semibold text-gray-900 mb-2">Calendar Overview</h4>
-                      <p className="text-gray-600">View total availability and select a date</p>
-                    </div>
-
-                    {/* Date Selector */}
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <Calendar className="w-5 h-5 text-indigo-600" />
-                        <label htmlFor="wizardDate" className="text-sm font-medium text-gray-700">
-                          Select Date:
-                        </label>
-                        <input
-                          type="date"
-                          id="wizardDate"
-                          value={selectedDate}
-                          onChange={(e) => setSelectedDate(e.target.value)}
-                          min={new Date().toISOString().split('T')[0]}
-                          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-
-                      {/* Total Slots Summary */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white rounded-lg p-4 text-center border">
-                          <Users className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
-                          <p className="text-sm text-gray-600">Total Capacity</p>
-                          <p className="text-2xl font-bold text-gray-900">{totalSlots}</p>
-                        </div>
-                        <div className="bg-white rounded-lg p-4 text-center border">
-                          <Clock className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                          <p className="text-sm text-gray-600">Available Slots</p>
-                          <p className="text-2xl font-bold text-gray-900">{totalAvailableSlots}</p>
-                        </div>
-                        <div className="bg-white rounded-lg p-4 text-center border">
-                          <Calendar className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                          <p className="text-sm text-gray-600">Active Doctors</p>
-                          <p className="text-2xl font-bold text-gray-900">{doctors.length}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Doctors Summary */}
-                    <div className="bg-white rounded-lg border p-6">
-                      <h5 className="text-lg font-semibold text-gray-900 mb-4">Doctors Summary</h5>
-                      <div className="space-y-3">
-                        {doctors.map(doctor => {
-                          const bookedSlots = getBookedSlotsForDoctor(doctor.name, selectedDate).length;
-                          const maxSlots = doctor.maxSlots || 10;
-                          const availableSlots = maxSlots - bookedSlots;
-                          
-                          return (
-                            <div key={doctor.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                              <div className="flex items-center gap-3">
-                                {doctor.photo ? (
-                                  <img
-                                    src={doctor.photo}
-                                    alt={`Dr. ${doctor.name}`}
-                                    className="w-10 h-10 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                                    <Users className="w-5 h-5 text-indigo-600" />
-                                  </div>
-                                )}
-                                <div>
-                                  <p className="font-medium text-gray-900">Dr. {doctor.name}</p>
-                                  <p className="text-sm text-gray-600">{doctor.specialty}</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-semibold text-gray-900">
-                                  {bookedSlots}/{maxSlots} slots
-                                </p>
-                                <p className={`text-sm ${
-                                  availableSlots <= 0 
-                                    ? 'text-red-600' 
-                                    : availableSlots <= 3 
-                                    ? 'text-orange-600'
-                                    : 'text-green-600'
-                                }`}>
-                                  {availableSlots <= 0 ? 'Fully Booked' : `${availableSlots} available`}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end">
+                {/* Step 1: Date Selection */}
+                {step === 1 && (
+                  <div>
+                    <div className="flex items-center justify-center mb-6">
                       <button
-                        onClick={nextStep}
-                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition flex items-center gap-2"
+                        onClick={() => navigateMonth('prev')}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition"
                       >
-                        Next
-                        <ArrowRight className="w-4 h-4" />
+                        <ChevronLeft className="w-5 h-5 text-gray-600" />
+                      </button>
+                      <h3 className="text-xl font-semibold text-gray-800 text-center min-w-[200px]">
+                        {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+                      </h3>
+                      <button
+                        onClick={() => navigateMonth('next')}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition"
+                      >
+                        <ChevronRight className="w-5 h-5 text-gray-600" />
                       </button>
                     </div>
-                  </div>
-                )}
 
-                {/* Step 2: Select Doctor */}
-                {currentStep === 2 && (
-                  <div className="space-y-6">
-                    <div className="text-center mb-6">
-                      <h4 className="text-xl font-semibold text-gray-900 mb-2">Select a Doctor</h4>
-                      <p className="text-gray-600">Choose a doctor to view their detailed availability</p>
+                    <div className="grid grid-cols-7 gap-2 mb-2">
+                      {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
+                        <div key={day} className="p-2 text-center text-xs font-semibold text-gray-600 bg-gray-100 rounded">
+                          {day}
+                        </div>
+                      ))}
                     </div>
 
-                    <div className="grid gap-4">
-                      {doctors.map(doctor => {
-                        const bookedSlots = getBookedSlotsForDoctor(doctor.name, selectedDate).length;
-                        const maxSlots = doctor.maxSlots || 10;
-                        const availableSlots = maxSlots - bookedSlots;
-                        
+                    <div className="grid grid-cols-7 gap-2">
+                      {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, i) => (
+                        <div key={`empty-${i}`} />
+                      ))}
+                      
+                      {generateCalendarDays().map(date => {
+                        const bookedSlots = getBookedSlotsForDate(date);
+                        const totalSlots = getTotalSlotsForDate(date);
+                        const isToday = date === new Date().toISOString().split('T')[0];
+                        const isPast = new Date(date) < new Date(new Date().toISOString().split('T')[0]);
+                        const hasSlots = totalSlots > 0;
+
                         return (
                           <button
-                            key={doctor.id}
-                            onClick={() => {
-                              setSelectedDoctor(doctor);
-                              nextStep();
-                            }}
-                            className="w-full p-4 bg-white border border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition text-left"
+                            key={date}
+                            onClick={() => handleDateSelect(date)}
+                            disabled={isPast || !hasSlots}
+                            className={`p-3 rounded-lg border-2 transition min-h-[70px] flex flex-col items-center justify-between ${
+                              isToday
+                                ? 'border-blue-600 bg-blue-50'
+                                : isPast || !hasSlots
+                                ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-50'
+                                : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md cursor-pointer'
+                            }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                {doctor.photo ? (
-                                  <img
-                                    src={doctor.photo}
-                                    alt={`Dr. ${doctor.name}`}
-                                    className="w-16 h-16 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center">
-                                    <Users className="w-8 h-8 text-indigo-600" />
-                                  </div>
-                                )}
-                                <div>
-                                  <h5 className="text-lg font-semibold text-gray-900">Dr. {doctor.name}</h5>
-                                  <p className="text-indigo-600">{doctor.specialty}</p>
-                                  <p className="text-sm text-gray-600">{doctor.email}</p>
-                                </div>
-                              </div>
-                              
-                              <div className="text-right">
-                                <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                  availableSlots <= 0 
-                                    ? 'bg-red-100 text-red-800' 
-                                    : availableSlots <= 3 
-                                    ? 'bg-orange-100 text-orange-800'
-                                    : 'bg-green-100 text-green-800'
-                                }`}>
-                                  {availableSlots <= 0 ? 'Fully Booked' : `${availableSlots} Available`}
-                                </div>
-                                <p className="text-sm text-gray-600 mt-1">
-                                  {bookedSlots}/{maxSlots} slots booked
-                                </p>
-                              </div>
-                            </div>
+                            <span className={`text-sm font-semibold ${
+                              isToday ? 'text-blue-700' : isPast ? 'text-gray-400' : 'text-gray-700'
+                            }`}>
+                              {new Date(date).getDate()}
+                            </span>
+                            {!isPast && hasSlots && (
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                bookedSlots === totalSlots
+                                  ? 'bg-red-100 text-red-700'
+                                  : bookedSlots > totalSlots / 2
+                                  ? 'bg-yellow-100 text-yellow-700'
+                                  : 'bg-green-100 text-green-700'
+                              }`}>
+                                {bookedSlots}/{totalSlots}
+                              </span>
+                            )}
                           </button>
                         );
                       })}
                     </div>
+                  </div>
+                )}
 
-                    <div className="flex justify-between">
-                      <button
-                        onClick={prevStep}
-                        className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition flex items-center gap-2"
-                      >
-                        <ArrowLeft className="w-4 h-4" />
-                        Back
-                      </button>
+                {/* Step 2: Doctor Selection */}
+                {step === 2 && selectedDate && (
+                  <div>
+                    <button
+                      onClick={() => setStep(1)}
+                      className="mb-4 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Back to Calendar
+                    </button>
+
+                    <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-2 text-blue-700">
+                        <Calendar className="w-5 h-5" />
+                        <span className="font-semibold">Selected Date:</span>
+                        <span>{formatDate(selectedDate)}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {doctors.map(doctor => {
+                        const availableSlots = getAvailableSlotsForDoctor(doctor, selectedDate);
+                        const isUnavailable = availableSlots === 0;
+
+                        return (
+                          <button
+                            key={doctor.id}
+                            onClick={() => handleDoctorSelect(doctor)}
+                            disabled={isUnavailable}
+                            className={`flex items-center gap-4 p-4 rounded-lg border-2 transition text-left ${
+                              isUnavailable
+                                ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
+                                : 'border-gray-300 bg-white hover:border-blue-500 hover:shadow-lg cursor-pointer'
+                            }`}
+                          >
+                            {doctor.photo ? (
+                              <img
+                                src={doctor.photo}
+                                alt={`Dr. ${doctor.name}`}
+                                className="w-16 h-16 rounded-full object-cover border-2 border-blue-200"
+                              />
+                            ) : (
+                              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center border-2 border-blue-200">
+                                <User className="w-8 h-8 text-blue-600" />
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              <h3 className="text-lg font-bold text-gray-900">Dr. {doctor.name}</h3>
+                              <p className="text-sm text-gray-600">{doctor.specialty}</p>
+                              <div className="mt-2">
+                                <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+                                  isUnavailable
+                                    ? 'bg-red-100 text-red-700'
+                                    : availableSlots <= 3
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-green-100 text-green-700'
+                                }`}>
+                                  {isUnavailable ? 'No slots' : `${availableSlots}/${doctor.maxSlots} slots available`}
+                                </span>
+                              </div>
+                            </div>
+                            {!isUnavailable && <ChevronRight className="w-5 h-5 text-gray-400" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
-                {/* Step 3: Doctor Availability */}
-                {currentStep === 3 && selectedDoctor && (
-                  <div className="space-y-6">
-                    <div className="text-center mb-6">
-                      <h4 className="text-xl font-semibold text-gray-900 mb-2">Doctor Availability</h4>
-                      <p className="text-gray-600">
-                        Available time slots for Dr. {selectedDoctor.name} on {selectedDate}
-                      </p>
-                    </div>
+                {/* Step 3: Time Selection */}
+                {step === 3 && selectedDoctor && selectedDate && (
+                  <div>
+                    <button
+                      onClick={() => setStep(2)}
+                      className="mb-4 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Back to Doctors
+                    </button>
 
-                    {/* Doctor Info */}
-                    <div className="bg-gray-50 rounded-lg p-6">
+                    <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
                       <div className="flex items-center gap-4">
                         {selectedDoctor.photo ? (
                           <img
                             src={selectedDoctor.photo}
                             alt={`Dr. ${selectedDoctor.name}`}
-                            className="w-20 h-20 rounded-full object-cover"
+                            className="w-16 h-16 rounded-full object-cover border-2 border-blue-300"
                           />
                         ) : (
-                          <div className="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center">
-                            <Users className="w-10 h-10 text-indigo-600" />
+                          <div className="w-16 h-16 rounded-full bg-blue-200 flex items-center justify-center">
+                            <User className="w-8 h-8 text-blue-700" />
                           </div>
                         )}
-                        <div>
-                          <h5 className="text-xl font-bold text-gray-900">Dr. {selectedDoctor.name}</h5>
-                          <p className="text-indigo-600 font-semibold">{selectedDoctor.specialty}</p>
-                          <p className="text-gray-600">{selectedDoctor.email}</p>
+                        <div className="flex-1">
+                          <h3 className="text-lg font-bold text-gray-900">Dr. {selectedDoctor.name}</h3>
+                          <p className="text-sm text-blue-700">{selectedDoctor.specialty}</p>
+                          <p className="text-xs text-blue-600 mt-1">
+                            Hours: 9:00 AM - 5:00 PM
+                          </p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Available Time Slots */}
-                    <div>
-                      <h5 className="text-lg font-semibold text-gray-900 mb-4">Available Time Slots</h5>
-                      <div className="grid grid-cols-3 gap-3">
-                        {getAvailableSlotsForDoctor(selectedDoctor, selectedDate).map((timeSlot) => (
-                          <div
-                            key={timeSlot}
-                            className="p-4 bg-green-50 border border-green-200 rounded-lg text-center"
-                          >
-                            <Clock className="w-5 h-5 text-green-600 mx-auto mb-2" />
-                            <p className="font-semibold text-green-700">{convertTo12Hour(timeSlot)}</p>
-                            <p className="text-xs text-green-600 mt-1">Available</p>
-                          </div>
-                        ))}
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <Clock className="w-5 h-5" />
+                        Available Time Slots
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
+                        {generateTimeSlots().map(time => {
+                          const isAvailable = isTimeSlotAvailable(time);
+                          const isSelected = selectedTime === time;
+
+                          return (
+                            <button
+                              key={time}
+                              onClick={() => handleTimeSelect(time)}
+                              disabled={!isAvailable}
+                              className={`p-3 rounded-lg text-sm font-medium transition border-2 ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white border-blue-600'
+                                  : isAvailable
+                                  ? 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+                                  : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                              }`}
+                            >
+                              {formatTo12Hour(time)}
+                            </button>
+                          );
+                        })}
                       </div>
-
-                      {getAvailableSlotsForDoctor(selectedDoctor, selectedDate).length === 0 && (
-                        <div className="text-center py-8 bg-gray-50 rounded-lg">
-                          <Clock className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                          <p className="text-gray-600">No available time slots for this date.</p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex justify-between">
-                      <button
-                        onClick={prevStep}
-                        className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition flex items-center gap-2"
-                      >
-                        <ArrowLeft className="w-4 h-4" />
-                        Back to Doctors
-                      </button>
-                      <button
-                        onClick={handleClose}
-                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition"
-                      >
-                        Close
-                      </button>
                     </div>
                   </div>
                 )}
@@ -462,7 +574,20 @@ const CalendarWizardModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: ()
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Appointment Modal */}
+      <AppointmentModal
+        isOpen={isAppointmentModalOpen}
+        onClose={handleAppointmentModalClose}
+        // You can pass pre-filled data here if needed
+        preFilledData={{
+          doctor: selectedDoctor?.name || '',
+          appointmentDate: selectedDate || '',
+          timeSlot: selectedTime || ''
+        }}
+        onBookingComplete={handleAppointmentBooked}
+      />
+    </>
   );
 };
 

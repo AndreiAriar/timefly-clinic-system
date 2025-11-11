@@ -24,66 +24,56 @@ const Queue = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-
-  const getTodayDateString = (): string => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
+  // Get today's date in Philippine timezone (UTC+8)
+  const getTodayDatePH = (): string => {
+    const now = new Date();
+    // Convert to Philippine time (UTC+8)
+    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const year = phTime.getFullYear();
+    const month = String(phTime.getMonth() + 1).padStart(2, '0');
+    const day = String(phTime.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
 
-  const sortAppointmentsByPriorityAndTime = (apps: Appointment[]): Appointment[] => {
-    return apps.sort((a, b) => {
-      // First priority: serving status
-      if (a.status === 'serving' && b.status !== 'serving') return -1;
-      if (a.status !== 'serving' && b.status === 'serving') return 1;
-
-      // Second priority: emergency > urgent > normal
-      const priorityOrder: { [key: string]: number } = {
-        emergency: 1,
-        urgent: 2,
-        normal: 3
-      };
-
-      const aPriority = priorityOrder[a.priorityLevel] || 3;
-      const bPriority = priorityOrder[b.priorityLevel] || 3;
-
-      if (aPriority !== bPriority) {
-        return aPriority - bPriority;
-      }
-
-      // Third priority: time slot
-      const [aHours, aMinutes] = a.timeSlot.split(':').map(Number);
-      const [bHours, bMinutes] = b.timeSlot.split(':').map(Number);
-      const aTime = aHours * 60 + aMinutes;
-      const bTime = bHours * 60 + bMinutes;
-
-      return aTime - bTime;
-    });
+  const formatDate = (dateString: string): string => {
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const options: Intl.DateTimeFormatOptions = { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    };
+    return date.toLocaleDateString('en-US', options);
   };
-
 
   const loadTodaysAppointments = useCallback(async () => {
     setIsLoading(true);
     try {
-      const today = getTodayDateString();
+      const today = getTodayDatePH();
       const appointmentsRef = collection(db, 'appointments');
+      
+      // Query all appointments for today
       const q = query(
         appointmentsRef,
-        where('appointmentDate', '==', today),
-        where('status', 'in', ['pending', 'confirmed', 'serving', 'scheduled'])
+        where('appointmentDate', '==', today)
       );
       
       const querySnapshot = await getDocs(q);
       
-      let appointmentsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-
-      // Sort by priority and time
-      appointmentsData = sortAppointmentsByPriorityAndTime(appointmentsData);
+      // Filter appointments that should be in the queue (excluding cancelled and completed)
+      let appointmentsData = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Appointment[];
+      
+      // Filter out cancelled and completed appointments
+      appointmentsData = appointmentsData.filter(apt => 
+        apt.status !== 'cancelled' && apt.status !== 'completed'
+      );
+      
+      // Sort by queue number
+      appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
       
       setAppointments(appointmentsData);
     } catch (error) {
@@ -105,49 +95,11 @@ const Queue = () => {
     };
   }, [loadTodaysAppointments]);
 
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    };
-    return date.toLocaleDateString('en-US', options);
-  };
-
   const convertTo12Hour = (time24: string): string => {
     const [hours, minutes] = time24.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';
     const hours12 = hours % 12 || 12;
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
-
-  const calculateWaitTime = (timeSlot: string): string => {
-    const now = new Date();
-    const [hours, minutes] = timeSlot.split(':').map(Number);
-    
-    const appointmentTime = new Date();
-    appointmentTime.setHours(hours, minutes, 0, 0);
-
-    const diffMs = appointmentTime.getTime() - now.getTime();
-    
-    if (diffMs <= 0) {
-      return 'Ready';
-    }
-
-    const diffMinutes = Math.floor(diffMs / 60000);
-    
-    if (diffMinutes < 1) {
-      return 'Ready';
-    }
-    
-    const waitHours = Math.floor(diffMinutes / 60);
-    const waitMinutes = diffMinutes % 60;
-
-    if (waitHours > 0) {
-      return `${waitHours}h ${waitMinutes}min`;
-    }
-    return `${waitMinutes}min`;
   };
 
   const getPriorityColor = (priority: string) => {
@@ -189,7 +141,7 @@ const Queue = () => {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Current Queue</h1>
           <p className="text-xl text-gray-600">Real-time queue status - All appointments for today</p>
-          <p className="text-lg text-indigo-600 font-medium mt-2">{formatDate(getTodayDateString())}</p>
+          <p className="text-lg text-indigo-600 font-medium mt-2">{formatDate(getTodayDatePH())}</p>
         </div>
 
         {/* Now Serving & Up Next Cards */}
@@ -205,6 +157,7 @@ const Queue = () => {
                 <div className="text-6xl font-bold mb-2">#{nowServing.queueNumber}</div>
                 <p className="text-lg opacity-90">{nowServing.fullName}</p>
                 <p className="text-sm opacity-75">Dr. {nowServing.doctor}</p>
+                <p className="text-sm opacity-75 mt-1">{convertTo12Hour(nowServing.timeSlot)}</p>
               </div>
             ) : (
               <div className="text-2xl opacity-75">No one being served</div>
@@ -222,6 +175,7 @@ const Queue = () => {
                 <div className="text-6xl font-bold mb-2">#{upNext.queueNumber}</div>
                 <p className="text-lg opacity-90">{upNext.fullName}</p>
                 <p className="text-sm opacity-75">Dr. {upNext.doctor}</p>
+                <p className="text-sm opacity-75 mt-1">{convertTo12Hour(upNext.timeSlot)}</p>
               </div>
             ) : (
               <div className="text-2xl opacity-75">No upcoming appointments</div>
@@ -301,16 +255,10 @@ const Queue = () => {
                       </span>
                     </div>
 
-                    {/* Wait Time */}
-                    <div className="md:col-span-3 text-right">
-                      {appointment.status !== 'serving' && (
-                        <div className="text-sm">
-                          <span className="text-gray-500">Wait: </span>
-                          <span className="font-bold text-indigo-600">
-                            {calculateWaitTime(appointment.timeSlot)}
-                          </span>
-                        </div>
-                      )}
+                    {/* Medical Condition */}
+                    <div className="md:col-span-3">
+                      <p className="text-sm text-gray-500">Condition:</p>
+                      <p className="text-sm font-medium text-gray-700">{appointment.medicalCondition}</p>
                     </div>
                   </div>
 

@@ -94,13 +94,10 @@ useEffect(() => {
       }
     });
   };
-
 const handleMaxSlotsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const value = e.target.value;
   // Only allow numbers
   if (/^\d*$/.test(value)) {
-    // Set to empty string if cleared, otherwise parse as number
-    // This prevents setting to 1 when user clears the input
     setMaxSlots(value === '' ? '' : parseInt(value));
   }
 };
@@ -109,7 +106,7 @@ const handleSave = async (): Promise<void> => {
   const maxSlotsNumber = typeof maxSlots === 'string' ? parseInt(maxSlots) || 0 : maxSlots;
   
   if (maxSlotsNumber < 1) {
-    alert('Please enter a valid number of slots (minimum 1)');
+    toast.error('Please enter a valid number of slots (minimum 1)');
     return;
   }
 
@@ -127,8 +124,10 @@ const handleSave = async (): Promise<void> => {
     console.log('=== BEFORE SAVE ===');
     console.log('Current maxSlotsPerDate:', currentData?.maxSlotsPerDate);
     console.log('Current globalMaxSlots:', currentData?.maxSlots);
+    console.log('Date being configured:', date);
+    console.log('New value for this date:', maxSlotsNumber);
 
-    // Build the update object carefully
+    // ✅ Handle unavailable dates
     const unavailableDates = { ...(currentData?.unavailableDates || {}) };
     if (!isAvailableForDate) {
       unavailableDates[date] = true;
@@ -136,6 +135,7 @@ const handleSave = async (): Promise<void> => {
       delete unavailableDates[date];
     }
 
+    // ✅ Handle unavailable time slots (stored in availableSlots field)
     const availableSlots = { ...(currentData?.availableSlots || {}) };
     if (unavailableSlots.length > 0) {
       availableSlots[date] = [...unavailableSlots];
@@ -143,19 +143,21 @@ const handleSave = async (): Promise<void> => {
       delete availableSlots[date];
     }
 
+    // ✅ FIXED: Store per-date max slots properly
     const maxSlotsPerDate = { ...(currentData?.maxSlotsPerDate || {}) };
     maxSlotsPerDate[date] = maxSlotsNumber;
 
     console.log('=== SAVING ===');
-    console.log('New maxSlotsPerDate:', maxSlotsPerDate);
-    console.log('Date being updated:', date);
-    console.log('Value for this date:', maxSlotsNumber);
+    console.log('Update payload:');
+    console.log('  - maxSlotsPerDate:', maxSlotsPerDate);
+    console.log('  - unavailableDates:', unavailableDates);
+    console.log('  - availableSlots (unavailable time slots):', availableSlots);
 
-    // Update with merge to preserve other fields
+    // ✅ Save per-date configuration (does NOT affect global maxSlots)
     await updateDoc(doctorRef, {
-      maxSlotsPerDate,
-      unavailableDates,
-      availableSlots,
+      maxSlotsPerDate, // Per-date max slots
+      unavailableDates, // Per-date availability
+      availableSlots, // Per-date unavailable time slots
       updatedAt: new Date().toISOString()
     });
 
@@ -165,6 +167,7 @@ const handleSave = async (): Promise<void> => {
     console.log('=== AFTER SAVE (VERIFICATION) ===');
     console.log('Saved maxSlotsPerDate:', verifyData?.maxSlotsPerDate);
     console.log('Value for our date:', verifyData?.maxSlotsPerDate?.[date]);
+    console.log('Global maxSlots (should be unchanged):', verifyData?.maxSlots);
     
     if (verifyData?.maxSlotsPerDate?.[date] !== maxSlotsNumber) {
       console.error('❌ SAVE VERIFICATION FAILED!');
@@ -174,20 +177,23 @@ const handleSave = async (): Promise<void> => {
     }
     
     console.log('✅ Save verified successfully');
+    console.log('✅ Per-date configuration saved WITHOUT affecting other dates');
 
-    alert('Doctor availability updated successfully');
-    
+   toast.success(`Doctor availability updated successfully for ${formatDate(date)}`, {
+    autoClose: 3000,
+    position: "top-right"
+    });
+      
     // Call onUpdate to refresh the calendar
     await onUpdate();
     onClose();
-  } catch (error) {
-    console.error('❌ Error updating doctor availability:', error);
-    
-    // Proper error handling for TypeScript
-    if (error instanceof Error) {
-      alert(`Failed to update: ${error.message}`);
-    } else {
-      alert('Failed to update doctor availability');
+} catch (error) {
+  console.error('❌ Error updating doctor availability:', error);
+  
+  if (error instanceof Error) {
+    toast.error(`Failed to update: ${error.message}`);
+  } else {
+    toast.error('Failed to update doctor availability');
     }
   } finally {
     setIsLoading(false);

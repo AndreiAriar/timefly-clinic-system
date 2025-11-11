@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { registerUser, loginWithGoogle, logoutUser } from '../services/authService';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface SignupProps {
   onSignup: () => void;
@@ -17,156 +18,159 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError('');
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
 
-  if (!name || !email || !password || !confirmPassword) {
-    setError('Please fill in all fields');
-    return;
-  }
-
-  if (!/\S+@\S+\.\S+/.test(email)) {
-    setError('Please enter a valid email');
-    return;
-  }
-
-  if (password.length < 6) {
-    setError('Password must be at least 6 characters');
-    return;
-  }
-
-  if (password !== confirmPassword) {
-    setError('Passwords do not match');
-    return;
-  }
-
-  setLoading(true);
-  onSignupStart();
-
-  try {
-    // Step 1: Create the user account
-    const result = await registerUser(email, password);
-
-    if (result.error) {
-      setError(result.error);
-      setLoading(false);
+    if (!name || !email || !password || !confirmPassword) {
+      setError('Please fill in all fields');
       return;
     }
 
-    if (!result.user) {
-      setError('Failed to create account');
-      setLoading(false);
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setError('Please enter a valid email');
       return;
     }
 
-    // Step 2: Create Firestore document
-    const userDocRef = doc(db, 'users', result.user.uid);
-    await setDoc(userDocRef, {
-      uid: result.user.uid,
-      email: result.user.email,
-      displayName: name,
-      photoURL: '',
-      role: 'patient',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
 
-    console.log('✅ User document created successfully with ID:', result.user.uid);
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
 
-    // Step 3: Logout the user
-    await logoutUser();
-    console.log('✅ User logged out after signup');
+    setLoading(true);
+    onSignupStart();
 
-    // Step 4: Show success and redirect
-    setSuccess(true);
-    setLoading(false);
-
-    setTimeout(() => {
-      onSignup();
-    }, 2000);
-
-  } catch (error) {
-    console.error('❌ Signup error:', error);
-    setError(error instanceof Error ? error.message : 'An error occurred during signup');
-    setLoading(false);
-    
-    // Try to logout anyway
     try {
-      await logoutUser();
-    } catch (logoutError) {
-      console.error('Logout error:', logoutError);
-    }
-  }
-};
+      // Step 1: Create the user account
+      const result = await registerUser(email, password);
 
-const handleGoogleSignup = async () => {
-  setError('');
-  setLoading(true);
-  onSignupStart();
+      if (result.error) {
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
 
-  try {
-    // Step 1: Sign in with Google
-    const result = await loginWithGoogle();
+      if (!result.user) {
+        setError('Failed to create account');
+        setLoading(false);
+        return;
+      }
 
-    if (result.error) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-
-    if (!result.user) {
-      setError('Failed to sign in with Google');
-      setLoading(false);
-      return;
-    }
-
-    // Step 2: Check if user document exists
-    const userDocRef = doc(db, 'users', result.user.uid);
-    const userDoc = await getDoc(userDocRef);
-
-    if (!userDoc.exists()) {
-      // Step 3: Create user document if it doesn't exist
+      // Step 2: Create Firestore document
+      const userDocRef = doc(db, 'users', result.user.uid);
       await setDoc(userDocRef, {
         uid: result.user.uid,
         email: result.user.email,
-        displayName: result.user.displayName || '',
-        photoURL: result.user.photoURL || '',
+        displayName: name,
+        photoURL: '',
         role: 'patient',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
+
       console.log('✅ User document created successfully with ID:', result.user.uid);
-    } else {
-      console.log('ℹ️ User document already exists');
-    }
 
-    // Step 4: Logout the user
-    await logoutUser();
-    console.log('✅ User logged out after Google signup');
-
-    // Step 5: Show success and redirect
-    setSuccess(true);
-
-    setTimeout(() => {
-      setLoading(false);
-      onSignup();
-    }, 1500);
-
-  } catch (error) {
-    console.error('❌ Google signup error:', error);
-    setError(error instanceof Error ? error.message : 'An error occurred during Google signup');
-    setLoading(false);
-    
-    // Try to logout anyway
-    try {
+      // Step 3: Logout the user
       await logoutUser();
-    } catch (logoutError) {
-      console.error('Logout error:', logoutError);
+      console.log('✅ User logged out after signup');
+
+      // Step 4: Show success and redirect
+      setSuccess(true);
+      setLoading(false);
+
+      setTimeout(() => {
+        onSignup();
+      }, 2000);
+
+    } catch (error) {
+      console.error('❌ Signup error:', error);
+      setError(error instanceof Error ? error.message : 'An error occurred during signup');
+      setLoading(false);
+      
+      // Try to logout anyway
+      try {
+        await logoutUser();
+      } catch (logoutError) {
+        console.error('Logout error:', logoutError);
+      }
     }
-  }
-};
+  };
+
+  const handleGoogleSignup = async () => {
+    setError('');
+    setLoading(true);
+    onSignupStart();
+
+    try {
+      // Step 1: Sign in with Google
+      const result = await loginWithGoogle();
+
+      if (result.error) {
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
+
+      if (!result.user) {
+        setError('Failed to sign in with Google');
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Check if user document exists
+      const userDocRef = doc(db, 'users', result.user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (!userDoc.exists()) {
+        // Step 3: Create user document if it doesn't exist
+        await setDoc(userDocRef, {
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName || '',
+          photoURL: result.user.photoURL || '',
+          role: 'patient',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        console.log('✅ User document created successfully with ID:', result.user.uid);
+      } else {
+        console.log('ℹ️ User document already exists');
+      }
+
+      // Step 4: Logout the user
+      await logoutUser();
+      console.log('✅ User logged out after Google signup');
+
+      // Step 5: Show success and redirect
+      setSuccess(true);
+
+      setTimeout(() => {
+        setLoading(false);
+        onSignup();
+      }, 1500);
+
+    } catch (error) {
+      console.error('❌ Google signup error:', error);
+      setError(error instanceof Error ? error.message : 'An error occurred during Google signup');
+      setLoading(false);
+      
+      // Try to logout anyway
+      try {
+        await logoutUser();
+      } catch (logoutError) {
+        console.error('Logout error:', logoutError);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 px-4 py-12">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-xl">
@@ -232,15 +236,29 @@ const handleGoogleSignup = async () => {
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                placeholder="••••••••"
-                disabled={success || loading}
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition pr-10"
+                  placeholder="••••••••"
+                  disabled={success || loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  disabled={success || loading}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
               <p className="mt-1 text-xs text-gray-500">Must be at least 6 characters</p>
             </div>
 
@@ -248,36 +266,30 @@ const handleGoogleSignup = async () => {
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
                 Confirm Password
               </label>
-              <input
-                id="confirmPassword"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                placeholder="••••••••"
-                disabled={success || loading}
-              />
+              <div className="relative">
+                <input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition pr-10"
+                  placeholder="••••••••"
+                  disabled={success || loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  disabled={success || loading}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
-
-          <div className="flex items-start">
-            <input
-              id="terms"
-              type="checkbox"
-              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
-              disabled={success || loading}
-              required
-            />
-            <label htmlFor="terms" className="ml-2 block text-sm text-gray-700">
-              I agree to the{' '}
-              <a href="#terms" className="text-indigo-600 hover:text-indigo-500">
-                Terms of Service
-              </a>{' '}
-              and{' '}
-              <a href="#privacy" className="text-indigo-600 hover:text-indigo-500">
-                Privacy Policy
-              </a>
-            </label>
           </div>
 
           <button

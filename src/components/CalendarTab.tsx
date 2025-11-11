@@ -89,46 +89,54 @@ const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoc
       }
     });
   };
-
-// Update the handleSave function to use alert instead of toast
 const handleSave = async (): Promise<void> => {
   // Convert maxSlots to number for comparison
   const maxSlotsNumber = typeof maxSlots === 'string' ? parseInt(maxSlots) || 0 : maxSlots;
   
-  if (maxSlotsNumber < 1) {
-    alert('Please enter a valid number of slots (minimum 1)');
-    return;
-  }
-
+if (maxSlotsNumber < 1) {
+  toast.error('Please enter a valid number of slots (minimum 1)');
+  return;
+}
   setIsLoading(true);
   try {
     // Update doctor in Firestore
     const doctorRef = doc(db, 'doctors', doctor.id);
-    const unavailableDates = { ...doctor.unavailableDates };
     
+    // ✅ Handle unavailable dates
+    const unavailableDates = { ...doctor.unavailableDates };
     if (!isAvailableForDate) {
       unavailableDates[date] = true;
     } else {
       delete unavailableDates[date];
     }
 
+    // ✅ Handle unavailable time slots
     const availableSlots = { ...doctor.availableSlots };
     availableSlots[date] = unavailableSlots;
 
+    // ✅ FIX: Store per-date max slots properly
+    const maxSlotsPerDate = { ...(doctor.maxSlotsPerDate || {}) };
+    maxSlotsPerDate[date] = maxSlotsNumber;
+
+    // ✅ Update only per-date configuration (does NOT affect global maxSlots)
     await updateDoc(doctorRef, {
-      maxSlots: maxSlotsNumber,
+      maxSlotsPerDate,  // ✅ Per-date max slots
       unavailableDates,
       availableSlots,
       updatedAt: new Date().toISOString()
     });
 
-    alert('Doctor availability updated successfully');
+   toast.success(`Doctor availability updated successfully for ${formatDate(date)}`, {
+      autoClose: 3000,
+      position: "top-right"
+    });
     onUpdate();
     onClose();
   } catch (error) {
-    console.error('Error updating doctor availability:', error);
-    alert('Failed to update doctor availability');
-  } finally {
+  console.error('Error updating doctor availability:', error);
+  toast.error('Failed to update doctor availability');
+  }
+  finally {
     setIsLoading(false);
   }
 };
@@ -395,7 +403,7 @@ const CalendarTab = () => {
       (apt: Appointment) => apt.appointmentDate === date && apt.status !== 'cancelled'
     ).length;
   };
-const getTotalSlotsForDate = (date: string): number => {
+  const getTotalSlotsForDate = (date: string): number => {
     console.log(`\n📅 === Calculating total slots for ${date} ===`);
     
     const total = doctors.reduce((total: number, doctor: Doctor) => {
@@ -415,22 +423,24 @@ const getTotalSlotsForDate = (date: string): number => {
         return total;
       }
       
-      // Get max slots for this date
-      const dateSpecificSlots = doctor.maxSlotsPerDate?.[date];
-      const globalSlots = doctor.maxSlots;
+      // ✅ FIXED: Always use per-date maxSlots, fallback to global only if not set
+      const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
+      const dateSpecificSlots = maxSlotsPerDate[date];
+      const globalSlots = doctor.maxSlots || 0;
       
       console.log(`   📊 maxSlotsPerDate object:`, doctor.maxSlotsPerDate);
       console.log(`   📊 maxSlotsPerDate['${date}']: ${dateSpecificSlots}`);
       console.log(`   📊 globalMaxSlots: ${globalSlots}`);
       
-      const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : (globalSlots || 0);
-      console.log(`   ✅ Using maxSlots: ${maxSlots}`);
+      // ✅ Use date-specific slots if set, otherwise use global
+      const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
+      console.log(`   ✅ Using maxSlots: ${maxSlots} (${dateSpecificSlots !== undefined ? 'date-specific' : 'global'})`);
       
       // Get unavailable time slots for this specific date
       const unavailableTimeSlots = doctor.availableSlots?.[date] || [];
       console.log(`   ⛔ Unavailable time slots: ${unavailableTimeSlots.length}`);
       
-      // Calculate available slots
+      // Calculate available slots (total slots minus unavailable time slots)
       const availableSlotsCount = Math.max(0, maxSlots - unavailableTimeSlots.length);
       console.log(`   ✨ Available slots: ${availableSlotsCount} (${maxSlots} - ${unavailableTimeSlots.length})`);
       console.log(`   🔢 Running total: ${total} + ${availableSlotsCount} = ${total + availableSlotsCount}`);
