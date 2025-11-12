@@ -193,7 +193,7 @@ const recalculateQueueNumbers = async (appointmentDate: string) => {
       return [];
     }
   }, []);
-
+  
 const isPastTime = (date: string, time: string): boolean => {
   const now = new Date();
   const [year, month, day] = date.split('-').map(Number);
@@ -201,12 +201,12 @@ const isPastTime = (date: string, time: string): boolean => {
   
   const appointmentDateTime = new Date(year, month - 1, day, hours, minutes);
   
-  // Return true if appointment time is less than or EQUAL to current time
-  // This ensures current time is also excluded, only future times are shown
-  return appointmentDateTime <= now;
-};
-
-const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
+  // Add 30 minutes buffer - consider times within 30 minutes as "past"
+  const bufferTime = new Date(now.getTime() + 30 * 60 * 1000); // Current time + 30 minutes
+  
+  // Return true if appointment time is less than or equal to current time + 30 minutes
+  return appointmentDateTime <= bufferTime;
+};const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
   console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
   
   const slots: TimeSlot[] = [];
@@ -248,6 +248,9 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
   if (priorityLevel === 'normal') {
     // Normal: 1-hour slots (8:00, 9:00, 10:00, etc.)
     for (let hour = startHour; hour < endHour; hour++) {
+      // Skip lunch time (12:00 PM - 1:00 PM)
+      if (hour === 12) continue;
+      
       const timeString = `${hour.toString().padStart(2, '0')}:00`;
       const isBooked = bookedSlots.includes(timeString);
       const isPast = isPastTime(appointmentDate, timeString);
@@ -265,6 +268,9 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
   } else if (priorityLevel === 'urgent') {
     // Urgent: 30-minute buffer slots (8:30, 9:30, 10:30, etc.)
     for (let hour = startHour; hour < endHour; hour++) {
+      // Skip lunch time (12:00 PM - 1:00 PM)
+      if (hour === 12) continue;
+      
       const timeString = `${hour.toString().padStart(2, '0')}:30`;
       const isBooked = bookedSlots.includes(timeString);
       const isPast = isPastTime(appointmentDate, timeString);
@@ -282,6 +288,9 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
   } else if (priorityLevel === 'emergency') {
     // Emergency: 15-minute buffer slots (8:15, 8:45, 9:15, 9:45, etc.)
     for (let hour = startHour; hour < endHour; hour++) {
+      // Skip lunch time (12:00 PM - 1:00 PM)
+      if (hour === 12) continue;
+      
       // :15 slots
       const timeString15 = `${hour.toString().padStart(2, '0')}:15`;
       const isBooked15 = bookedSlots.includes(timeString15);
@@ -655,50 +664,103 @@ const handleSubmit = async () => {
                   />
                 </div>
 
-                {availableTimeSlots.length > 0 && (
-                  <div>
-                    <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
-                      Select Time Slot <span className="text-red-500" aria-label="required">*</span>
-                    </label>
-                    <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
-                      {availableTimeSlots.map((slot) => (
-                        <button
-                          key={slot.time}
-                          type="button"
-                          disabled={!slot.available}
-                          onClick={() => setFormData(prev => ({ ...prev, timeSlot: slot.time }))}
-                          className={`px-3 py-3 rounded-lg text-sm font-medium transition ${
-                            formData.timeSlot === slot.time
-                              ? 'bg-blue-600 text-white'
-                              : slot.available
-                              ? slot.isBuffer && slot.bufferType === 'emergency'
-                                ? 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
-                                : slot.isBuffer && slot.bufferType === 'urgent'
-                                ? 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              : 'bg-gray-50 text-gray-400 cursor-not-allowed line-through'
-                          }`}
-                          aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
-                          aria-label={`Time slot ${convertTo12Hour(slot.time)}${slot.isBuffer ? ` ${slot.bufferType} buffer` : ''}, ${slot.available ? 'available' : 'booked'}`}
+               <div>
+              <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
+  Select Time Slot <span className="text-red-500" aria-label="required">*</span>
+</label>
+{formData.doctor && formData.appointmentDate ? (
+  availableTimeSlots.length > 0 ? (
+    <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
+      {availableTimeSlots.map((slot) => {
+        // Check if slot is unavailable due to staff marking it (not booked by another patient)
+        const isStaffUnavailable = !slot.available && 
+          availableTimeSlots.some(s => s.time === slot.time && !s.available);
+        
+        return (
+          <button
+            key={slot.time}
+            type="button"
+            disabled={!slot.available}
+            onClick={() => setFormData(prev => ({ ...prev, timeSlot: slot.time }))}
+            className={`px-3 py-3 rounded-lg text-sm font-medium transition ${
+              formData.timeSlot === slot.time
+                ? 'bg-blue-600 text-white'
+                : slot.available
+                ? slot.isBuffer && slot.bufferType === 'emergency'
+                  ? 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                  : slot.isBuffer && slot.bufferType === 'urgent'
+                  ? 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : isStaffUnavailable
+                ? 'bg-red-50 text-red-400 cursor-not-allowed border border-red-200'
+                : 'bg-gray-50 text-gray-400 cursor-not-allowed line-through'
+            }`}
+            aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
+            aria-label={`Time slot ${convertTo12Hour(slot.time)}${slot.isBuffer ? ` ${slot.bufferType} buffer` : ''}, ${slot.available ? 'available' : isStaffUnavailable ? 'unavailable' : 'booked'}`}
+          >
+            <div className="flex flex-col items-center">
+              <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
+              {slot.isBuffer && slot.bufferType === 'emergency' && (
+                <span className="text-xs mt-1">Emergency Buffer</span>
+              )}
+              {slot.isBuffer && slot.bufferType === 'urgent' && (
+                <span className="text-xs mt-1">Urgent Buffer</span>
+              )}
+              {!slot.available && (
+                <span className={`text-xs mt-1 px-2 py-0.5 rounded-full ${
+                  isStaffUnavailable 
+                    ? 'bg-red-100 text-red-700' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {isStaffUnavailable ? 'Unavailable' : 'Booked'}
+                </span>
+              )}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  ) : (
+    <div className="text-center py-6 border border-yellow-200 rounded-lg bg-yellow-50">
+      <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+      </div>
+      <h4 className="text-lg font-semibold text-yellow-800 mb-2">No Available Slots</h4>
+      <p className="text-yellow-700 mb-4 max-w-md mx-auto">
+        Dr. {formData.doctor.replace('Dr. ', '')} has no available slots for {new Date(formData.appointmentDate).toLocaleDateString()}. 
+        All slots are either booked or marked as unavailable.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <button
+          type="button"
+          onClick={() => {
+            setFormData(prev => ({ ...prev, doctor: '', timeSlot: '' }));
+          }}
+          className="px-4 py-2 bg-white text-yellow-700 border border-yellow-300 rounded-lg font-medium hover:bg-yellow-50 transition"
+        >
+          Choose Another Doctor
+        </button>
+        <button
+          type="button"
+             onClick={() => {
+               // Add to waiting list functionality
+               alert('Waiting list functionality will be implemented here');
+                          }}
+                          className="px-4 py-2 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition"
                         >
-                          <div className="flex flex-col items-center">
-                            <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
-                            {slot.isBuffer && slot.bufferType === 'emergency' && (
-                              <span className="text-xs mt-1">Emergency Buffer</span>
-                            )}
-                            {slot.isBuffer && slot.bufferType === 'urgent' && (
-                              <span className="text-xs mt-1">Urgent Buffer</span>
-                            )}
-                            {!slot.available && (
-                              <span className="text-xs mt-1">Booked</span>
-                            )}
-                          </div>
+                          Add to Waiting List
                         </button>
-                      ))}
+                      </div>
                     </div>
+                  )
+                ) : (
+                  <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
+                    <p className="text-gray-500">Please select a date and doctor to view available time slots.</p>
                   </div>
                 )}
-
+               </div>
                 <div>
                   <label htmlFor="medicalCondition" className="block text-sm font-medium text-gray-700 mb-2">
                     Eye Condition <span className="text-red-500" aria-label="required">*</span>

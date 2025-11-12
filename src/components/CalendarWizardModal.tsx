@@ -104,17 +104,31 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minutes} ${ampm}`;
   };
-
-  const generateTimeSlots = (): string[] => {
-    const slots: string[] = [];
-    for (let hour = 8; hour < 17; hour++) {
-      for (let minute = 0; minute < 60; minute += 30) {
-        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+const generateTimeSlots = (): string[] => {
+  const slots: string[] = [];
+  const now = new Date();
+  
+  if (!selectedDate) return [];
+  
+  const [year, month, day] = selectedDate.split('-').map(Number);
+  
+  for (let hour = 8; hour < 17; hour++) {
+    for (let minute = 0; minute < 60; minute += 30) {
+      const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      
+      // Skip lunch time (12:00 PM - 1:00 PM)
+      if (hour === 12) continue;
+      
+      const appointmentDateTime = new Date(year, month - 1, day, hour, minute);
+      const bufferTime = new Date(now.getTime() + 30 * 60 * 1000);
+      
+      if (appointmentDateTime > bufferTime) {
         slots.push(timeString);
       }
     }
-    return slots;
-  };
+  }
+  return slots;
+};
 
   const getDaysInMonth = (date: Date): number => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -543,29 +557,46 @@ const handleAppointmentModalClose = () => {
                         <Clock className="w-5 h-5" />
                         Available Time Slots
                       </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
-                        {generateTimeSlots().map(time => {
-                          const isAvailable = isTimeSlotAvailable(time);
-                          const isSelected = selectedTime === time;
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
+  {generateTimeSlots().map(time => {
+    const isAvailable = isTimeSlotAvailable(time);
+    const isSelected = selectedTime === time;
+    
+    // Check if slot is unavailable due to staff marking
+    const isStaffUnavailable = selectedDoctor?.availableSlots?.[selectedDate!]?.includes(time);
 
-                          return (
-                            <button
-                              key={time}
-                              onClick={() => handleTimeSelect(time)}
-                              disabled={!isAvailable}
-                              className={`p-3 rounded-lg text-sm font-medium transition border-2 ${
-                                isSelected
-                                  ? 'bg-blue-600 text-white border-blue-600'
-                                  : isAvailable
-                                  ? 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-                                  : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                              }`}
-                            >
-                              {formatTo12Hour(time)}
-                            </button>
-                          );
-                        })}
-                      </div>
+
+      return (
+        <button
+          key={time}
+          onClick={() => handleTimeSelect(time)}
+          disabled={!isAvailable}
+          className={`p-3 rounded-lg text-sm font-medium transition border-2 relative ${
+            isSelected
+              ? 'bg-blue-600 text-white border-blue-600'
+              : isAvailable
+              ? 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+              : isStaffUnavailable
+              ? 'bg-red-50 text-red-400 border-red-200 cursor-not-allowed'
+              : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+          }`}
+        >
+         <div className="flex flex-col items-center">
+            <span className="font-semibold">{formatTo12Hour(time)}</span>
+                  {!isAvailable && (
+                     <span className={`text-xs mt-1 px-2 py-0.5 rounded-full ${
+                              isStaffUnavailable 
+                                ? 'bg-red-100 text-red-700' 
+                                : 'bg-gray-200 text-gray-600'
+                            }`}>
+                              {isStaffUnavailable ? 'Unavailable' : 'Booked'}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                        );
+                      })}
+                    </div>
                     </div>
                   </div>
                 )}

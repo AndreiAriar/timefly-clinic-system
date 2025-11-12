@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, CheckCircle, Eye } from 'lucide-react';
+import { Calendar, Clock, CheckCircle } from 'lucide-react';
 import AppointmentModal from './AppointmentModal';
 import CalendarWizardModal from './CalendarWizardModal';
 import { collection, query, getDocs } from 'firebase/firestore';
@@ -99,7 +99,7 @@ const Home = () => {
               onClick={() => setIsCalendarWizardOpen(true)}
               className="bg-green-600 hover:bg-green-700 text-white font-semibold px-10 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200 flex items-center justify-center gap-2"
             >
-              <Eye className="w-5 h-5" />
+              <Calendar className="w-5 h-5" />
               View Calendar
             </button>
           </div>
