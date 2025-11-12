@@ -579,21 +579,25 @@ const handleSubmit = async () => {
                   />
                 </div>
 
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone Number <span className="text-red-500" aria-label="required">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    id="phone"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="09XX XXX XXXX"
-                    aria-required="true"
-                  />
-                </div>
+              <div>
+            <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
+              Phone Number <span className="text-red-500" aria-label="required">*</span>
+            </label>
+            <input
+              type="tel"
+              id="phone"
+              name="phone"
+              value={formData.phone}
+              onChange={(e) => {
+                // Only allow numbers
+                const numbersOnly = e.target.value.replace(/\D/g, '');
+                setFormData(prev => ({ ...prev, phone: numbersOnly }));
+              }}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="09XX XXX XXXX"
+              aria-required="true"
+            />
+          </div>
 
                 <div>
                   <label htmlFor="priorityLevel" className="block text-sm font-medium text-gray-700 mb-2">

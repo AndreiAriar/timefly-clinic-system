@@ -12,11 +12,19 @@ import 'react-toastify/dist/ReactToastify.css';
 
 type ViewType = 'login' | 'signup';
 
+interface UserData {
+  displayName: string;
+  email: string;
+  photoURL: string;
+  role: 'patient' | 'staff';
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<'patient' | 'staff' | null>(null);
+  const [userData, setUserData] = useState<UserData | null>(null); // ✅ NEW: Store complete user data
   const [loading, setLoading] = useState(true);
-  const [roleLoading, setRoleLoading] = useState(false); // ✅ NEW: Separate loading for role
+  const [roleLoading, setRoleLoading] = useState(false);
   const [currentView, setCurrentView] = useState<ViewType>('login');
   const [isSigningUp, setIsSigningUp] = useState(false);
 
@@ -33,7 +41,7 @@ function App() {
         setUser(user);
         
         try {
-          console.log('🔍 Fetching user role for:', user.uid);
+          console.log('🔍 Fetching user data for:', user.uid);
           const userDocRef = doc(db, 'users', user.uid);
           const userDoc = await getDoc(userDocRef);
           
@@ -41,8 +49,16 @@ function App() {
             const userData = userDoc.data();
             const role = userData.role || 'patient';
             
-            console.log('✅ User role fetched:', role);
+            console.log('✅ User data fetched:', userData);
             setUserRole(role);
+            
+            // ✅ NEW: Store complete user data including name and photo
+            setUserData({
+              displayName: userData.displayName || user.displayName || 'User',
+              email: user.email || '',
+              photoURL: userData.photoURL || user.photoURL || '',
+              role: role
+            });
             
             // ✅ Show notification for staff
             if (role === 'staff') {
@@ -55,7 +71,8 @@ function App() {
                 draggable: true,
               });
             } else {
-              toast.success(' Welcome back!', {
+              const displayName = userData.displayName || user.displayName || 'User';
+              toast.success(`Welcome back, ${displayName}!`, {
                 position: "top-right",
                 autoClose: 2000,
                 hideProgressBar: false,
@@ -67,14 +84,28 @@ function App() {
           } else {
             console.log('⚠️ No user document found, defaulting to patient');
             setUserRole('patient');
+            // ✅ NEW: Set user data with fallbacks
+            setUserData({
+              displayName: user.displayName || 'User',
+              email: user.email || '',
+              photoURL: user.photoURL || '',
+              role: 'patient'
+            });
             toast.info('Welcome! Setting up your account...', {
               position: "top-right",
               autoClose: 2000,
             });
           }
         } catch (error) {
-          console.error('❌ Error fetching user role:', error);
+          console.error('❌ Error fetching user data:', error);
           setUserRole('patient');
+          // ✅ NEW: Set fallback user data on error
+          setUserData({
+            displayName: user.displayName || 'User',
+            email: user.email || '',
+            photoURL: user.photoURL || '',
+            role: 'patient'
+          });
           toast.error('Error loading profile. Defaulting to patient view.', {
             position: "top-right",
             autoClose: 3000,
@@ -88,6 +119,7 @@ function App() {
         // ✅ No user logged in
         setUser(null);
         setUserRole(null);
+        setUserData(null); // ✅ NEW: Clear user data
         setRoleLoading(false);
         setLoading(false);
       }
@@ -101,6 +133,7 @@ function App() {
       await logoutUser();
       setUser(null);
       setUserRole(null);
+      setUserData(null); // ✅ NEW: Clear user data
       setCurrentView('login');
       toast.info(' Logged out successfully', {
         position: "top-right",
@@ -151,20 +184,20 @@ function App() {
         theme="light"
       />
       
-      {user && userRole ? (
-        // ✅ Only show dashboard when BOTH user and userRole are confirmed
+      {user && userRole && userData ? (
+        // ✅ Only show dashboard when user, userRole, AND userData are confirmed
         userRole === 'staff' ? (
           <StaffDashboard 
-            userEmail={user.email || ''} 
-            userName={user.displayName || undefined}
-            userPhoto={user.photoURL || undefined}
+            userEmail={userData.email} 
+            userName={userData.displayName}
+            userPhoto={userData.photoURL}
             onLogout={handleLogout} 
           />
         ) : (
           <Dashboard 
-            userEmail={user.email || ''} 
-            userName={user.displayName || undefined}
-            userPhoto={user.photoURL || undefined}
+            userEmail={userData.email} 
+            userName={userData.displayName}
+            userPhoto={userData.photoURL}
             onLogout={handleLogout} 
           />
         )

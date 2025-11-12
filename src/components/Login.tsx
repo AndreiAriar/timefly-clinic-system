@@ -16,20 +16,21 @@ const Login = ({ onSwitchToSignup }: LoginProps) => {
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  e.preventDefault();
+  setError('');
+  setLoading(true);
 
-    const result = await loginUser(email, password);
+  const result = await loginUser(email, password);
 
-    if (result.error) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-
+  if (result.error) {
+    setError(result.error);
     setLoading(false);
-  };
+    return;
+  }
+
+  // User is now logged in and Firebase Auth context will handle the rest
+  setLoading(false);
+};
 
   const handleGoogleLogin = async () => {
     setError('');

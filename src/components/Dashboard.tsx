@@ -2,10 +2,13 @@ import { useState, useRef, useEffect } from 'react';
 import Home from './Home';
 import AboutUs from './AboutUs';
 import OurDoctors from './OurDoctors';
-import FAQ from './FAQ';
-import Feedbacks from './Feedbacks';
+import FAQ1 from './FAQ1';  
+import FAQ2 from './FAQ2';  
+import PatientFeedback from './PatientFeedback';
 import Appointments from './Appointments';
 import Queue from './Queue';
+import ContactUs from './ContactUs';
+import PrivacyPolicy from './PrivacyPolicy';
 
 interface DashboardProps {
   userEmail: string;
@@ -14,7 +17,9 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type PageType = 'home' | 'appointments' | 'queue' | 'about' | 'doctors' | 'faq' | 'feedbacks';
+type PageType = 'home' | 'appointments' | 'queue' | 'about' | 'doctors' | 'faq' | 'faq2' | 'feedbacks' | 'contact' | 'privacy';
+
+
 
 const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps) => {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
@@ -95,27 +100,33 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
     setIsMobileDropdownOpen(false);
     onLogout();
   };
-
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'home':
-        return <Home />;
-      case 'appointments':
-        return <Appointments />;
-      case 'queue':
-        return <Queue />;
-      case 'about':
-        return <AboutUs />;
-      case 'doctors':
-        return <OurDoctors />;
-      case 'faq':
-        return <FAQ />;
-      case 'feedbacks':
-        return <Feedbacks />;
-      default:
-        return <Home />;
-    }
-  };
+  
+const renderPage = () => {
+  switch (currentPage) {
+    case 'home':
+      return <Home />;
+    case 'appointments':
+      return <Appointments />;
+    case 'queue':
+      return <Queue />;
+    case 'about':
+      return <AboutUs />;
+    case 'doctors':
+      return <OurDoctors />;
+    case 'faq':
+      return <FAQ1 onNavigate={() => handleNavClick('faq2')} />;
+    case 'faq2':
+      return <FAQ2 onNavigate={() => handleNavClick('faq')} />;
+    case 'feedbacks':
+      return <PatientFeedback />;
+    case 'contact':
+      return <ContactUs />;
+    case 'privacy':
+      return <PrivacyPolicy />;
+    default:
+      return <Home />;
+  }
+};
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -197,6 +208,16 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 }`}
               >
                 Feedbacks
+              </button>
+                <button
+                onClick={() => handleNavClick('contact')}
+                className={`font-medium transition pb-2 ${
+                  currentPage === 'contact' 
+                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
+                    : 'text-gray-700 hover:text-indigo-600'
+                }`}
+              >
+                Contact Us
               </button>
               
               {/* Desktop Profile Dropdown */}
@@ -430,6 +451,16 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 >
                   Feedbacks
                 </button>
+                <button
+                  onClick={() => handleNavClick('contact')}
+                  className={`font-medium transition py-3 px-4 text-left rounded ${
+                    currentPage === 'contact' 
+                      ? 'text-indigo-600 bg-indigo-50' 
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Contact Us
+                </button>
               </div>
             </div>
           )}
@@ -473,8 +504,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
               <ul className="space-y-2">
                 <li><button onClick={() => setCurrentPage('faq')} className="text-gray-400 hover:text-white transition">FAQ</button></li>
                 <li><button onClick={() => setCurrentPage('feedbacks')} className="text-gray-400 hover:text-white transition">Feedbacks</button></li>
-                <li><a href="#contact" className="text-gray-400 hover:text-white transition">Contact Us</a></li>
-                <li><a href="#privacy" className="text-gray-400 hover:text-white transition">Privacy Policy</a></li>
+                  <li><button onClick={() => setCurrentPage('contact')} className="text-gray-400 hover:text-white transition">Contact Us</button></li>
+                  <li><button onClick={() => setCurrentPage('privacy')} className="text-gray-400 hover:text-white transition">Privacy Policy</button></li>
               </ul>
             </div>
 

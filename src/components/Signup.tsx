@@ -65,11 +65,11 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
       }
 
       // Step 2: Create Firestore document
-      const userDocRef = doc(db, 'users', result.user.uid);
+      const userDocRef = doc(db, 'users', result.user.uid); // ✅ FIXED: Declare userDocRef here
       await setDoc(userDocRef, {
         uid: result.user.uid,
         email: result.user.email,
-        displayName: name,
+        displayName: name.trim(), // ✅ FIXED: Added trim() for cleanup
         photoURL: '',
         role: 'patient',
         createdAt: new Date().toISOString(),
@@ -126,7 +126,7 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
       }
 
       // Step 2: Check if user document exists
-      const userDocRef = doc(db, 'users', result.user.uid);
+      const userDocRef = doc(db, 'users', result.user.uid); // ✅ FIXED: Declare userDocRef here
       const userDoc = await getDoc(userDocRef);
 
       if (!userDoc.exists()) {

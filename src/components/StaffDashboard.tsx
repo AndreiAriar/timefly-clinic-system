@@ -4,7 +4,7 @@ import StaffAppointments from './StaffAppointments';
 import StaffQueue from './StaffQueue';
 import DoctorsTab from './DoctorsTab';
 import CalendarTab from './CalendarTab';
-
+import DisplayFeedback from './DisplayFeedback'; 
 
 interface StaffDashboardProps {
   userEmail: string;
@@ -13,7 +13,7 @@ interface StaffDashboardProps {
   onLogout: () => void;
 }
 
-type PageType = 'home' | 'appointments' | 'queue' | 'doctors' | 'calendar' | 'reports' | 'waiting-list';
+type PageType = 'home' | 'appointments' | 'queue' | 'doctors' | 'calendar' | 'reports' | 'waiting-list' | 'feedback';
 
 const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashboardProps) => {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
@@ -100,41 +100,41 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
     setIsMobileDropdownOpen(false);
     onLogout();
   };
-
   const renderPage = () => {
-    switch (currentPage) {
-      case 'home':
-        return <StaffHome onNavigate={handleNavClick} />;
-      case 'appointments':
-        return <StaffAppointments />;
-      case 'queue':
-        return <StaffQueue />;
-      case 'doctors':
-        return <DoctorsTab />;
-      case 'calendar':
-        return <CalendarTab />;
-      case 'reports':
-      case 'waiting-list':
-        return (
-          <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {currentPage.charAt(0).toUpperCase() + currentPage.slice(1)} Section
-              </h2>
-              <p className="text-gray-600">This section is coming soon!</p>
+  switch (currentPage) {
+    case 'home':
+      return <StaffHome onNavigate={handleNavClick} />;
+    case 'appointments':
+      return <StaffAppointments />;
+    case 'queue':
+      return <StaffQueue />;
+    case 'doctors':
+      return <DoctorsTab />;
+    case 'calendar':
+      return <CalendarTab />;
+    case 'feedback':
+      return <DisplayFeedback />; // Remove the props since DisplayFeedback doesn't need them
+    case 'reports':
+    case 'waiting-list':
+      return (
+        <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              {currentPage.charAt(0).toUpperCase() + currentPage.slice(1)} Section
+            </h2>
+            <p className="text-gray-600">This section is coming soon!</p>
           </div>
-        );
-      default:
-        return <StaffHome onNavigate={handleNavClick} />;
-    }
-  };
-
+        </div>
+      );
+    default:
+      return <StaffHome onNavigate={handleNavClick} />;
+  }
+};
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       {/* Navigation */}
@@ -218,6 +218,16 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
                 }`}
               >
                 Waiting List
+              </button>
+              <button
+                onClick={() => handleNavClick('feedback')}
+                className={`font-medium transition pb-2 ${
+                  currentPage === 'feedback' 
+                    ? 'text-blue-600 border-b-2 border-blue-600' 
+                    : 'text-gray-700 hover:text-blue-600'
+                }`}
+              >
+                Feedback
               </button>
               
               {/* Desktop Profile Dropdown */}
@@ -465,6 +475,16 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
                 >
                   Waiting List
                 </button>
+                <button
+              onClick={() => handleNavClick('feedback')}
+              className={`font-medium transition pb-2 ${
+                currentPage === 'feedback' 
+                  ? 'text-blue-600 border-b-2 border-blue-600' 
+                  : 'text-gray-700 hover:text-blue-600'
+              }`}
+            >
+              Feedback
+            </button>
               </div>
             </div>
           )}
