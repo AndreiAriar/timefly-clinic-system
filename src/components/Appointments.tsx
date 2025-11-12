@@ -189,21 +189,21 @@ const getTodayDateString = (): string => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'scheduled': return 'bg-green-100 text-green-800';
-      case 'rescheduled': return 'bg-blue-100 text-blue-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      case 'completed': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'pending': return 'bg-yellow-400 text-white';
+    case 'scheduled': return 'bg-green-400 text-white';
+    case 'rescheduled': return 'bg-blue-400 text-white';
+    case 'cancelled': return 'bg-red-400 text-white';
+    case 'completed': return 'bg-green-400 text-white';
+    default: return 'bg-gray-300 text-white';
+  }
+};
 
   const AppointmentCard = ({ appointment, showActions = true }: { appointment: Appointment; showActions?: boolean }) => (
     <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
-      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 flex justify-between items-center">
-        <div className="text-white">
+      <div className="bg-gray-200 px-4 py-3 flex justify-between items-center">
+        <div className="text-black">
           <p className="text-sm font-medium">Queue Number</p>
           <p className="text-2xl font-bold">#{appointment.queueNumber}</p>
         </div>
@@ -257,11 +257,11 @@ const getTodayDateString = (): string => {
           </span>
         </div>
 
-        {showActions && (
+          {showActions && (
           <div className="flex gap-2 pt-3">
             <button
               onClick={() => handleView(appointment)}
-              className="flex-1 px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+              className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
             >
               View
             </button>
@@ -269,13 +269,13 @@ const getTodayDateString = (): string => {
               <>
                 <button
                   onClick={() => handleReschedule(appointment)}
-                  className="flex-1 px-3 py-2 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700 transition"
+                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
                 >
                   Reschedule
                 </button>
                 <button
                   onClick={() => handleCancel(appointment)}
-                  className="flex-1 px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition"
+                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
                 >
                   Cancel
                 </button>

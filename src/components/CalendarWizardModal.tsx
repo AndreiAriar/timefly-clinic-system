@@ -24,15 +24,18 @@ interface Doctor {
 interface Appointment {
   id: string;
   appointmentDate: string;
-  appointmentTime: string;
+  timeSlot: string;  // ✅ FIXED: Changed from appointmentTime to timeSlot
   status: string;
-  doctor: string;
-  doctorId: string;
-  patientName: string;
-  patientAge: number;
-  patientPhoto?: string;
-  priority: string;
+  doctor: string;  // This is the doctor's name
+  gender: string;
+  medicalCondition: string;
+  phone: string;
+  priorityLevel: string;
+  queueNumber: number;
   createdAt: string;
+  fullName: string;
+  age: string;
+  photo?: string;
 }
 
 interface CalendarWizardModalProps {
@@ -104,6 +107,7 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minutes} ${ampm}`;
   };
+
 const generateTimeSlots = (): string[] => {
   const slots: string[] = [];
   const now = new Date();
@@ -181,33 +185,48 @@ const generateTimeSlots = (): string[] => {
     const globalSlots = doctor.maxSlots || 0;
     const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
     
-    const unavailableTimeSlots = doctor.availableSlots?.[date] || [];
+
+    
+    // Count actual booked appointments (not just subtracting)
     const bookedSlots = appointments.filter(
       apt => apt.appointmentDate === date && 
              apt.doctorId === doctor.id && 
              apt.status !== 'cancelled'
     ).length;
     
-    return Math.max(0, maxSlots - unavailableTimeSlots.length - bookedSlots);
+    // Calculate available slots considering both unavailable time slots and booked slots
+    const totalPossibleSlots = maxSlots;
+    const actuallyAvailable = Math.max(0, totalPossibleSlots - bookedSlots);
+    
+    return actuallyAvailable;
   };
 
-  const isTimeSlotAvailable = (time: string): boolean => {
-    if (!selectedDoctor || !selectedDate) return false;
+  const getTotalSlotsForDoctor = (doctor: Doctor, date: string): number => {
+    if (doctor.unavailableDates?.[date]) return 0;
     
-    // Check if time is in doctor's unavailable slots
-    const unavailableSlots = selectedDoctor.availableSlots?.[selectedDate] || [];
-    if (unavailableSlots.includes(time)) return false;
-    
-    // Check if time is already booked
-    const isBooked = appointments.some(
-      apt => apt.appointmentDate === selectedDate &&
-             apt.appointmentTime === time &&
-             apt.doctorId === selectedDoctor.id &&
-             apt.status !== 'cancelled'
-    );
-    
-    return !isBooked;
+    const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
+    const dateSpecificSlots = maxSlotsPerDate[date];
+    const globalSlots = doctor.maxSlots || 0;
+    return dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
   };
+
+const isTimeSlotAvailable = (time: string): boolean => {
+  if (!selectedDoctor || !selectedDate) return false;
+  
+  // Check if time is in doctor's unavailable slots
+  const unavailableSlots = selectedDoctor.availableSlots?.[selectedDate] || [];
+  if (unavailableSlots.includes(time)) return false;
+  
+  // Check if time is already booked
+  const isBooked = appointments.some(
+    apt => apt.appointmentDate === selectedDate &&
+           apt.timeSlot === time &&  // ✅ FIXED: Changed from appointmentTime to timeSlot
+           apt.doctor === selectedDoctor.name &&  // ✅ FIXED: Changed from doctorId to doctor (name)
+           apt.status !== 'cancelled'
+  );
+  
+  return !isBooked;
+};
 
   // ============= Event Handlers =============
   const handleDateSelect = (date: string) => {
@@ -471,6 +490,7 @@ const handleAppointmentModalClose = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {doctors.map(doctor => {
                         const availableSlots = getAvailableSlotsForDoctor(doctor, selectedDate);
+                        const totalSlots = getTotalSlotsForDoctor(doctor, selectedDate);
                         const isUnavailable = availableSlots === 0;
 
                         return (
@@ -506,7 +526,7 @@ const handleAppointmentModalClose = () => {
                                     ? 'bg-yellow-100 text-yellow-700'
                                     : 'bg-green-100 text-green-700'
                                 }`}>
-                                  {isUnavailable ? 'No slots' : `${availableSlots}/${doctor.maxSlots} slots available`}
+                                  {isUnavailable ? 'No slots' : `${availableSlots}/${totalSlots} slots available`}
                                 </span>
                               </div>
                             </div>
@@ -557,47 +577,61 @@ const handleAppointmentModalClose = () => {
                         <Clock className="w-5 h-5" />
                         Available Time Slots
                       </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
-  {generateTimeSlots().map(time => {
-    const isAvailable = isTimeSlotAvailable(time);
-    const isSelected = selectedTime === time;
-    
-    // Check if slot is unavailable due to staff marking
-    const isStaffUnavailable = selectedDoctor?.availableSlots?.[selectedDate!]?.includes(time);
-
-
-      return (
-        <button
-          key={time}
-          onClick={() => handleTimeSelect(time)}
-          disabled={!isAvailable}
-          className={`p-3 rounded-lg text-sm font-medium transition border-2 relative ${
-            isSelected
-              ? 'bg-blue-600 text-white border-blue-600'
-              : isAvailable
-              ? 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-              : isStaffUnavailable
-              ? 'bg-red-50 text-red-400 border-red-200 cursor-not-allowed'
-              : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-          }`}
-        >
-         <div className="flex flex-col items-center">
-            <span className="font-semibold">{formatTo12Hour(time)}</span>
-                  {!isAvailable && (
-                     <span className={`text-xs mt-1 px-2 py-0.5 rounded-full ${
-                              isStaffUnavailable 
-                                ? 'bg-red-100 text-red-700' 
-                                : 'bg-gray-200 text-gray-600'
-                            }`}>
-                              {isStaffUnavailable ? 'Unavailable' : 'Booked'}
-                            </span>
-                          )}
-                        </div>
+               <div className="max-h-[400px] overflow-y-auto">
+              {(() => {
+                const timeSlots = generateTimeSlots();
+                const hasAvailableSlots = timeSlots.some(time => isTimeSlotAvailable(time));
+                
+                if (!hasAvailableSlots) {
+                  // NO SLOTS AVAILABLE - Show warning only, NO time slot grid
+                  return (
+                    <div className="text-center py-12 border-2 border-red-300 rounded-lg bg-red-50">
+                      <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-2xl">⚠️</span>
+                      </div>
+                      <h4 className="text-xl font-bold text-red-800 mb-3">No available time slots.</h4>
+                      <p className="text-red-700 mb-6">
+                        All time slots for Dr. {selectedDoctor?.name} on {selectedDate ? new Date(selectedDate).toLocaleDateString() : ''} are fully booked.
+                      </p>
+                      <button
+                        onClick={() => setStep(2)}
+                        className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition"
+                      >
+                        Choose Another Doctor
                       </button>
+                    </div>
+                  );
+                }
+                
+                // SLOTS AVAILABLE - Show only available time slots
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {timeSlots
+                      .filter(time => isTimeSlotAvailable(time)) // Only show available slots
+                      .map(time => {
+                        const isSelected = selectedTime === time;
+                        
+                        return (
+                          <button
+                            key={time}
+                            onClick={() => handleTimeSelect(time)}
+                            className={`p-3 rounded-lg text-sm font-medium transition border-2 ${
+                              isSelected
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+                            }`}
+                          >
+                            <div className="flex flex-col items-center">
+                              <span className="font-semibold">{formatTo12Hour(time)}</span>
+                            </div>
+                          </button>
                         );
                       })}
-                    </div>
-                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+                                </div>
                   </div>
                 )}
               </>
