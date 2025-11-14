@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, ChevronLeft, ChevronRight, User, Clock, ArrowLeft } from 'lucide-react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { toast } from 'react-toastify';
 import AppointmentModal from './AppointmentModal'; // Keep this import
@@ -21,21 +21,22 @@ interface Doctor {
   createdAt: string;
 }
 
+
 interface Appointment {
   id: string;
+  fullName: string;
+  age: string;
+  photo?: string;
+  doctor: string;  // Doctor's name (e.g., "Dr. Stone")
   appointmentDate: string;
-  timeSlot: string;  // ✅ FIXED: Changed from appointmentTime to timeSlot
-  status: string;
-  doctor: string;  // This is the doctor's name
   gender: string;
   medicalCondition: string;
   phone: string;
   priorityLevel: string;
+  timeSlot: string;  // ✅ Changed from appointmentTime
   queueNumber: number;
+  status: string;
   createdAt: string;
-  fullName: string;
-  age: string;
-  photo?: string;
 }
 
 interface CalendarWizardModalProps {
@@ -64,31 +65,35 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
   }, [isOpen]);
 
   const loadData = async () => {
-    setIsLoading(true);
-    try {
-      const doctorsRef = collection(db, 'doctors');
-      const doctorsSnapshot = await getDocs(doctorsRef);
-      const doctorsData = doctorsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Doctor[];
-      setDoctors(doctorsData.filter(d => d.isActive));
+  setIsLoading(true);
+  try {
+    const doctorsRef = collection(db, 'doctors');
+    const doctorsSnapshot = await getDocs(doctorsRef);
+    const doctorsData = doctorsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Doctor[];
+    setDoctors(doctorsData.filter(d => d.isActive));
 
-      const appointmentsRef = collection(db, 'appointments');
-      const appointmentsSnapshot = await getDocs(appointmentsRef);
-      const appointmentsData = appointmentsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      toast.error('Failed to load calendar data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+    const appointmentsRef = collection(db, 'appointments');
+    const q = query(appointmentsRef, where('status', '!=', 'cancelled'));  // ✅ ADDED: Exclude cancelled
+    const appointmentsSnapshot = await getDocs(q);
+    const appointmentsData = appointmentsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Appointment[];
+    
+    console.log('📊 Loaded appointments:', appointmentsData.length);
+    console.log('📊 Sample appointments:', appointmentsData.slice(0, 3));
+    
+    setAppointments(appointmentsData);
+  } catch (error) {
+    console.error('Error loading data:', error);
+    toast.error('Failed to load calendar data');
+  } finally {
+    setIsLoading(false);
+  }
+};
   // ============= Helper Functions =============
   const formatDate = (dateString: string): string => {
     const dateObj = new Date(dateString);
@@ -117,11 +122,11 @@ const generateTimeSlots = (): string[] => {
   const [year, month, day] = selectedDate.split('-').map(Number);
   
   for (let hour = 8; hour < 17; hour++) {
+    // Skip lunch time (12:00 PM - 1:00 PM) completely
+    if (hour === 12) continue;
+    
     for (let minute = 0; minute < 60; minute += 30) {
       const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      
-      // Skip lunch time (12:00 PM - 1:00 PM)
-      if (hour === 12) continue;
       
       const appointmentDateTime = new Date(year, month - 1, day, hour, minute);
       const bufferTime = new Date(now.getTime() + 30 * 60 * 1000);
@@ -176,30 +181,30 @@ const generateTimeSlots = (): string[] => {
       return total + availableSlotsCount;
     }, 0);
   };
-
-  const getAvailableSlotsForDoctor = (doctor: Doctor, date: string): number => {
-    if (doctor.unavailableDates?.[date]) return 0;
-    
-    const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
-    const dateSpecificSlots = maxSlotsPerDate[date];
-    const globalSlots = doctor.maxSlots || 0;
-    const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
-    
-
-    
-    // Count actual booked appointments (not just subtracting)
-    const bookedSlots = appointments.filter(
-      apt => apt.appointmentDate === date && 
-             apt.doctorId === doctor.id && 
-             apt.status !== 'cancelled'
-    ).length;
-    
-    // Calculate available slots considering both unavailable time slots and booked slots
-    const totalPossibleSlots = maxSlots;
-    const actuallyAvailable = Math.max(0, totalPossibleSlots - bookedSlots);
-    
-    return actuallyAvailable;
-  };
+const getAvailableSlotsForDoctor = (doctor: Doctor, date: string): number => {
+  if (doctor.unavailableDates?.[date]) return 0;
+  
+  const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
+  const dateSpecificSlots = maxSlotsPerDate[date];
+  const globalSlots = doctor.maxSlots || 0;
+  const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
+  
+  // Get unavailable time slots for this date
+  const unavailableTimeSlots = doctor.availableSlots?.[date] || [];
+  
+  // Count actual booked appointments
+  const bookedSlots = appointments.filter(
+    apt => apt.appointmentDate === date && 
+           apt.doctor === doctor.name &&  // ✅ FIXED - Compare with doctor name
+           apt.status !== 'cancelled'
+  ).length;
+  
+  // Calculate available slots: maxSlots - unavailable time slots - booked slots
+  const totalPossibleSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
+  const actuallyAvailable = Math.max(0, totalPossibleSlots - bookedSlots);
+  
+  return actuallyAvailable;
+};
 
   const getTotalSlotsForDoctor = (doctor: Doctor, date: string): number => {
     if (doctor.unavailableDates?.[date]) return 0;
@@ -209,8 +214,8 @@ const generateTimeSlots = (): string[] => {
     const globalSlots = doctor.maxSlots || 0;
     return dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
   };
-
-const isTimeSlotAvailable = (time: string): boolean => {
+  
+  const isTimeSlotAvailable = (time: string): boolean => {
   if (!selectedDoctor || !selectedDate) return false;
   
   // Check if time is in doctor's unavailable slots
@@ -220,8 +225,8 @@ const isTimeSlotAvailable = (time: string): boolean => {
   // Check if time is already booked
   const isBooked = appointments.some(
     apt => apt.appointmentDate === selectedDate &&
-           apt.timeSlot === time &&  // ✅ FIXED: Changed from appointmentTime to timeSlot
-           apt.doctor === selectedDoctor.name &&  // ✅ FIXED: Changed from doctorId to doctor (name)
+           apt.timeSlot === time &&  // ✅ Changed from appointmentTime
+           apt.doctor === selectedDoctor.name &&  // ✅ Compare with doctor name, not ID
            apt.status !== 'cancelled'
   );
   
@@ -537,7 +542,6 @@ const handleAppointmentModalClose = () => {
                     </div>
                   </div>
                 )}
-
                 {/* Step 3: Time Selection */}
                 {step === 3 && selectedDoctor && selectedDate && (
                   <div>
@@ -577,61 +581,87 @@ const handleAppointmentModalClose = () => {
                         <Clock className="w-5 h-5" />
                         Available Time Slots
                       </h3>
-               <div className="max-h-[400px] overflow-y-auto">
-              {(() => {
-                const timeSlots = generateTimeSlots();
-                const hasAvailableSlots = timeSlots.some(time => isTimeSlotAvailable(time));
-                
-                if (!hasAvailableSlots) {
-                  // NO SLOTS AVAILABLE - Show warning only, NO time slot grid
-                  return (
-                    <div className="text-center py-12 border-2 border-red-300 rounded-lg bg-red-50">
-                      <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="text-2xl">⚠️</span>
-                      </div>
-                      <h4 className="text-xl font-bold text-red-800 mb-3">No available time slots.</h4>
-                      <p className="text-red-700 mb-6">
-                        All time slots for Dr. {selectedDoctor?.name} on {selectedDate ? new Date(selectedDate).toLocaleDateString() : ''} are fully booked.
-                      </p>
-                      <button
-                        onClick={() => setStep(2)}
-                        className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition"
-                      >
-                        Choose Another Doctor
-                      </button>
-                    </div>
-                  );
-                }
-                
-                // SLOTS AVAILABLE - Show only available time slots
-                return (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {timeSlots
-                      .filter(time => isTimeSlotAvailable(time)) // Only show available slots
-                      .map(time => {
-                        const isSelected = selectedTime === time;
-                        
-                        return (
-                          <button
-                            key={time}
-                            onClick={() => handleTimeSelect(time)}
-                            className={`p-3 rounded-lg text-sm font-medium transition border-2 ${
-                              isSelected
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-                            }`}
-                          >
-                            <div className="flex flex-col items-center">
-                              <span className="font-semibold">{formatTo12Hour(time)}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                  </div>
-                );
-              })()}
-            </div>
+                      <div className="max-h-[400px] overflow-y-auto">
+                        {(() => {
+                          const timeSlots = generateTimeSlots();
+                          const availableSlots = timeSlots.filter(time => isTimeSlotAvailable(time));
+                          const hasAvailableSlots = availableSlots.length > 0;
+                          
+                          console.log('🔍 Calendar wizard time slots:', {
+                            doctor: selectedDoctor?.name,
+                            date: selectedDate,
+                            totalGenerated: timeSlots.length,
+                            available: availableSlots.length,
+                            hasAvailableSlots
+                          });
+                          
+                          if (!hasAvailableSlots) {
+                            // ✅ FULLY BOOKED WARNING - NO TIME SLOTS SHOWN
+                            return (
+                              <div className="text-center py-8 border-2 border-orange-300 rounded-lg bg-orange-50">
+                                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                  <span className="text-3xl">⚠️</span>
                                 </div>
+                                <h4 className="text-xl font-bold text-orange-800 mb-2">Doctor is fully booked</h4>
+                                <p className="text-orange-700 mb-6 px-4">
+                                  Dr. {selectedDoctor?.name} is fully booked for {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                                    weekday: 'long', 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric' 
+                                  }) : ''}. Please select another doctor or date, or join the waiting list.
+                                </p>
+                                <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
+                                  <button
+                                    onClick={() => setStep(2)}
+                                    className="px-6 py-3 bg-white text-orange-700 border-2 border-orange-300 rounded-lg font-medium hover:bg-orange-50 transition"
+                                  >
+                                    📅 Choose Another Doctor/Date
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      // TODO: Implement waiting list functionality
+                                      alert('Waiting list feature coming soon! You will be notified when a slot becomes available.');
+                                    }}
+                                    className="px-6 py-3 bg-orange-600 text-white border-2 border-orange-600 rounded-lg font-medium hover:bg-orange-700 transition"
+                                  >
+                                    📋 Join Waiting List
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // ✅ SLOTS AVAILABLE - Show only available time slots
+                          return (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                              {availableSlots.map(time => {
+                                const isSelected = selectedTime === time;
+                                
+                                return (
+                                  <button
+                                    key={time}
+                                    onClick={() => handleTimeSelect(time)}
+                                    className={`p-3 rounded-lg text-sm font-medium transition border-2 ${
+                                      isSelected
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-green-50 text-green-700 border-green-300 hover:border-blue-400 hover:bg-blue-50'
+                                    }`}
+                                  >
+                                    <div className="flex flex-col items-center">
+                                      <span className="font-semibold">{formatTo12Hour(time)}</span>
+                                      <span className="text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70">
+                                        Available
+                                      </span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   </div>
                 )}
               </>
@@ -639,7 +669,6 @@ const handleAppointmentModalClose = () => {
           </div>
         </div>
       </div>
-
       {/* Appointment Modal */}
       <AppointmentModal
         isOpen={isAppointmentModalOpen}

@@ -113,15 +113,25 @@ const Queue = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'serving': return 'bg-green-100 text-green-800';
-      case 'confirmed': return 'bg-blue-100 text-blue-800';
+      case 'confirmed': return 'bg-green-100 text-green-800';
       case 'scheduled': return 'bg-green-100 text-green-800';
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const nowServing = appointments.find(apt => apt.status === 'serving');
-  const upNext = appointments.find(apt => apt.status !== 'serving');
+  // Find the appointment currently being served (status 'serving' or 'confirmed')
+  const nowServing = appointments.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
+  
+  // Determine "Up Next" appointment
+  // Only show Up Next if someone is actively being served
+  let upNext = null;
+  if (nowServing) {
+    const nowServingIndex = appointments.findIndex(apt => apt.id === nowServing.id);
+    if (nowServingIndex >= 0 && nowServingIndex < appointments.length - 1) {
+      upNext = appointments[nowServingIndex + 1];
+    }
+  }
 
   if (isLoading) {
     return (
@@ -155,9 +165,14 @@ const Queue = () => {
             {nowServing ? (
               <div>
                 <div className="text-6xl font-bold mb-2">#{nowServing.queueNumber}</div>
-                <p className="text-lg opacity-90">{nowServing.fullName}</p>
-                <p className="text-sm opacity-75">Dr. {nowServing.doctor}</p>
+                <p className="text-xl mt-1">Patient #{nowServing.queueNumber}</p>
                 <p className="text-sm opacity-75 mt-1">{convertTo12Hour(nowServing.timeSlot)}</p>
+                <div className="mt-3">
+                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${getPriorityColor(nowServing.priorityLevel)} bg-white/90`}>
+                    <AlertCircle className="w-3 h-3" />
+                    {nowServing.priorityLevel}
+                  </span>
+                </div>
               </div>
             ) : (
               <div className="text-2xl opacity-75">No one being served</div>
@@ -173,9 +188,14 @@ const Queue = () => {
             {upNext ? (
               <div>
                 <div className="text-6xl font-bold mb-2">#{upNext.queueNumber}</div>
-                <p className="text-lg opacity-90">{upNext.fullName}</p>
-                <p className="text-sm opacity-75">Dr. {upNext.doctor}</p>
+                <p className="text-xl mt-1">Patient #{upNext.queueNumber}</p>
                 <p className="text-sm opacity-75 mt-1">{convertTo12Hour(upNext.timeSlot)}</p>
+                <div className="mt-3">
+                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${getPriorityColor(upNext.priorityLevel)} bg-white/90`}>
+                    <AlertCircle className="w-3 h-3" />
+                    {upNext.priorityLevel}
+                  </span>
+                </div>
               </div>
             ) : (
               <div className="text-2xl opacity-75">No upcoming appointments</div>
@@ -198,7 +218,7 @@ const Queue = () => {
                 <div
                   key={appointment.id}
                   className={`relative border-2 rounded-xl p-6 transition-all ${
-                    appointment.status === 'serving'
+                    appointment.status === 'serving' || appointment.status === 'confirmed'
                       ? 'bg-green-50 border-green-500 shadow-lg'
                       : 'bg-gray-50 border-gray-200 hover:border-indigo-300 hover:shadow-md'
                   }`}
@@ -206,7 +226,7 @@ const Queue = () => {
                   {/* Queue Number Badge */}
                   <div className="absolute -top-3 -left-3">
                     <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold shadow-lg ${
-                      appointment.status === 'serving'
+                      appointment.status === 'serving' || appointment.status === 'confirmed'
                         ? 'bg-green-500 text-white'
                         : 'bg-indigo-600 text-white'
                     }`}>
@@ -215,23 +235,15 @@ const Queue = () => {
                   </div>
 
                   <div className="ml-16 grid md:grid-cols-12 gap-4 items-center">
-                    {/* Patient Info */}
+                    {/* Patient Info - Anonymous */}
                     <div className="md:col-span-4">
                       <div className="flex items-center gap-3">
-                        {appointment.photo ? (
-                          <img
-                            src={appointment.photo}
-                            alt={appointment.fullName}
-                            className="w-10 h-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                            <User className="w-5 h-5 text-indigo-600" />
-                          </div>
-                        )}
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                          <User className="w-5 h-5 text-indigo-600" />
+                        </div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">{appointment.fullName}</h3>
-                          <p className="text-sm text-gray-600">Dr. {appointment.doctor}</p>
+                          <h3 className="font-semibold text-gray-900">Patient #{appointment.queueNumber}</h3>
+                          <p className="text-sm text-gray-600">Appointment</p>
                         </div>
                       </div>
                     </div>
@@ -245,29 +257,25 @@ const Queue = () => {
                     </div>
 
                     {/* Status & Priority */}
-                    <div className="md:col-span-3 flex flex-col gap-2">
+                    <div className="md:col-span-6 flex flex-col gap-2">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold text-center ${getStatusColor(appointment.status)}`}>
-                        {appointment.status === 'serving' ? 'Being Served' : appointment.status}
+                        {appointment.status === 'serving' ? 'Being Served' : 
+                         appointment.status === 'confirmed' ? 'Confirmed' : 
+                         appointment.status}
                       </span>
                       <span className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs font-semibold border ${getPriorityColor(appointment.priorityLevel)}`}>
                         <AlertCircle className="w-3 h-3" />
                         {appointment.priorityLevel}
                       </span>
                     </div>
-
-                    {/* Medical Condition */}
-                    <div className="md:col-span-3">
-                      <p className="text-sm text-gray-500">Condition:</p>
-                      <p className="text-sm font-medium text-gray-700">{appointment.medicalCondition}</p>
-                    </div>
                   </div>
 
                   {/* Status Indicator */}
-                  {appointment.status === 'serving' && (
+                  {(appointment.status === 'serving' || appointment.status === 'confirmed') && (
                     <div className="absolute top-2 right-2">
                       <span className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg animate-pulse">
                         <CheckCircle className="w-4 h-4" />
-                        Being Served
+                        {appointment.status === 'serving' ? 'Being Served' : 'Confirmed'}
                       </span>
                     </div>
                   )}
@@ -279,7 +287,7 @@ const Queue = () => {
 
         {/* Legend */}
         <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Priority Legend</h3>
+          <h3 className="font-semibold text-gray-900 mb-4">Queue Information</h3>
           <div className="grid md:grid-cols-3 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 bg-red-500 rounded-full"></div>
@@ -302,6 +310,12 @@ const Queue = () => {
                 <p className="text-sm text-gray-500">Regular appointment</p>
               </div>
             </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <p className="text-sm text-gray-600">
+              <strong>Note:</strong> Patients are only moved to "Now Serving" when confirmed by staff. 
+              Your position in the queue is determined by your appointment time and priority level.
+            </p>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle } from 'lucide-react';
+import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle, X } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
@@ -20,10 +20,64 @@ interface Appointment {
   createdAt: string;
 }
 
+interface Notification {
+  id: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+  message: string;
+}
+
+interface ConfirmDialog {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
 const StaffQueue = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [nowServing, setNowServing] = useState<Appointment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    onCancel: () => {},
+  });
+
+// Remove notification
+const removeNotification = useCallback((id: string) => {
+  setNotifications(prev => prev.filter(notif => notif.id !== id));
+}, []);
+
+// Add notification
+const addNotification = useCallback((type: 'success' | 'error' | 'info' | 'warning', message: string) => {
+  const id = Date.now().toString();
+  setNotifications(prev => [...prev, { id, type, message }]);
+  
+  // Auto remove after 5 seconds
+  setTimeout(() => {
+    removeNotification(id);
+  }, 5000);
+}, [removeNotification]); // Add removeNotification as dependency
+
+  // Show confirm dialog
+  const showConfirmDialog = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmDialog({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+      onCancel: () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
 
   // Get today's date in Philippine timezone (UTC+8)
   const getTodayDatePH = (): string => {
@@ -48,110 +102,133 @@ const StaffQueue = () => {
     return date.toLocaleDateString('en-US', options);
   };
 
-  const loadQueue = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const today = getTodayDatePH();
-      const appointmentsRef = collection(db, 'appointments');
-      
-      // Query all appointments for today
-      const q = query(
-        appointmentsRef,
-        where('appointmentDate', '==', today)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      // Filter appointments that should be in the queue (excluding cancelled and completed)
-      let appointmentsData = querySnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Appointment[];
-      
-      // Filter out cancelled and completed appointments
-      appointmentsData = appointmentsData.filter(apt => 
-        apt.status !== 'cancelled' && apt.status !== 'completed'
-      );
-      
-      // Sort by queue number
-      appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
-      
-      setAppointments(appointmentsData);
-      
-      // Check if there's an appointment with status 'serving'
-      const currentlyServing = appointmentsData.find(apt => apt.status === 'serving');
-      
-      if (currentlyServing) {
-        setNowServing(currentlyServing);
-      } else if (appointmentsData.length > 0 && !nowServing) {
-        // If no one is being served and there's no nowServing set, set the first one
-        setNowServing(appointmentsData[0]);
-      }
-    } catch (error) {
-      console.error('Error loading queue:', error);
-      alert('Failed to load queue. Please try again.');
-    } finally {
-      setIsLoading(false);
+const loadQueue = useCallback(async () => {
+  setIsLoading(true);
+  try {
+    const today = getTodayDatePH();
+    const appointmentsRef = collection(db, 'appointments');
+    
+    // Query all appointments for today
+    const q = query(
+      appointmentsRef,
+      where('appointmentDate', '==', today)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    // Filter appointments that should be in the queue (excluding cancelled and completed)
+    let appointmentsData = querySnapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Appointment[];
+    
+    // Filter out cancelled and completed appointments
+    appointmentsData = appointmentsData.filter(apt => 
+      apt.status !== 'cancelled' && apt.status !== 'completed'
+    );
+    
+    // Sort by queue number
+    appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
+    
+    setAppointments(appointmentsData);
+    
+    // Check if there's an appointment with status 'serving' or 'confirmed'
+    const currentlyServing = appointmentsData.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
+    
+    if (currentlyServing) {
+      setNowServing(currentlyServing);
+    } else {
+      setNowServing(null);
     }
-  }, [nowServing]);
+  } catch (error) {
+    console.error('Error loading queue:', error);
+    addNotification('error', 'Failed to load queue. Please try again.');
+  } finally {
+    setIsLoading(false);
+  }
+}, [addNotification]); // Added addNotification as dependency
 
   useEffect(() => {
     loadQueue();
+    
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadQueue();
+    }, 30000);
+    
+    return () => clearInterval(interval);
   }, [loadQueue]);
 
   const handleStartServing = async (appointment: Appointment) => {
-    try {
-      // If there's already someone being served, update their status first
-      if (nowServing && nowServing.id !== appointment.id) {
-        const currentServingRef = doc(db, 'appointments', nowServing.id);
-        await updateDoc(currentServingRef, {
-          status: 'scheduled' // or back to their original status
-        });
+    showConfirmDialog(
+      'Start Serving',
+      `Start serving ${appointment.fullName} (Queue #${appointment.queueNumber})?`,
+      async () => {
+        try {
+          // If there's already someone being served, update their status first
+          if (nowServing && nowServing.id !== appointment.id) {
+            const currentServingRef = doc(db, 'appointments', nowServing.id);
+            await updateDoc(currentServingRef, {
+              status: 'scheduled'
+            });
+          }
+          
+          // Update the new appointment status to 'confirmed' (replaces the Confirm button functionality)
+          const appointmentRef = doc(db, 'appointments', appointment.id);
+          await updateDoc(appointmentRef, {
+            status: 'confirmed'
+          });
+          
+          setNowServing(appointment);
+          
+          // Reload the queue to reflect the status change
+          await loadQueue();
+          
+          // Success message
+          addNotification('success', `Now serving ${appointment.fullName} (Queue #${appointment.queueNumber})`);
+        } catch (error) {
+          console.error('Error starting service:', error);
+          addNotification('error', 'Failed to start serving. Please try again.');
+        }
       }
-      
-      // Update the new appointment status to 'serving'
-      const appointmentRef = doc(db, 'appointments', appointment.id);
-      await updateDoc(appointmentRef, {
-        status: 'serving'
-      });
-      
-      setNowServing(appointment);
-      
-      // Reload the queue to reflect the status change
-      await loadQueue();
-    } catch (error) {
-      console.error('Error starting service:', error);
-      alert('Failed to start serving. Please try again.');
-    }
+    );
   };
 
   const handleComplete = async (appointment: Appointment) => {
-    try {
-      const appointmentRef = doc(db, 'appointments', appointment.id);
-      await updateDoc(appointmentRef, {
-        status: 'completed'
-      });
-      
-      // Remove from queue
-      setAppointments(prev => prev.filter(apt => apt.id !== appointment.id));
-      
-      // If the completed appointment was the one being served, set the next one
-      if (nowServing && nowServing.id === appointment.id) {
-        const nextAppointment = appointments.find(apt => apt.id !== appointment.id);
-        setNowServing(nextAppointment || null);
+    showConfirmDialog(
+      'Mark Complete',
+      `Mark ${appointment.fullName}'s appointment as completed?`,
+      async () => {
+        try {
+          const appointmentRef = doc(db, 'appointments', appointment.id);
+          await updateDoc(appointmentRef, {
+            status: 'completed'
+          });
+          
+          // Remove from queue
+          setAppointments(prev => prev.filter(apt => apt.id !== appointment.id));
+          
+          // If the completed appointment was the one being served, clear nowServing
+          if (nowServing && nowServing.id === appointment.id) {
+            setNowServing(null);
+          }
+          
+          addNotification('success', `Appointment for ${appointment.fullName} marked as completed!`);
+          
+          // Reload the queue
+          await loadQueue();
+        } catch (error) {
+          console.error('Error completing appointment:', error);
+          addNotification('error', 'Failed to complete appointment. Please try again.');
+        }
       }
-      
-      alert(`Appointment for ${appointment.fullName} marked as completed!`);
-    } catch (error) {
-      console.error('Error completing appointment:', error);
-      alert('Failed to complete appointment. Please try again.');
-    }
+    );
   };
 
   const sendNotification = (appointment: Appointment) => {
     // In a real app, this would send a push notification or SMS
-    alert(`Notification sent to ${appointment.fullName} (${appointment.phone}) - Queue #${appointment.queueNumber}`);
+    addNotification('info', `Notification sent to ${appointment.fullName} (${appointment.phone}) - Queue #${appointment.queueNumber}`);
   };
 
   const getUpNextAppointments = () => {
@@ -161,9 +238,7 @@ const StaffQueue = () => {
   };
 
   const getQueueList = () => {
-    if (!nowServing) return appointments;
-    const currentIndex = appointments.findIndex(apt => apt.id === nowServing.id);
-    return appointments.slice(currentIndex);
+    return appointments;
   };
 
   const getPriorityColor = (priority: string) => {
@@ -181,6 +256,16 @@ const StaffQueue = () => {
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
 
+  const getNotificationColor = (type: string) => {
+    switch (type) {
+      case 'success': return 'bg-green-500';
+      case 'error': return 'bg-red-500';
+      case 'warning': return 'bg-yellow-500';
+      case 'info': return 'bg-blue-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
@@ -195,6 +280,47 @@ const StaffQueue = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Notifications */}
+        <div className="fixed top-4 right-4 z-50 space-y-2">
+          {notifications.map((notification) => (
+            <div
+              key={notification.id}
+              className={`${getNotificationColor(notification.type)} text-white px-6 py-4 rounded-lg shadow-lg flex items-center justify-between min-w-[300px] max-w-md animate-slide-in`}
+            >
+              <span className="flex-1">{notification.message}</span>
+              <button
+                onClick={() => removeNotification(notification.id)}
+                className="ml-4 hover:bg-white/20 rounded p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+          {/* Confirm Dialog */}
+          {confirmDialog.isOpen && (
+            <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{confirmDialog.title}</h3>
+                <p className="text-gray-600 mb-6">{confirmDialog.message}</p>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={confirmDialog.onCancel}
+                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDialog.onConfirm}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Current Queue</h1>
@@ -317,7 +443,7 @@ const StaffQueue = () => {
                           {appointment.priorityLevel}
                         </span>
                         
-                        {nowServing?.id !== appointment.id && (
+                        {(nowServing?.id !== appointment.id) && (
                           <button
                             onClick={() => handleStartServing(appointment)}
                             className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition flex items-center gap-2"
@@ -327,7 +453,7 @@ const StaffQueue = () => {
                           </button>
                         )}
                         
-                        {nowServing?.id === appointment.id && (
+                        {(nowServing?.id === appointment.id) && (
                           <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
                             Now Serving
                           </span>
@@ -356,10 +482,10 @@ const StaffQueue = () => {
                         </span>
                       </div>
                       
-                      {nowServing?.id === appointment.id && (
+                      {(nowServing?.id === appointment.id) && (
                         <button
                           onClick={() => handleComplete(appointment)}
-                          className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition flex items-center gap-2"
+                          className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition flex items-center gap-2"
                         >
                           <CheckCircle className="w-4 h-4" />
                           Complete
@@ -373,6 +499,22 @@ const StaffQueue = () => {
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 };

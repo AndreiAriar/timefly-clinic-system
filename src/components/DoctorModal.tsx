@@ -63,13 +63,14 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    // Only allow numbers, spaces, parentheses, hyphens, and plus sign
-    const phoneRegex = /^[0-9\s()\-+]*$/;
-    
-    if (phoneRegex.test(value) || value === '') {
-      setFormData(prev => ({ ...prev, phone: value }));
-    }
+    const value = e.target.value.replace(/\D/g, '').slice(0, 11);
+    setFormData(prev => ({ ...prev, phone: value }));
+  };
+
+  const validatePhoneNumber = (phone: string): boolean => {
+    if (phone.length === 0) return false;
+    if (phone.length !== 11) return false;
+    return phone.startsWith('09');
   };
 
   const handleSpecialtyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -88,9 +89,60 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     setFormData(prev => ({ ...prev, specialty: value }));
   };
 
+  const sendDoctorInvitation = async (doctorEmail: string, doctorName: string) => {
+    try {
+      console.log('📧 Sending invitation to:', doctorEmail);
+      
+      const response = await fetch('http://localhost:3001/send-doctor-invitation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: doctorEmail,
+          name: doctorName
+        }),
+      });
+
+      console.log('📨 Response status:', response.status);
+      
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('❌ Server returned non-JSON response:', text.substring(0, 200));
+        throw new Error('Server error: Invalid response format');
+      }
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || `Server error: ${response.status}`);
+      }
+
+      console.log('✅ Invitation sent successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Error sending doctor invitation:', error);
+      
+      // Provide more specific error messages
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Cannot connect to server. Please make sure the email server is running on port 3001.');
+      }
+      
+      throw error;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validate phone number
+    if (!validatePhoneNumber(formData.phone)) {
+      toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09');
+      return;
+    }
+
     // Validate custom specialty if "Other" is selected
     if (formData.specialty === 'Other (Please Specify)' && !customSpecialty.trim()) {
       toast.error('Please specify the specialty');
@@ -120,7 +172,21 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
-        toast.success('Doctor added successfully!');
+
+        // Send invitation email to new doctor
+        try {
+          await sendDoctorInvitation(formData.email, formData.name);
+          toast.success('Doctor added successfully! Invitation email sent.');
+        } catch (emailError: unknown) {
+          console.error('Doctor invitation email failed:', emailError);
+          
+          // Type guard to check if it's an Error object
+          if (emailError instanceof Error && emailError.message.includes('Cannot connect to server')) {
+            toast.warning('Doctor added successfully! However, the email server is not running - invitation not sent.');
+          } else {
+            toast.warning('Doctor added successfully! However, invitation email failed to send.');
+          }
+        }
       }
 
       onDoctorAdded();
@@ -296,17 +362,38 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
                 Phone Number *
               </label>
-              <input
-                type="tel"
-                id="phone"
-                required
-                value={formData.phone}
-                onChange={handlePhoneChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                placeholder="+63 (924) 123-4567"
-                pattern="[0-9\s()\-+]+"
-                title="Please enter a valid phone number (numbers, spaces, parentheses, hyphens, and plus sign only)"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500">+63</span>
+                </div>
+                <input
+                  type="tel"
+                  id="phone"
+                  required
+                  value={formData.phone}
+                  onChange={handlePhoneChange}
+                  onBlur={(e) => {
+                    const phone = e.target.value;
+                    if (phone && !validatePhoneNumber(phone)) {
+                      toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g., 09123456789)');
+                      setFormData(prev => ({ ...prev, phone: '' }));
+                    }
+                  }}
+                  className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="912 345 6789"
+                  maxLength={11}
+                  pattern="[0-9]{11}"
+                  title="Please enter a valid 11-digit Philippine mobile number (e.g., 09123456789)"
+                />
+              </div>
+              {formData.phone && !validatePhoneNumber(formData.phone) && (
+                <p className="text-xs text-red-500 mt-1">
+                  ❌ Must be 11 digits starting with 09
+                </p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Enter 11-digit PH mobile number (e.g., 09123456789)
+              </p>
             </div>
           </div>
 

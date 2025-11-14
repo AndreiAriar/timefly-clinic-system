@@ -106,7 +106,7 @@ const DisplayFeedback = () => {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Patient Feedback</h1>
-          <p className="text-gray-600">Manage and review patient feedback submissions</p>
+          <p className="text-gray-600">Hear what our patients have to say about their experience with TimeFly</p>
         </div>
 
         {/* Summary Stats - MOVED TO TOP */}

@@ -34,7 +34,7 @@ const FAQ1 = ({ onNavigate }: FAQ1Props) => {
               <img 
                 src="/faq1.png"
                 alt="FAQ Illustration" 
-                className="w-full max-w-lg h-auto mx-auto"
+                className="w-[600px] h-auto mx-auto"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                 }}

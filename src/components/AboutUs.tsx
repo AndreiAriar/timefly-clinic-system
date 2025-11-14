@@ -5,7 +5,6 @@ const AboutUs = () => {
         {/* Section Header */}
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">About Us</h2>
-          <div className="w-24 h-1 bg-indigo-600 mx-auto mb-6"></div>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
             Dedicated to providing exceptional eye care with real-time appointment management
           </p>
@@ -14,14 +13,11 @@ const AboutUs = () => {
         {/* Rest of the AboutUs content remains the same */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="relative">
-            <img
-              src="/about-image.jpg"
-              alt="About TimeFly"
-              className="rounded-2xl shadow-2xl w-full h-auto"
-              onError={(e) => {
-                e.currentTarget.src = 'https://images.unsplash.com/photo-1551190822-a9333d879b1f?w=800&h=600&fit=crop';
-              }}
-            />
+           <img
+                src="/about-image.png"
+                alt="About TimeFly"
+                className="rounded-2xl shadow-2xl w-full h-auto"
+              />
             <div className="absolute -bottom-6 -right-6 bg-indigo-600 text-white p-6 rounded-lg shadow-xl">
               <p className="text-4xl font-bold">10+</p>
               <p className="text-sm">Years of Service</p>

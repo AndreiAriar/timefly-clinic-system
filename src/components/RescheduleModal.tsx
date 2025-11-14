@@ -147,28 +147,36 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm }: Reschedule
                   <Clock className="w-4 h-4 text-indigo-600" aria-hidden="true" />
                   Select New Time Slot <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Available time slots">
-                  {availableTimeSlots.map((slot) => (
-                    <button
-                      key={slot.time}
-                      type="button"
-                      disabled={!slot.available}
-                      onClick={() => setNewTimeSlot(slot.time)}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                        newTimeSlot === slot.time
-                          ? 'bg-yellow-600 text-white'
-                          : slot.available
-                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          : 'bg-gray-50 text-gray-400 cursor-not-allowed'
-                      }`}
-                      aria-label={`Time slot ${slot.time}${!slot.available ? ' (unavailable)' : ''}`}
-                      aria-pressed={newTimeSlot === slot.time ? "true" : "false"}
-                    >
-                      {slot.time}
-                    </button>
-                  ))}
-                </div>
-              </div>
+               <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Available time slots">
+              {availableTimeSlots.map((slot) => {
+                // Convert 24-hour format to 12-hour format with AM/PM
+                const [hours, minutes] = slot.time.split(':').map(Number);
+                const period = hours >= 12 ? 'PM' : 'AM';
+                const hours12 = hours % 12 || 12;
+                const displayTime = `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+                
+                return (
+                  <button
+                    key={slot.time}
+                    type="button"
+                    disabled={!slot.available}
+                    onClick={() => setNewTimeSlot(slot.time)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      newTimeSlot === slot.time
+                        ? 'bg-yellow-600 text-white'
+                        : slot.available
+                        ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                    }`}
+                    aria-label={`Time slot ${displayTime}${!slot.available ? ' (unavailable)' : ''}`}
+                    aria-pressed={newTimeSlot === slot.time ? "true" : "false"}
+                  >
+                    {displayTime}
+                  </button>
+                );
+              })}
+            </div>
+            </div>
             )}
 
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg" role="alert">

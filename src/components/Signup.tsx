@@ -15,16 +15,66 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+// Send verification code
+const sendVerificationCode = async () => {
+  if (!email || !/\S+@\S+\.\S+/.test(email)) {
+    setError('Please enter a valid email address');
+    return;
+  }
+
+  setLoading(true);
+  setError('');
+
+  try {
+    const response = await fetch('http://localhost:3001/send-verification-code', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      setVerificationSent(true);
+      setCountdown(60); // 60 seconds countdown
+      
+      // Start countdown
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+    } else {
+      setError(data.error || 'Failed to send verification code');
+    }
+  } catch {
+    setError('Network error. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    // Validation
     if (!name || !email || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
@@ -45,10 +95,30 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
       return;
     }
 
+    if (!verificationSent || !verificationCode) {
+      setError('Please verify your email first');
+      return;
+    }
+
     setLoading(true);
     onSignupStart();
 
     try {
+      // Verify the code first
+     const verifyResponse = await fetch('http://localhost:3001/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: verificationCode }),
+      });
+
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok) {
+        setError(verifyData.error || 'Invalid verification code');
+        setLoading(false);
+        return;
+      }
+
       // Step 1: Create the user account
       const result = await registerUser(email, password);
 
@@ -65,13 +135,14 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
       }
 
       // Step 2: Create Firestore document
-      const userDocRef = doc(db, 'users', result.user.uid); // ✅ FIXED: Declare userDocRef here
+      const userDocRef = doc(db, 'users', result.user.uid);
       await setDoc(userDocRef, {
         uid: result.user.uid,
         email: result.user.email,
-        displayName: name.trim(), // ✅ FIXED: Added trim() for cleanup
+        displayName: name.trim(),
         photoURL: '',
         role: 'patient',
+        emailVerified: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -126,7 +197,7 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
       }
 
       // Step 2: Check if user document exists
-      const userDocRef = doc(db, 'users', result.user.uid); // ✅ FIXED: Declare userDocRef here
+      const userDocRef = doc(db, 'users', result.user.uid);
       const userDoc = await getDoc(userDocRef);
 
       if (!userDoc.exists()) {
@@ -137,6 +208,7 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
           displayName: result.user.displayName || '',
           photoURL: result.user.photoURL || '',
           role: 'patient',
+          emailVerified: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -221,16 +293,49 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                 Email Address
               </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                placeholder="your.email@example.com"
-                disabled={success || loading}
-              />
+              <div className="flex space-x-2">
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                  placeholder="your.email@example.com"
+                  disabled={success || loading || verificationSent}
+                />
+                <button
+                  type="button"
+                  onClick={sendVerificationCode}
+                  disabled={success || loading || verificationSent || countdown > 0}
+                  className="px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400 transition whitespace-nowrap text-sm"
+                >
+                  {countdown > 0 ? `${countdown}s` : 'Send Code'}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                {verificationSent 
+                  ? 'Verification code sent to your email' 
+                  : 'We\'ll send a verification code to your email'}
+              </p>
             </div>
+
+            {verificationSent && (
+              <div>
+                <label htmlFor="verificationCode" className="block text-sm font-medium text-gray-700 mb-1">
+                  Verification Code
+                </label>
+                <input
+                  id="verificationCode"
+                  type="text"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                  placeholder="Enter 6-digit code"
+                  disabled={success || loading}
+                  maxLength={6}
+                />
+              </div>
+            )}
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
@@ -294,7 +399,7 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
 
           <button
             type="submit"
-            disabled={success || loading}
+            disabled={success || loading || !verificationSent}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition duration-200 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
             {success ? 'Account Created!' : loading ? 'Creating Account...' : 'Create Account'}

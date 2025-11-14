@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter } from 'lucide-react';
+import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Stethoscope } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, orderBy } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import ViewAppointmentModal from './ViewAppointmentModal';
@@ -195,6 +195,8 @@ const getStatusColor = (status: string) => {
     case 'scheduled': return 'bg-green-400 text-white';
     case 'rescheduled': return 'bg-blue-400 text-white';
     case 'cancelled': return 'bg-red-400 text-white';
+    case 'confirmed': return 'bg-green-400 text-white';
+    case 'serving': return 'bg-green-400 text-white';
     case 'completed': return 'bg-green-400 text-white';
     default: return 'bg-gray-300 text-white';
   }
@@ -202,14 +204,13 @@ const getStatusColor = (status: string) => {
 
   const AppointmentCard = ({ appointment, showActions = true }: { appointment: Appointment; showActions?: boolean }) => (
     <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
-      <div className="bg-gray-200 px-4 py-3 flex justify-between items-center">
-        <div className="text-black">
+      <div className="bg-blue-500 px-4 py-3 flex justify-between items-center">
+        <div className="text-white">
           <p className="text-sm font-medium">Queue Number</p>
-          <p className="text-2xl font-bold">#{appointment.queueNumber}</p>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
-          {appointment.status}
-        </span>
+      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
+        {appointment.status}
+      </span>
       </div>
 
       <div className="p-4 space-y-3">
@@ -241,7 +242,7 @@ const getStatusColor = (status: string) => {
             <span>{convertTo12Hour(appointment.timeSlot)}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
-            <User className="w-4 h-4" />
+            <Stethoscope className="w-4 h-4" />
             <span>{appointment.doctor}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -251,10 +252,10 @@ const getStatusColor = (status: string) => {
         </div>
 
         <div className="pt-2">
-          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(appointment.priorityLevel)}`}>
-            <AlertCircle className="w-3 h-3" />
-            {appointment.priorityLevel}
-          </span>
+         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
+          <AlertCircle className="w-3 h-3" />
+          {appointment.priorityLevel}
+        </span>
         </div>
 
           {showActions && (

@@ -89,6 +89,7 @@ const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoc
       }
     });
   };
+
 const handleSave = async (): Promise<void> => {
   // Convert maxSlots to number for comparison
   const maxSlotsNumber = typeof maxSlots === 'string' ? parseInt(maxSlots) || 0 : maxSlots;
@@ -403,6 +404,7 @@ const CalendarTab = () => {
       (apt: Appointment) => apt.appointmentDate === date && apt.status !== 'cancelled'
     ).length;
   };
+
   const getTotalSlotsForDate = (date: string): number => {
     console.log(`\n📅 === Calculating total slots for ${date} ===`);
     
@@ -503,13 +505,11 @@ const CalendarTab = () => {
     setShowManageModal(false);
     setShowDoctorSelector(true);
   };
+
   const handleAvailabilityUpdate = async (): Promise<void> => {
     console.log('🔄 Reloading doctors after availability update...');
     
     try {
-      // Don't show loading spinner during refresh to avoid UI flicker
-      // setIsLoading(true);
-      
       // Reload doctors data
       const doctorsRef = collection(db, 'doctors');
       const querySnapshot = await getDocs(doctorsRef);

@@ -5,6 +5,7 @@ import StaffQueue from './StaffQueue';
 import DoctorsTab from './DoctorsTab';
 import CalendarTab from './CalendarTab';
 import DisplayFeedback from './DisplayFeedback'; 
+import ContactMessagesTab from './ContactMessagesTab';
 
 interface StaffDashboardProps {
   userEmail: string;
@@ -13,7 +14,7 @@ interface StaffDashboardProps {
   onLogout: () => void;
 }
 
-type PageType = 'home' | 'appointments' | 'queue' | 'doctors' | 'calendar' | 'reports' | 'waiting-list' | 'feedback';
+type PageType = 'home' | 'appointments' | 'queue' | 'doctors' | 'calendar' | 'reports' | 'waiting-list' | 'feedback' | 'contact-messages';
 
 const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashboardProps) => {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
@@ -113,7 +114,9 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
     case 'calendar':
       return <CalendarTab />;
     case 'feedback':
-      return <DisplayFeedback />; // Remove the props since DisplayFeedback doesn't need them
+      return <DisplayFeedback />;
+    case 'contact-messages':
+      return <ContactMessagesTab />;
     case 'reports':
     case 'waiting-list':
       return (
@@ -135,6 +138,7 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
       return <StaffHome onNavigate={handleNavClick} />;
   }
 };
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       {/* Navigation */}
@@ -177,7 +181,7 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
                     : 'text-gray-700 hover:text-indigo-600'
                 }`}
               >
-                Current Queue
+                Queue
               </button>
               <button
                 onClick={() => handleNavClick('doctors')}
@@ -229,6 +233,16 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
               >
                 Feedback
               </button>
+              <button
+              onClick={() => handleNavClick('contact-messages')}
+              className={`font-medium transition pb-2 ${
+                currentPage === 'contact-messages' 
+                  ? 'text-indigo-600 border-b-2 border-indigo-600' 
+                  : 'text-gray-700 hover:text-indigo-600'
+              }`}
+            >
+               Contact
+            </button>
               
               {/* Desktop Profile Dropdown */}
               <div className="relative" ref={desktopDropdownRef}>
@@ -433,7 +447,7 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
                       : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  Current Queue
+                  Queue
                 </button>
                 <button
                   onClick={() => handleNavClick('doctors')}
@@ -475,16 +489,26 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
                 >
                   Waiting List
                 </button>
+              <button
+                  onClick={() => handleNavClick('feedback')}
+                  className={`font-medium transition py-3 px-4 text-left rounded ${
+                    currentPage === 'feedback' 
+                      ? 'text-indigo-600 bg-indigo-50' 
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Feedback
+                </button>
                 <button
-              onClick={() => handleNavClick('feedback')}
-              className={`font-medium transition pb-2 ${
-                currentPage === 'feedback' 
-                  ? 'text-blue-600 border-b-2 border-blue-600' 
-                  : 'text-gray-700 hover:text-blue-600'
-              }`}
-            >
-              Feedback
-            </button>
+                  onClick={() => handleNavClick('contact-messages')}
+                  className={`font-medium transition py-3 px-4 text-left rounded ${
+                    currentPage === 'contact-messages' 
+                      ? 'text-indigo-600 bg-indigo-50' 
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Contact
+                </button>
               </div>
             </div>
           )}
@@ -522,17 +546,6 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
                 <li><button onClick={() => handleNavClick('reports')} className="text-gray-400 hover:text-white transition">Reports</button></li>
               </ul>
             </div>
-
-            <div>
-              <h3 className="font-semibold text-lg mb-4">Support</h3>
-              <ul className="space-y-2">
-                <li><a href="#help" className="text-gray-400 hover:text-white transition">Help Center</a></li>
-                <li><a href="#contact" className="text-gray-400 hover:text-white transition">Contact IT Support</a></li>
-                <li><a href="#privacy" className="text-gray-400 hover:text-white transition">Privacy Policy</a></li>
-                <li><a href="#terms" className="text-gray-400 hover:text-white transition">Terms of Service</a></li>
-              </ul>
-            </div>
-
             <div>
               <h3 className="font-semibold text-lg mb-4">Contact</h3>
               <ul className="space-y-2 text-gray-400 text-sm">

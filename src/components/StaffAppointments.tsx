@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2 } from 'lucide-react';
+import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, orderBy, deleteDoc, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import ViewAppointmentModal from './ViewAppointmentModal';
@@ -28,31 +28,59 @@ const StaffAppointments = () => {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [doctorFilter, setDoctorFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [doctors, setDoctors] = useState<string[]>([]);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Load doctors from Firebase
-const loadDoctors = async () => {
-  try {
-    const doctorsRef = collection(db, 'doctors');
-    const q = query(doctorsRef, where('isActive', '==', true));
-    const querySnapshot = await getDocs(q);
-    
-    const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
-    setDoctors(doctorsData);
-  } catch (error) {
-    console.error('Error loading doctors:', error);
-    alert('Failed to load doctors. Please check your permissions or try again.');
-  }
-};
+  // Show notification
+  const showNotification = (message: string, type: 'success' | 'error') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
 
 useEffect(() => {
+  const loadAppointments = async () => {
+    setIsLoading(true);
+    try {
+      const appointmentsRef = collection(db, 'appointments');
+      const q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      const appointmentsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Appointment[];
+      
+      setAppointments(appointmentsData);
+    } catch (error) {
+      console.error('Error loading appointments:', error);
+      showNotification('Failed to load appointments. Please try again.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadDoctors = async () => {
+    try {
+      const doctorsRef = collection(db, 'doctors');
+      const q = query(doctorsRef, where('isActive', '==', true));
+      const querySnapshot = await getDocs(q);
+      
+      const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
+      setDoctors(doctorsData);
+    } catch (error) {
+      console.error('Error loading doctors:', error);
+      showNotification('Failed to load doctors. Please check your permissions or try again.', 'error');
+    }
+  };
+
   loadAppointments();
-  loadDoctors(); // Now this will work
+  loadDoctors();
 }, []);
 
   useEffect(() => {
@@ -120,7 +148,7 @@ useEffect(() => {
       setAppointments(appointmentsData);
     } catch (error) {
       console.error('Error loading appointments:', error);
-      alert('Failed to load appointments. Please try again.');
+      showNotification('Failed to load appointments. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -150,37 +178,30 @@ useEffect(() => {
       await loadAppointments();
       setShowRescheduleModal(false);
       setSelectedAppointment(null);
-      alert('Appointment rescheduled successfully!');
+      showNotification('Appointment rescheduled successfully!', 'success');
     } catch (error) {
       console.error('Error rescheduling appointment:', error);
-      alert('Failed to reschedule appointment. Please try again.');
+      showNotification('Failed to reschedule appointment. Please try again.', 'error');
     }
   };
 
-  const handleDelete = async (appointment: Appointment) => {
-    if (!confirm(`Are you sure you want to delete the appointment for ${appointment.fullName}?`)) {
-      return;
-    }
+  const handleDelete = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedAppointment) return;
 
     try {
-      await deleteDoc(doc(db, 'appointments', appointment.id));
+      await deleteDoc(doc(db, 'appointments', selectedAppointment.id));
       await loadAppointments();
-      alert('Appointment deleted successfully!');
+      setShowDeleteModal(false);
+      setSelectedAppointment(null);
+      showNotification('Appointment deleted successfully!', 'success');
     } catch (error) {
       console.error('Error deleting appointment:', error);
-      alert('Failed to delete appointment. Please try again.');
-    }
-  };
-
-  const updateAppointmentStatus = async (appointmentId: string, status: string) => {
-    try {
-      const appointmentRef = doc(db, 'appointments', appointmentId);
-      await updateDoc(appointmentRef, { status });
-      await loadAppointments();
-      alert(`Appointment marked as ${status}!`);
-    } catch (error) {
-      console.error('Error updating appointment status:', error);
-      alert('Failed to update appointment status. Please try again.');
+      showNotification('Failed to delete appointment. Please try again.', 'error');
     }
   };
 
@@ -194,12 +215,12 @@ useEffect(() => {
 
  const getStatusColor = (status: string) => {
   switch (status) {
-    case 'pending': return 'bg-yellow-100 text-yellow-800';
-    case 'confirmed': return 'bg-green-100 text-green-800';
-    case 'scheduled': return 'bg-green-100 text-green-800';
-    case 'rescheduled': return 'bg-blue-100 text-blue-800';
-    case 'cancelled': return 'bg-red-100 text-red-800';
-    case 'completed': return 'bg-gray-100 text-gray-800';
+    case 'pending': return 'bg-yellow-400 text-white';
+    case 'confirmed': return 'bg-green-400 text-white';
+    case 'scheduled': return 'bg-green-400 text-white';
+    case 'rescheduled': return 'bg-blue-400 text-white';
+    case 'cancelled': return 'bg-red-400 text-white';
+    case 'completed': return 'bg-green-400 text-white';
     default: return 'bg-gray-100 text-gray-800';
   }
 };
@@ -217,6 +238,15 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {/* Notification System */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
+          notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {notification.message}
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
@@ -259,6 +289,7 @@ useEffect(() => {
               >
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
                 <option value="scheduled">Scheduled</option>
                 <option value="rescheduled">Rescheduled</option>
                 <option value="completed">Completed</option>
@@ -361,7 +392,7 @@ useEffect(() => {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredAppointments.map((appointment) => (
               <div key={appointment.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 flex justify-between items-center">
+                <div className="bg-blue-600 px-4 py-3 flex justify-between items-center">
                   <div className="text-white">
                     <p className="text-sm font-medium">Queue Number</p>
                     <p className="text-2xl font-bold">#{appointment.queueNumber}</p>
@@ -423,50 +454,32 @@ useEffect(() => {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 pt-3">
+                  <div className="flex gap-2 pt-3 justify-center items-center">
                     <button
                       onClick={() => handleView(appointment)}
-                      className="flex-1 px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-1"
+                      className="px-4 py-2 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition flex items-center justify-center gap-1"
                     >
-                      <Eye className="w-4 h-4" />
+                      <Eye className="w-4 h-4 text-blue-600" />
                       View
                     </button>
                     
                     {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
                       <button
                         onClick={() => handleReschedule(appointment)}
-                        className="flex-1 px-3 py-2 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700 transition flex items-center justify-center gap-1"
+                        className="px-4 py-2 text-yellow-600 text-sm font-medium rounded-lg hover:bg-yellow-50 transition flex items-center justify-center gap-1"
                       >
-                        <RefreshCw className="w-4 h-4" />
+                        <RefreshCw className="w-4 h-4 text-yellow-600" />
                         Reschedule
                       </button>
                     )}
 
                     <button
                       onClick={() => handleDelete(appointment)}
-                      className="px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-1"
+                      className="px-4 py-2 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition flex items-center justify-center gap-1"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4 text-red-600" />
                     </button>
                   </div>
-
-              {/* Status Update Buttons */}
-                {appointment.status !== 'confirmed' && appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
-                <div className="flex gap-2 pt-2">
-                    <button
-                    onClick={() => updateAppointmentStatus(appointment.id, 'confirmed')}
-                    className="flex-1 px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition"
-                    >
-                    Confirm
-                    </button>
-                    <button
-                    onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}
-                    className="flex-1 px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition"
-                    >
-                    Cancel
-                    </button>
-                </div>
-                )}
                 </div>
               </div>
             ))}
@@ -497,6 +510,43 @@ useEffect(() => {
           appointment={selectedAppointment}
           onConfirm={confirmReschedule}
         />
+      )}
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && selectedAppointment && (
+        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Deletion</h3>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-gray-700 mb-6">
+                Are you sure you want to delete this appointment? This action cannot be undone.
+              </p>
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

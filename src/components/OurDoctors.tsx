@@ -66,8 +66,8 @@ const OurDoctors = () => {
           
           setDoctors(allDoctorsData);
         }
-        
       } catch (filterError) {
+        console.log('Filter query failed, loading all doctors:', filterError);
         const allDoctorsQuery = query(doctorsRef, orderBy('createdAt', 'desc'));
         const allDoctorsSnapshot = await getDocs(allDoctorsQuery);
         const allDoctorsData = allDoctorsSnapshot.docs.map(doc => ({
@@ -86,37 +86,53 @@ const OurDoctors = () => {
     }
   };
   
-  const loadAppointments = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(
-        appointmentsRef,
-        where('status', '==', 'confirmed'),
-        where('date', '==', today)
-      );
-      const querySnapshot = await getDocs(q);
-      
-      const appointmentsData = querySnapshot.docs.map(doc => ({
+const loadAppointments = async () => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const appointmentsRef = collection(db, 'appointments');
+    
+    // ✅ FIXED: Use correct field names - appointmentDate instead of date
+    const q = query(
+      appointmentsRef,
+      where('appointmentDate', '==', today),
+      where('status', '!=', 'cancelled')  // Exclude cancelled appointments
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    const appointmentsData = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
         id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-      
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
-    }
-  };
+        doctorId: data.doctor || '',  // Store doctor name, not ID
+        status: data.status,
+        date: data.appointmentDate,
+        time: data.timeSlot
+      };
+    }) as Appointment[];
+    
+    console.log('📊 Loaded appointments for today:', appointmentsData);
+    setAppointments(appointmentsData);
+  } catch (error) {
+    console.error('Error loading appointments:', error);
+  }
+};
 
-  const getDoctorAppointments = (doctorId: string) => {
-    return appointments.filter(appointment => appointment.doctorId === doctorId);
-  };
+ // ✅ FIXED: Match by doctor name, not ID
+const getDoctorAppointments = (doctorName: string) => {
+  const filtered = appointments.filter(appointment => 
+    appointment.doctorId === doctorName || 
+    appointment.doctorId === `Dr. ${doctorName}`
+  );
+  console.log(`📋 Appointments for ${doctorName}:`, filtered.length);
+  return filtered;
+};
 
-  const getDoctorSlotCount = (doctorId: string) => {
-    const doctorAppointments = getDoctorAppointments(doctorId);
-    return doctorAppointments.length;
-  };
-
+ // ✅ FIXED: Pass doctor name instead of ID
+const getDoctorSlotCount = (doctorName: string) => {
+  const doctorAppointments = getDoctorAppointments(doctorName);
+  return doctorAppointments.length;
+};
   const getDoctorTotalSlots = (doctor: Doctor) => {
     const today = new Date().toISOString().split('T')[0];
     
@@ -137,13 +153,16 @@ const OurDoctors = () => {
     return availableSlots;
   };
 
-  const isDoctorAvailable = (doctor: Doctor) => {
-    const slotCount = getDoctorSlotCount(doctor.id);
-    const totalSlots = getDoctorTotalSlots(doctor);
-    const active = doctor.isActive === undefined ? true : doctor.isActive;
-    
-    return active && totalSlots > 0 && slotCount < totalSlots;
-  };
+// ✅ FIXED: Pass doctor name instead of ID
+const isDoctorAvailable = (doctor: Doctor) => {
+  const slotCount = getDoctorSlotCount(doctor.name);
+  const totalSlots = getDoctorTotalSlots(doctor);
+  const active = doctor.isActive === undefined ? true : doctor.isActive;
+  
+  console.log(`🔍 Doctor ${doctor.name} - Slots: ${slotCount}/${totalSlots}, Active: ${active}, Available: ${active && totalSlots > 0 && slotCount < totalSlots}`);
+  
+  return active && totalSlots > 0 && slotCount < totalSlots;
+};
 
   if (isLoading) {
     return (
@@ -201,7 +220,7 @@ const OurDoctors = () => {
         ) : (
           <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
             {doctors.map((doctor) => {
-              const slotCount = getDoctorSlotCount(doctor.id);
+              const slotCount = getDoctorSlotCount(doctor.name);
               const totalSlots = getDoctorTotalSlots(doctor);
               const available = isDoctorAvailable(doctor);
 
@@ -216,8 +235,8 @@ const OurDoctors = () => {
                     {available ? 'Available Today' : 'Unavailable Today'}
                   </div>
 
-                  {/* Header with Gradient */}
-                  <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-4">
+                  {/* Header */}
+                  <div className="bg-blue-500 px-6 py-4">
                     <div className="text-white text-left">
                       <p className="text-sm font-medium opacity-90">Specialist Doctor</p>
                       <p className="text-xl font-bold">Dr. {doctor.name}</p>
@@ -260,24 +279,33 @@ const OurDoctors = () => {
                       </p>
                     </div>
 
-                    {/* Slot Counter */}
-                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <div className="flex items-center justify-between text-sm mb-2">
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <Calendar className="w-4 h-4" />
-                          <span>Today's Schedule</span>
-                        </div>
-                        <span className="font-bold text-indigo-600">
-                          {slotCount} / {totalSlots}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${totalSlots > 0 ? (slotCount / totalSlots) * 100 : 0}%` }}
-                        />
-                      </div>
+                {/* Slot Counter */}
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Calendar className="w-4 h-4" />
+                      <span>Today's Schedule</span>
                     </div>
+                    {/* ✅ UPDATED: Show "Fully Booked" when slots are full */}
+                    {slotCount >= totalSlots && totalSlots > 0 ? (
+                      <span className="font-bold text-red-600 px-2 py-1 bg-red-50 rounded-full text-xs border border-red-200">
+                        Fully Booked
+                      </span>
+                    ) : (
+                      <span className="font-bold text-indigo-600">
+                        {slotCount} / {totalSlots}
+                      </span>
+                    )}
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        slotCount >= totalSlots && totalSlots > 0 ? 'bg-red-600' : 'bg-indigo-600'
+                      }`}
+                      style={{ width: `${totalSlots > 0 ? Math.min((slotCount / totalSlots) * 100, 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
 
                     {/* Contact Information */}
                     <div className="space-y-3 pt-2">
