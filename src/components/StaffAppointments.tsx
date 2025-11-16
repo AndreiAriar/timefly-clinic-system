@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X } from 'lucide-react';
+import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, orderBy, deleteDoc, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import ViewAppointmentModal from './ViewAppointmentModal';
+import StaffViewAppointments from './StaffViewAppointments';
 import RescheduleModal from './RescheduleModal';
+import ToastNotification from './ToastNotification';
+
+type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 interface Appointment {
   id: string;
@@ -22,6 +25,9 @@ interface Appointment {
   createdAt: string;
 }
 
+type SortField = 'appointmentDate' | 'timeSlot' | 'fullName' | 'doctor' | 'status' | 'queueNumber';
+type SortDirection = 'asc' | 'desc';
+
 const StaffAppointments = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
@@ -35,53 +41,58 @@ const StaffAppointments = () => {
   const [doctorFilter, setDoctorFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [doctors, setDoctors] = useState<string[]>([]);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [sortField, setSortField] = useState<SortField>('appointmentDate');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
+    message: '',
+    type: 'info',
+    isVisible: false
+  });
 
-  // Show notification
-  const showNotification = (message: string, type: 'success' | 'error') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 3000);
+  // Show toast notification
+  const showToast = (message: string, type: ToastType) => {
+    setToast({ message, type, isVisible: true });
   };
 
-useEffect(() => {
-  const loadAppointments = async () => {
-    setIsLoading(true);
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      
-      const appointmentsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-      
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
-      showNotification('Failed to load appointments. Please try again.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  useEffect(() => {
+    const loadAppointments = async () => {
+      setIsLoading(true);
+      try {
+        const appointmentsRef = collection(db, 'appointments');
+        const q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        
+        const appointmentsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Appointment[];
+        
+        setAppointments(appointmentsData);
+      } catch (error) {
+        console.error('Error loading appointments:', error);
+        showToast('Failed to load appointments. Please try again.', 'error');
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const loadDoctors = async () => {
-    try {
-      const doctorsRef = collection(db, 'doctors');
-      const q = query(doctorsRef, where('isActive', '==', true));
-      const querySnapshot = await getDocs(q);
-      
-      const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
-      setDoctors(doctorsData);
-    } catch (error) {
-      console.error('Error loading doctors:', error);
-      showNotification('Failed to load doctors. Please check your permissions or try again.', 'error');
-    }
-  };
+    const loadDoctors = async () => {
+      try {
+        const doctorsRef = collection(db, 'doctors');
+        const q = query(doctorsRef, where('isActive', '==', true));
+        const querySnapshot = await getDocs(q);
+        
+        const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
+        setDoctors(doctorsData);
+      } catch (error) {
+        console.error('Error loading doctors:', error);
+        showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+      }
+    };
 
-  loadAppointments();
-  loadDoctors();
-}, []);
+    loadAppointments();
+    loadDoctors();
+  }, []);
 
   useEffect(() => {
     let filtered = [...appointments];
@@ -113,14 +124,41 @@ useEffect(() => {
       filtered = filtered.filter(apt => apt.doctor === doctorFilter);
     }
 
+    // Sorting
+    filtered.sort((a, b) => {
+      // Use type-safe approach with proper type checking
+      let aValue: string | number = a[sortField];
+      let bValue: string | number = b[sortField];
+
+      if (sortField === 'appointmentDate') {
+        // Convert date strings to timestamps for proper comparison
+        aValue = new Date(aValue as string).getTime();
+        bValue = new Date(bValue as string).getTime();
+      }
+
+      // Handle comparison based on sort direction
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
     setFilteredAppointments(filtered);
-  }, [appointments, searchQuery, statusFilter, priorityFilter, doctorFilter]);
+  }, [appointments, searchQuery, statusFilter, priorityFilter, doctorFilter, sortField, sortDirection]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
     const options: Intl.DateTimeFormatOptions = { 
       year: 'numeric', 
-      month: 'long', 
+      month: 'short', 
       day: 'numeric' 
     };
     return date.toLocaleDateString('en-US', options);
@@ -148,7 +186,7 @@ useEffect(() => {
       setAppointments(appointmentsData);
     } catch (error) {
       console.error('Error loading appointments:', error);
-      showNotification('Failed to load appointments. Please try again.', 'error');
+      showToast('Failed to load appointments. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -178,10 +216,10 @@ useEffect(() => {
       await loadAppointments();
       setShowRescheduleModal(false);
       setSelectedAppointment(null);
-      showNotification('Appointment rescheduled successfully!', 'success');
+      showToast('Appointment rescheduled successfully!', 'success');
     } catch (error) {
       console.error('Error rescheduling appointment:', error);
-      showNotification('Failed to reschedule appointment. Please try again.', 'error');
+      showToast('Failed to reschedule appointment. Please try again.', 'error');
     }
   };
 
@@ -198,10 +236,10 @@ useEffect(() => {
       await loadAppointments();
       setShowDeleteModal(false);
       setSelectedAppointment(null);
-      showNotification('Appointment deleted successfully!', 'success');
+      showToast('Appointment deleted successfully!', 'success');
     } catch (error) {
       console.error('Error deleting appointment:', error);
-      showNotification('Failed to delete appointment. Please try again.', 'error');
+      showToast('Failed to delete appointment. Please try again.', 'error');
     }
   };
 
@@ -213,17 +251,32 @@ useEffect(() => {
     }
   };
 
- const getStatusColor = (status: string) => {
+const getStatusColor = (status: string) => {
   switch (status) {
-    case 'pending': return 'bg-yellow-400 text-white';
-    case 'confirmed': return 'bg-green-400 text-white';
-    case 'scheduled': return 'bg-green-400 text-white';
-    case 'rescheduled': return 'bg-blue-400 text-white';
-    case 'cancelled': return 'bg-red-400 text-white';
-    case 'completed': return 'bg-green-400 text-white';
+    case 'pending': return 'bg-yellow-100 text-yellow-800';
+    case 'confirmed': return 'bg-green-100 text-green-800';
+    case 'scheduled': return 'bg-blue-100 text-blue-800';
+    case 'rescheduled': return 'bg-purple-100 text-purple-800';
+    case 'cancelled': return 'bg-red-100 text-red-800';
+    case 'completed': return 'bg-gray-100 text-gray-800';
+    case 'missed': return 'bg-red-100 text-red-800'; 
     default: return 'bg-gray-100 text-gray-800';
   }
 };
+
+  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <th 
+      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-50 transition"
+      onClick={() => handleSort(field)}
+    >
+      <div className="flex items-center gap-1">
+        {children}
+        {sortField === field && (
+          sortDirection === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+        )}
+      </div>
+    </th>
+  );
 
   if (isLoading) {
     return (
@@ -238,14 +291,13 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      {/* Notification System */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
-          notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-        }`}>
-          {notification.message}
-        </div>
-      )}
+      {/* Toast Notification System */}
+      <ToastNotification
+        message={toast.message}
+        type={toast.type}
+        isVisible={toast.isVisible}
+        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
+      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
@@ -377,25 +429,146 @@ useEffect(() => {
           )}
         </div>
 
-        {/* Appointments Grid */}
-        {filteredAppointments.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-md p-12 text-center">
-            <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
-            <p className="text-gray-500">
-              {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || doctorFilter !== 'all'
-                ? 'No appointments match your current filters.'
-                : 'No appointments have been booked yet.'}
-            </p>
+        {/* Desktop Table View */}
+        <div className="hidden lg:block bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <SortableHeader field="queueNumber">
+                    Queue
+                  </SortableHeader>
+                  <SortableHeader field="appointmentDate">
+                    Date
+                  </SortableHeader>
+                  <SortableHeader field="timeSlot">
+                    Time
+                  </SortableHeader>
+                  <SortableHeader field="fullName">
+                    Patient
+                  </SortableHeader>
+                  <SortableHeader field="doctor">
+                    Doctor
+                  </SortableHeader>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Contact
+                  </th>
+                  <SortableHeader field="status">
+                    Status
+                  </SortableHeader>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredAppointments.map((appointment) => (
+                  <tr key={appointment.id} className="hover:bg-gray-50 transition">
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">#{appointment.queueNumber}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{formatDate(appointment.appointmentDate)}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{convertTo12Hour(appointment.timeSlot)}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        {appointment.photo ? (
+                          <img
+                            src={appointment.photo}
+                            alt="Patient"
+                            className="w-8 h-8 rounded-full object-cover mr-3"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center mr-3">
+                            <User className="w-4 h-4 text-indigo-600" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{appointment.fullName}</div>
+                          <div className="text-sm text-gray-500">{appointment.age} yrs, {appointment.gender}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{appointment.doctor}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{appointment.phone}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
+                        {appointment.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleView(appointment)}
+                          className="text-indigo-600 hover:text-indigo-900 transition"
+                          title="View details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
+                          <button
+                            onClick={() => handleReschedule(appointment)}
+                            className="text-yellow-600 hover:text-yellow-900 transition"
+                            title="Reschedule"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(appointment)}
+                          className="text-red-600 hover:text-red-900 transition"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {filteredAppointments.map((appointment) => (
-              <div key={appointment.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
+
+          {filteredAppointments.length === 0 && (
+            <div className="text-center py-12">
+              <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
+              <p className="text-gray-500">
+                {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || doctorFilter !== 'all'
+                  ? 'No appointments match your current filters.'
+                  : 'No appointments have been booked yet.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="lg:hidden space-y-4">
+          {filteredAppointments.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-md p-8 text-center">
+              <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
+              <p className="text-gray-500">
+                {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || doctorFilter !== 'all'
+                  ? 'No appointments match your current filters.'
+                  : 'No appointments have been booked yet.'}
+              </p>
+            </div>
+          ) : (
+            filteredAppointments.map((appointment) => (
+              <div key={appointment.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+                {/* Header with Queue and Status */}
                 <div className="bg-blue-600 px-4 py-3 flex justify-between items-center">
                   <div className="text-white">
                     <p className="text-sm font-medium">Queue Number</p>
-                    <p className="text-2xl font-bold">#{appointment.queueNumber}</p>
+                    <p className="text-xl font-bold">#{appointment.queueNumber}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
                     {appointment.status}
@@ -403,6 +576,7 @@ useEffect(() => {
                 </div>
 
                 <div className="p-4 space-y-3">
+                  {/* Patient Info */}
                   <div className="flex items-start gap-3">
                     {appointment.photo ? (
                       <img
@@ -416,86 +590,90 @@ useEffect(() => {
                       </div>
                     )}
                     <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900">{appointment.fullName}</h3>
+                      <h3 className="font-semibold text-gray-900 text-lg">{appointment.fullName}</h3>
                       <p className="text-sm text-gray-500">{appointment.age} years, {appointment.gender}</p>
                     </div>
                   </div>
 
-                  <div className="space-y-2 pt-2 border-t">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Calendar className="w-4 h-4" />
-                      <span>{formatDate(appointment.appointmentDate)}</span>
+                  {/* Appointment Details */}
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Calendar className="w-4 h-4" />
+                        <span>{formatDate(appointment.appointmentDate)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Clock className="w-4 h-4" />
+                        <span>{convertTo12Hour(appointment.timeSlot)}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Clock className="w-4 h-4" />
-                      <span>{convertTo12Hour(appointment.timeSlot)}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <User className="w-4 h-4" />
-                      <span>{appointment.doctor}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Phone className="w-4 h-4" />
-                      <span>{appointment.phone}</span>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <User className="w-4 h-4" />
+                        <span>{appointment.doctor}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Phone className="w-4 h-4" />
+                        <span>{appointment.phone}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="pt-2">
+                  {/* Priority and Condition */}
+                  <div className="pt-2 space-y-2">
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(appointment.priorityLevel)}`}>
                       <AlertCircle className="w-3 h-3" />
                       {appointment.priorityLevel}
                     </span>
-                  </div>
-
-                  <div className="pt-3 border-t border-gray-200">
-                    <p className="text-sm text-gray-600 mb-2">
+                    <p className="text-sm text-gray-600">
                       <strong>Condition:</strong> {appointment.medicalCondition}
                     </p>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 pt-3 justify-center items-center">
+                  <div className="flex gap-2 pt-3 border-t">
                     <button
                       onClick={() => handleView(appointment)}
-                      className="px-4 py-2 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition flex items-center justify-center gap-1"
+                      className="flex-1 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"
                     >
-                      <Eye className="w-4 h-4 text-blue-600" />
+                      <Eye className="w-4 h-4" />
                       View
                     </button>
                     
                     {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
                       <button
                         onClick={() => handleReschedule(appointment)}
-                        className="px-4 py-2 text-yellow-600 text-sm font-medium rounded-lg hover:bg-yellow-50 transition flex items-center justify-center gap-1"
+                        className="flex-1 px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700 transition flex items-center justify-center gap-2"
                       >
-                        <RefreshCw className="w-4 h-4 text-yellow-600" />
+                        <RefreshCw className="w-4 h-4" />
                         Reschedule
                       </button>
                     )}
 
                     <button
                       onClick={() => handleDelete(appointment)}
-                      className="px-4 py-2 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition flex items-center justify-center gap-1"
+                      className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition flex items-center justify-center"
                     >
-                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </div>
 
       {/* View Modal */}
       {showViewModal && selectedAppointment && (
-        <ViewAppointmentModal
+        <StaffViewAppointments
           isOpen={showViewModal}
           onClose={() => {
             setShowViewModal(false);
             setSelectedAppointment(null);
           }}
           appointment={selectedAppointment}
+          onAppointmentUpdate={loadAppointments}
         />
       )}
 
@@ -511,6 +689,7 @@ useEffect(() => {
           onConfirm={confirmReschedule}
         />
       )}
+
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selectedAppointment && (
         <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">

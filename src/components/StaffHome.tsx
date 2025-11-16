@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, Users, FileText } from 'lucide-react';
+import { Calendar, Clock, Users, FileText, Sun, CloudSun, Moon } from 'lucide-react';
 import AppointmentModal from './AppointmentModal';
 import { collection, query, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -26,6 +26,11 @@ interface StaffHomeProps {
   onNavigate: (page: 'home' | 'appointments' | 'queue' | 'doctors' | 'calendar' | 'reports' | 'waiting-list') => void;
 }
 
+interface GreetingData {
+  message: string;
+  icon: React.ReactElement;
+}
+
 const StaffHome = ({ onNavigate }: StaffHomeProps) => {
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [stats, setStats] = useState({
@@ -34,10 +39,47 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
     upcoming: 0,
     completed: 0
   });
+  const [greeting, setGreeting] = useState<GreetingData>({
+    message: 'Welcome Staff',
+    icon: <Sun className="w-12 h-12 text-yellow-300" />
+  });
 
-  useEffect(() => {
-    loadStats();
-  }, [showAppointmentModal]);
+  const getPhilippineTime = (): Date => {
+    // Philippine Time (UTC+8)
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const phTime = new Date(utc + (8 * 3600000)); // UTC+8
+    return phTime;
+  };
+
+  const updateGreeting = () => {
+    const phTime = getPhilippineTime();
+    const hour = phTime.getHours();
+
+    let greetingData: GreetingData;
+
+    if (hour >= 5 && hour < 12) {
+      // Morning: 5:00 AM - 11:59 AM
+      greetingData = {
+        message: 'Good Morning Staff',
+        icon: <Sun className="w-12 h-12 text-yellow-200" />
+      };
+    } else if (hour >= 12 && hour < 18) {
+      // Afternoon: 12:00 PM - 5:59 PM
+      greetingData = {
+        message: 'Good Afternoon Staff',
+        icon: <CloudSun className="w-12 h-12 text-orange-300" />
+      };
+    } else {
+      // Evening: 6:00 PM - 4:59 AM
+      greetingData = {
+        message: 'Good Evening Staff',
+        icon: <Moon className="w-12 h-12 text-blue-100" />
+      };
+    }
+
+    setGreeting(greetingData);
+  };
 
   const loadStats = async () => {
     try {
@@ -45,7 +87,7 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
       const q = query(appointmentsRef);
       const querySnapshot = await getDocs(q);
       
-      const appointments = querySnapshot.docs.map(doc => ({
+      const appointmentsData = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Appointment[];
@@ -53,23 +95,23 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      const todayCount = appointments.filter((apt: Appointment) => {
+      const todayCount = appointmentsData.filter((apt: Appointment) => {
         const aptDate = new Date(apt.appointmentDate);
         aptDate.setHours(0, 0, 0, 0);
         return aptDate.getTime() === today.getTime() && apt.status !== 'cancelled';
       }).length;
       
-      const inProgressCount = appointments.filter((apt: Appointment) => 
+      const inProgressCount = appointmentsData.filter((apt: Appointment) => 
         apt.status === 'in-progress'
       ).length;
 
-      const upcomingCount = appointments.filter((apt: Appointment) => {
+      const upcomingCount = appointmentsData.filter((apt: Appointment) => {
         const aptDate = new Date(apt.appointmentDate);
         aptDate.setHours(0, 0, 0, 0);
         return aptDate > today && apt.status !== 'completed' && apt.status !== 'cancelled';
       }).length;
 
-      const completedCount = appointments.filter((apt: Appointment) => 
+      const completedCount = appointmentsData.filter((apt: Appointment) => 
         apt.status === 'completed'
       ).length;
 
@@ -84,32 +126,49 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
     }
   };
 
-  return (
-    <div className="min-h-screen">
-      {/* Hero Section with Background */}
-      <section className="staff-hero-section relative flex items-center justify-center overflow-hidden min-h-screen bg-cover bg-center bg-no-repeat bg-fixed">
-        <div className="absolute inset-0 bg-black/30"></div>
+  useEffect(() => {
+    loadStats();
+    updateGreeting();
+    
+    // Update greeting every minute to handle time changes
+    const interval = setInterval(updateGreeting, 60000);
+    
+    return () => clearInterval(interval);
+  }, [showAppointmentModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto py-20">
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight drop-shadow-lg">
-              Welcome Staff 
-          </h1>
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Hero Section with Solid Blue Background */}
+      <section className="py-20 bg-indigo-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          {/* Dynamic Greeting with Improved Icon Visibility */}
+          <div className="flex flex-col items-center justify-center mb-8">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-6">
+              {/* Transparent circle with enhanced icon colors */}
+              <div className="bg-white/20 p-4 rounded-full backdrop-blur-sm shadow-lg border border-white/30">
+                {greeting.icon}
+              </div>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight">
+                {greeting.message}
+              </h1>
+            </div>
+          </div>
           
-          <p className="text-xl sm:text-2xl text-white mb-12 max-w-3xl mx-auto leading-relaxed drop-shadow-md">
+          <p className="text-xl sm:text-2xl text-white mb-12 max-w-3xl mx-auto leading-relaxed">
             Manage appointments, monitor queues, and provide exceptional patient care
           </p>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
               onClick={() => setShowAppointmentModal(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-10 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200"
+              className="bg-white hover:bg-gray-100 text-indigo-600 font-semibold px-8 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200"
             >
               Book Appointment
             </button>
             <button 
               onClick={() => onNavigate('queue')}
-              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-10 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200"
+              className="bg-indigo-500 hover:bg-indigo-400 text-white font-semibold px-8 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200 border border-white/20"
             >
               Manage Queue
             </button>
@@ -118,7 +177,7 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
       </section>
 
       {/* Stats Section */}
-      <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
+      <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -133,7 +192,7 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
             {/* Today's Patients */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-blue-100 rounded-lg">
+                <div className="bg-blue-100 p-3 rounded-full">
                   <Calendar className="w-8 h-8 text-blue-600" />
                 </div>
                 <span className="text-sm font-medium text-gray-500">Today</span>
@@ -150,8 +209,8 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
             {/* In Progress */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
               <div className="flex items-center justify-between mb-4">
-               <div className="p-3 bg-yellow-100 rounded-lg">
-                <Users className="w-8 h-8 text-yellow-600" />
+                <div className="bg-yellow-100 p-3 rounded-full">
+                  <Users className="w-8 h-8 text-yellow-600" />
                 </div>
                 <span className="text-sm font-medium text-gray-500">Active</span>
               </div>
@@ -167,7 +226,7 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
             {/* Upcoming */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-orange-100 rounded-lg">
+                <div className="bg-orange-100 p-3 rounded-full">
                   <Clock className="w-8 h-8 text-orange-600" />
                 </div>
                 <span className="text-sm font-medium text-gray-500">Pending</span>
@@ -184,9 +243,9 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
             {/* Completed */}
             <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-green-100 rounded-lg">
-                 <FileText className="w-8 h-8 text-green-600" />
-                 </div>
+                <div className="bg-green-100 p-3 rounded-full">
+                  <FileText className="w-8 h-8 text-green-600" />
+                </div>
                 <span className="text-sm font-medium text-gray-500">Done</span>
               </div>
               <h3 className="text-3xl font-bold text-gray-900 mb-2">
@@ -196,74 +255,6 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs text-gray-500">Total consultations</p>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Quick Access Section */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
-              Quick Access
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Streamline your workflow with instant access to key features
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Feature 1 */}
-            <div 
-              onClick={() => onNavigate('appointments')}
-              className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300 cursor-pointer"
-            >
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-6">
-                <Calendar className="w-8 h-8 text-indigo-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                Appointment Management
-              </h3>
-              <p className="text-gray-600">
-                View, schedule, and manage all patient appointments efficiently.
-              </p>
-            </div>
-
-            {/* Feature 2 */}
-            <div 
-              onClick={() => onNavigate('queue')}
-              className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300 cursor-pointer"
-            >
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-6">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                Queue Monitoring
-              </h3>
-              <p className="text-gray-600">
-                Track real-time queue status and optimize patient flow.
-              </p>
-            </div>
-
-            {/* Feature 3 */}
-            <div 
-              onClick={() => onNavigate('reports')}
-              className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300 cursor-pointer"
-            >
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-6">
-                <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                Reports & Analytics
-              </h3>
-              <p className="text-gray-600">
-                Generate comprehensive reports and track performance metrics.
-              </p>
             </div>
           </div>
         </div>

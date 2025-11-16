@@ -17,7 +17,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type PageType = 'home' | 'appointments' | 'queue' | 'about' | 'doctors' | 'faq' | 'faq2' | 'feedbacks' | 'contact' | 'privacy';
+type PageType = 'home' | 'appointments' | 'queue' | 'about' | 'doctors' | 'faq' | 'faq2' | 'feedback' | 'contact' | 'privacy';
 
 
 
@@ -117,7 +117,7 @@ const renderPage = () => {
       return <FAQ1 onNavigate={() => handleNavClick('faq2')} />;
     case 'faq2':
       return <FAQ2 onNavigate={() => handleNavClick('faq')} />;
-    case 'feedbacks':
+    case 'feedback':
       return <PatientFeedback />;
     case 'contact':
       return <ContactUs />;
@@ -200,14 +200,14 @@ const renderPage = () => {
                 FAQ
               </button>
               <button
-                onClick={() => handleNavClick('feedbacks')}
+                onClick={() => handleNavClick('feedback')}
                 className={`font-medium transition pb-2 ${
-                  currentPage === 'feedbacks' 
+                  currentPage === 'feedback' 
                     ? 'text-indigo-600 border-b-2 border-indigo-600' 
                     : 'text-gray-700 hover:text-indigo-600'
                 }`}
               >
-                Feedbacks
+                Feedback
               </button>
                 <button
                 onClick={() => handleNavClick('contact')}
@@ -217,7 +217,7 @@ const renderPage = () => {
                     : 'text-gray-700 hover:text-indigo-600'
                 }`}
               >
-                Contact Us
+                Contact Support
               </button>
               
               {/* Desktop Profile Dropdown */}
@@ -442,14 +442,14 @@ const renderPage = () => {
                   FAQ
                 </button>
                 <button
-                  onClick={() => handleNavClick('feedbacks')}
+                  onClick={() => handleNavClick('feedback')}
                   className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'feedbacks' 
+                    currentPage === 'feedback' 
                       ? 'text-indigo-600 bg-indigo-50' 
                       : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  Feedbacks
+                  Feedback
                 </button>
                 <button
                   onClick={() => handleNavClick('contact')}
@@ -459,7 +459,7 @@ const renderPage = () => {
                       : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  Contact Us
+                  Contact Support
                 </button>
               </div>
             </div>
@@ -500,11 +500,10 @@ const renderPage = () => {
             </div>
 
             <div>
-              <h3 className="font-semibold text-lg mb-4">Support</h3>
+              <h3 className="font-semibold text-lg mb-4">Support & Policy</h3>
               <ul className="space-y-2">
-                <li><button onClick={() => setCurrentPage('faq')} className="text-gray-400 hover:text-white transition">FAQ</button></li>
-                <li><button onClick={() => setCurrentPage('feedbacks')} className="text-gray-400 hover:text-white transition">Feedbacks</button></li>
-                  <li><button onClick={() => setCurrentPage('contact')} className="text-gray-400 hover:text-white transition">Contact Us</button></li>
+                <li><button onClick={() => setCurrentPage('feedback')} className="text-gray-400 hover:text-white transition">Give Feedback</button></li>
+                  <li><button onClick={() => setCurrentPage('contact')} className="text-gray-400 hover:text-white transition">Help Center</button></li>
                   <li><button onClick={() => setCurrentPage('privacy')} className="text-gray-400 hover:text-white transition">Privacy Policy</button></li>
               </ul>
             </div>

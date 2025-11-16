@@ -20,6 +20,49 @@ interface Appointment {
   createdAt: string;
 }
 
+const calculateWaitingTime = (timeSlot: string): string => {
+  const now = new Date();
+  const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  
+  const [hours, minutes] = timeSlot.split(':').map(Number);
+  const appointmentTime = new Date(phTime);
+  appointmentTime.setHours(hours, minutes, 0, 0);
+  
+  // Calculate difference in minutes
+  const diffMs = appointmentTime.getTime() - phTime.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  
+  if (diffMinutes > 0) {
+    // Appointment is in the future - show remaining time
+    if (diffMinutes < 60) {
+      return `${diffMinutes} min remaining`;
+    } else {
+      const hrs = Math.floor(diffMinutes / 60);
+      const mins = diffMinutes % 60;
+      if (mins === 0) {
+        return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} remaining`;
+      }
+      return `${hrs}h ${mins}m remaining`;
+    }
+  } else if (diffMinutes === 0) {
+    // Appointment is exactly now
+    return 'Starting now';
+  } else {
+    // Appointment time has passed - show how long they've been waiting
+    const waitingMinutes = Math.abs(diffMinutes);
+    if (waitingMinutes < 60) {
+      return `Waiting ${waitingMinutes} min`;
+    } else {
+      const hrs = Math.floor(waitingMinutes / 60);
+      const mins = waitingMinutes % 60;
+      if (mins === 0) {
+        return `Waiting ${hrs}h`;
+      }
+      return `Waiting ${hrs}h ${mins}m`;
+    }
+  }
+};
+
 const Queue = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -110,15 +153,16 @@ const Queue = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'serving': return 'bg-green-100 text-green-800';
-      case 'confirmed': return 'bg-green-100 text-green-800';
-      case 'scheduled': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case 'serving': return 'bg-green-100 text-green-800';
+        case 'confirmed': return 'bg-green-100 text-green-800';
+        case 'scheduled': return 'bg-green-100 text-green-800';
+        case 'pending': return 'bg-yellow-100 text-yellow-800';
+        case 'missed': return 'bg-red-100 text-red-800'; 
+        default: return 'bg-gray-100 text-gray-800';
+      }
+    };
 
   // Find the appointment currently being served (status 'serving' or 'confirmed')
   const nowServing = appointments.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
@@ -235,40 +279,51 @@ const Queue = () => {
                   </div>
 
                   <div className="ml-16 grid md:grid-cols-12 gap-4 items-center">
-                    {/* Patient Info - Anonymous */}
-                    <div className="md:col-span-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                          <User className="w-5 h-5 text-indigo-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">Patient #{appointment.queueNumber}</h3>
-                          <p className="text-sm text-gray-600">Appointment</p>
-                        </div>
+                  {/* Patient Info - Anonymous */}
+                  <div className="md:col-span-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                        <User className="w-5 h-5 text-indigo-600" />
                       </div>
-                    </div>
-
-                    {/* Time */}
-                    <div className="md:col-span-2">
-                      <div className="flex items-center gap-2 text-gray-700">
-                        <Clock className="w-4 h-4" />
-                        <span className="font-semibold">{convertTo12Hour(appointment.timeSlot)}</span>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Patient #{appointment.queueNumber}</h3>
+                        <p className="text-sm text-gray-600">Appointment</p>
                       </div>
-                    </div>
-
-                    {/* Status & Priority */}
-                    <div className="md:col-span-6 flex flex-col gap-2">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold text-center ${getStatusColor(appointment.status)}`}>
-                        {appointment.status === 'serving' ? 'Being Served' : 
-                         appointment.status === 'confirmed' ? 'Confirmed' : 
-                         appointment.status}
-                      </span>
-                      <span className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs font-semibold border ${getPriorityColor(appointment.priorityLevel)}`}>
-                        <AlertCircle className="w-3 h-3" />
-                        {appointment.priorityLevel}
-                      </span>
                     </div>
                   </div>
+
+                  {/* Time */}
+                  <div className="md:col-span-2">
+                    <div className="flex items-center gap-2 text-gray-700">
+                      <Clock className="w-4 h-4" />
+                      <span className="font-semibold">{convertTo12Hour(appointment.timeSlot)}</span>
+                    </div>
+                  </div>
+
+                  {/* Waiting Time - NEW */}
+                  <div className="md:col-span-2">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-gray-500 mb-1">Waiting Time</span>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-orange-500" />
+                        <span className="font-bold text-orange-600">{calculateWaitingTime(appointment.timeSlot)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status & Priority */}
+                  <div className="md:col-span-5 flex flex-col gap-2">
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold text-center ${getStatusColor(appointment.status)}`}>
+                      {appointment.status === 'serving' ? 'Being Served' : 
+                      appointment.status === 'confirmed' ? 'Confirmed' : 
+                      appointment.status}
+                    </span>
+                    <span className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs font-semibold border ${getPriorityColor(appointment.priorityLevel)}`}>
+                      <AlertCircle className="w-3 h-3" />
+                      {appointment.priorityLevel}
+                    </span>
+                  </div>
+                </div>
 
                   {/* Status Indicator */}
                   {(appointment.status === 'serving' || appointment.status === 'confirmed') && (

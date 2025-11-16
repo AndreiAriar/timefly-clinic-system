@@ -71,6 +71,7 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
   const [queueNumber, setQueueNumber] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasAvailableSlots, setHasAvailableSlots] = useState(true);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Updated doctors state to fetch from Firebase
@@ -284,6 +285,9 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
 const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
   console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
   
+  // Set loading state
+  setIsCheckingAvailability(true);
+  
   // ✅ FIRST: Check if doctor is fully booked based on max capacity
   const isFullyBooked = await isDoctorFullyBooked(doctor, appointmentDate);
   
@@ -291,6 +295,7 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
     console.log('🚫 DOCTOR IS FULLY BOOKED - No slots available');
     setAvailableTimeSlots([]);
     setHasAvailableSlots(false);
+    setIsCheckingAvailability(false);
     return;
   }
   
@@ -394,22 +399,29 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
       console.log(`  ${timeString45}: ${isAvailable45 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked45}, unavailable: ${isUnavailable45}, past: ${isPast45})`);
     }
   }
+// Count truly available slots (not booked, not unavailable, not past)
+const actuallyAvailableSlots = slots.filter(slot => 
+  slot.available && !slot.isBooked && !slot.isUnavailable
+);
+const anyAvailable = actuallyAvailableSlots.length > 0;
 
-  const actuallyAvailableSlots = slots.filter(slot => slot.available);
-  const anyAvailable = actuallyAvailableSlots.length > 0;
+setHasAvailableSlots(anyAvailable);
+setAvailableTimeSlots(slots); // ✅ Keep ALL slots in state
+
+console.log(`✅ Generated ${slots.length} total slots`);
+console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
+console.log(`✅ Booked slots: ${slots.filter(s => s.isBooked).length}`);
+console.log(`✅ Unavailable slots: ${slots.filter(s => s.isUnavailable).length}`);
+console.log(`✅ hasAvailableSlots set to: ${anyAvailable}`);
+
+if (anyAvailable) {
+  console.log('Available times:', actuallyAvailableSlots.map(s => s.time).join(', '));
+} else {
+  console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
+}
   
-  setHasAvailableSlots(anyAvailable);
-  setAvailableTimeSlots(slots);
-  
-  console.log(`✅ Generated ${slots.length} total slots`);
-  console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
-  console.log(`✅ hasAvailableSlots set to: ${anyAvailable}`);
-  
-  if (anyAvailable) {
-    console.log('Available times:', actuallyAvailableSlots.map(s => s.time).join(', '));
-  } else {
-    console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
-  }
+  // Clear loading state
+  setIsCheckingAvailability(false);
 }, [getBookedTimeSlots, isDoctorFullyBooked]);
 
 useEffect(() => {
@@ -528,6 +540,7 @@ const handleSubmit = async () => {
     setQueueNumber(null);
     setAvailableTimeSlots([]);
     setHasAvailableSlots(true);
+    setIsCheckingAvailability(false);
     onClose();
   };
 
@@ -776,104 +789,209 @@ const handleSubmit = async () => {
                     aria-required="true"
                   />
                 </div>
-                <div>
-        <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
-          Select Time Slot <span className="text-red-500" aria-label="required">*</span>
-        </label>
-        {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
-          (() => {
-            // Calculate available slots count
-            const availableSlotsCount = availableTimeSlots.filter(slot => slot.available).length;
-            const hasSlots = availableSlotsCount > 0;
-            
-            console.log(`🎯 UI Render Check - Available slots: ${availableSlotsCount}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}`);
-            
-            if (!hasSlots) {
-              // ✅ NO SLOTS AVAILABLE - Show warning only, NO time slot grid
+              <div>
+          <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
+            Select Time Slot <span className="text-red-500" aria-label="required">*</span>
+          </label>
+          {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
+            (() => {
+              // Use isCheckingAvailability state directly
+             // Use isCheckingAvailability state directly
+              const isLoading = isCheckingAvailability;
+              const availableSlotsCount = availableTimeSlots.filter(slot => 
+                slot.available && !slot.isBooked && !slot.isUnavailable
+              ).length;
+              const hasSlots = availableSlotsCount > 0;
+
+              console.log(`🎯 UI Render Check - Loading: ${isLoading}, Available slots: ${availableSlotsCount}, Total slots: ${availableTimeSlots.length}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}`);
+                            // Show loading state while checking availability
+              if (isLoading) {
+                return (
+                  <div className="text-center py-8 border-2 border-gray-200 rounded-lg bg-gray-50">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <h4 className="text-xl font-bold text-gray-700 mb-2">Checking availability...</h4>
+                    <p className="text-gray-600">Please wait while we load available time slots.</p>
+                  </div>
+                );
+              }
+                            
+                          // Show warning ONLY when there are truly no available slots
+              if (!hasAvailableSlots && !hasSlots) {
+                return (
+                  <div className="text-center py-8 border-2 border-orange-300 rounded-lg bg-orange-50">
+                    <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="text-3xl">⚠️</span>
+                    </div>
+                    <h4 className="text-xl font-bold text-orange-800 mb-2">No available time slots.</h4>
+                    <p className="text-orange-700 mb-6 px-4">
+                      {formData.doctor} is fully booked for {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}. Please select another doctor or date, or join the waiting list.
+                    </p>
+                    
+                    {/* Reminder Text - Only shows when fields are incomplete */}
+                    {(!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+                      !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
+                      (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())) && (
+                      <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-blue-700 text-sm font-medium">
+                          📝 Please fill all the fields to join the waiting list, and we'll let you know when a slot has opened up.
+                        </p>
+                      </div>
+                    )}
+                    
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            doctor: '', 
+                            appointmentDate: '', 
+                            timeSlot: '',
+                            priorityLevel: 'normal'
+                          }));
+                          setAvailableTimeSlots([]);
+                          setHasAvailableSlots(true);
+                        }}
+                        className="px-6 py-3 bg-white text-orange-700 border-2 border-orange-300 rounded-lg font-medium hover:bg-orange-50 transition"
+                      >
+                        📅 Choose Another Doctor/Date
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            // Add to waiting list collection
+                            const waitingListRef = collection(db, 'waitingList');
+                            await addDoc(waitingListRef, {
+                              fullName: formData.fullName || '',
+                              age: formData.age || '',
+                              photo: formData.photo || '',
+                              doctor: formData.doctor,
+                              appointmentDate: formData.appointmentDate,
+                              gender: formData.gender || '',
+                              medicalCondition: formData.medicalCondition || '',
+                              phone: formData.phone || '',
+                              priorityLevel: formData.priorityLevel,
+                              preferredTimeSlot: formData.timeSlot || '',
+                              requestedDate: formData.appointmentDate,
+                              status: 'waiting',
+                              createdAt: new Date().toISOString()
+                            });
+                            
+                            alert('✅ You have been added to the waiting list! We will notify you when a slot becomes available.');
+                            handleClose();
+                          } catch (error) {
+                            console.error('Error adding to waiting list:', error);
+                            alert('Failed to join waiting list. Please try again.');
+                          }
+                        }}
+                        disabled={!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+                                  !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
+                                  (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())}
+                        className="px-6 py-3 bg-orange-600 text-white border-2 border-orange-600 rounded-lg font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
+                      >
+                        📋 Join Waiting List
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              // Show available slots ONLY when there are available slots
+             // Show all slots (available AND booked)
+              if (availableTimeSlots.length > 0) {
+                return (
+                  <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
+                    {availableTimeSlots.map((slot) => {
+                      // Determine slot status and styling
+                      const isAvailable = slot.available && !slot.isBooked && !slot.isUnavailable;
+                      const isBooked = slot.isBooked;
+                      const isUnavailable = slot.isUnavailable && !slot.isBooked;
+                      
+                      // Determine button styling based on status
+                      let buttonClasses = 'px-3 py-3 rounded-lg text-sm font-medium transition border-2 ';
+                      let statusLabel = '';
+                      let statusLabelClasses = '';
+                      
+                      if (isBooked) {
+                        // Booked slots - red/disabled styling
+                        buttonClasses += 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed opacity-75';
+                        statusLabel = 'Booked';
+                        statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
+                      } else if (isUnavailable) {
+                        // Unavailable slots (doctor marked as unavailable)
+                        buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
+                        statusLabel = 'Unavailable';
+                        statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                      } else if (isAvailable) {
+                        // Available slots - green/clickable styling
+                        buttonClasses += 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 cursor-pointer';
+                        statusLabel = 'Available';
+                        statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70';
+                      } else {
+                        // Past time slots or other unavailable
+                        buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
+                        statusLabel = 'Unavailable';
+                        statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                      }
+                      
+                      // Add selection ring if this slot is selected
+                      if (formData.timeSlot === slot.time && isAvailable) {
+                        buttonClasses += ' ring-2 ring-blue-500 ring-offset-2';
+                      }
+                      
+                      return (
+                        <button
+                          key={slot.time}
+                          type="button"
+                          onClick={() => {
+                            if (isAvailable) {
+                              setFormData(prev => ({ ...prev, timeSlot: slot.time }));
+                            }
+                          }}
+                          disabled={!isAvailable}
+                          className={buttonClasses}
+                          aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
+                          aria-disabled={!isAvailable}
+                        >
+                          <div className="flex flex-col items-center">
+                            <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
+                            <span className={statusLabelClasses}>
+                              {statusLabel}
+                            </span>
+                            {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && (
+                              <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
+                            )}
+                            {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && (
+                              <span className="text-xs mt-1 text-orange-600 font-semibold">Urgent</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              
+              // Fallback - should not normally reach here
               return (
-                <div className="text-center py-8 border-2 border-orange-300 rounded-lg bg-orange-50">
-                  <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-3xl">⚠️</span>
-                  </div>
-                  <h4 className="text-xl font-bold text-orange-800 mb-2">No available time slots.</h4>
-                  <p className="text-orange-700 mb-6 px-4">
-                    {formData.doctor} is fully booked for {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}. Please select another doctor or date, or join the waiting list.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData(prev => ({ 
-                          ...prev, 
-                          doctor: '', 
-                          appointmentDate: '', 
-                          timeSlot: '',
-                          priorityLevel: 'normal'
-                        }));
-                        setAvailableTimeSlots([]);
-                        setHasAvailableSlots(true);
-                      }}
-                      className="px-6 py-3 bg-white text-orange-700 border-2 border-orange-300 rounded-lg font-medium hover:bg-orange-50 transition"
-                    >
-                      📅 Choose Another Doctor/Date
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        alert('Waiting list feature coming soon! You will be notified when a slot becomes available.');
-                      }}
-                      className="px-6 py-3 bg-orange-600 text-white border-2 border-orange-600 rounded-lg font-medium hover:bg-orange-700 transition"
-                    >
-                      📋 Join Waiting List
-                    </button>
-                  </div>
+                <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="text-gray-500">Unable to load time slots. Please try again.</p>
                 </div>
               );
-            }
-            
-            // ✅ HAS AVAILABLE SLOTS - Show only available ones
-            return (
-              <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
-                {availableTimeSlots
-                  .filter(slot => slot.available)
-                  .map((slot) => (
-                    <button
-                      key={slot.time}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, timeSlot: slot.time }))}
-                      className={`px-3 py-3 rounded-lg text-sm font-medium transition border-2 bg-green-50 text-green-700 border-green-300 hover:bg-green-100 cursor-pointer ${
-                        formData.timeSlot === slot.time ? 'ring-2 ring-blue-500 ring-offset-2' : ''
-                      }`}
-                      aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
-                    >
-                      <div className="flex flex-col items-center">
-                        <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
-                        <span className="text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70">
-                          Available
-                        </span>
-                        {slot.isBuffer && slot.bufferType === 'emergency' && (
-                          <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
-                        )}
-                        {slot.isBuffer && slot.bufferType === 'urgent' && (
-                          <span className="text-xs mt-1 text-orange-600 font-semibold">Urgent</span>
-                        )}
-                      </div>
-                    </button>
-                ))}
-              </div>
-            );
-          })()
-        ) : (
-          <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
-            <p className="text-gray-500">Please select a doctor, date, and priority level to view available time slots.</p>
-          </div>
-        )}
-      </div>
+            })()
+          ) : (
+            <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
+              <p className="text-gray-500">Please select a doctor, date, and priority level to view available time slots.</p>
+            </div>
+          )}
+        </div>
                     <div>
                   <label htmlFor="medicalCondition" className="block text-sm font-medium text-gray-700 mb-2">
                     Eye Condition <span className="text-red-500" aria-label="required">*</span>

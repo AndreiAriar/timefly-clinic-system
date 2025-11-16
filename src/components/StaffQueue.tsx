@@ -47,21 +47,21 @@ const StaffQueue = () => {
     onCancel: () => {},
   });
 
-// Remove notification
-const removeNotification = useCallback((id: string) => {
-  setNotifications(prev => prev.filter(notif => notif.id !== id));
-}, []);
+  // Add notification - using stable reference
+  const addNotification = useCallback((type: 'success' | 'error' | 'info' | 'warning', message: string) => {
+    const id = Date.now().toString();
+    setNotifications(prev => [...prev, { id, type, message }]);
+    
+    // Auto remove after 5 seconds - use functional update to avoid dependency
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(notif => notif.id !== id));
+    }, 5000);
+  }, []);
 
-// Add notification
-const addNotification = useCallback((type: 'success' | 'error' | 'info' | 'warning', message: string) => {
-  const id = Date.now().toString();
-  setNotifications(prev => [...prev, { id, type, message }]);
-  
-  // Auto remove after 5 seconds
-  setTimeout(() => {
-    removeNotification(id);
-  }, 5000);
-}, [removeNotification]); // Add removeNotification as dependency
+  // Remove notification
+  const removeNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(notif => notif.id !== id));
+  }, []);
 
   // Show confirm dialog
   const showConfirmDialog = (title: string, message: string, onConfirm: () => void) => {
@@ -102,52 +102,52 @@ const addNotification = useCallback((type: 'success' | 'error' | 'info' | 'warni
     return date.toLocaleDateString('en-US', options);
   };
 
-const loadQueue = useCallback(async () => {
-  setIsLoading(true);
-  try {
-    const today = getTodayDatePH();
-    const appointmentsRef = collection(db, 'appointments');
-    
-    // Query all appointments for today
-    const q = query(
-      appointmentsRef,
-      where('appointmentDate', '==', today)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    
-    // Filter appointments that should be in the queue (excluding cancelled and completed)
-    let appointmentsData = querySnapshot.docs
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-    
-    // Filter out cancelled and completed appointments
-    appointmentsData = appointmentsData.filter(apt => 
-      apt.status !== 'cancelled' && apt.status !== 'completed'
-    );
-    
-    // Sort by queue number
-    appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
-    
-    setAppointments(appointmentsData);
-    
-    // Check if there's an appointment with status 'serving' or 'confirmed'
-    const currentlyServing = appointmentsData.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
-    
-    if (currentlyServing) {
-      setNowServing(currentlyServing);
-    } else {
-      setNowServing(null);
+  const loadQueue = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const today = getTodayDatePH();
+      const appointmentsRef = collection(db, 'appointments');
+      
+      // Query all appointments for today
+      const q = query(
+        appointmentsRef,
+        where('appointmentDate', '==', today)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      // Filter appointments that should be in the queue (excluding cancelled, completed, and missed)
+      let appointmentsData = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Appointment[];
+      
+      // Filter out cancelled, completed, and missed appointments
+      appointmentsData = appointmentsData.filter(apt => 
+        apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
+      );
+      
+      // Sort by queue number
+      appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
+      
+      setAppointments(appointmentsData);
+      
+      // Check if there's an appointment with status 'serving' or 'confirmed'
+      const currentlyServing = appointmentsData.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
+      
+      if (currentlyServing) {
+        setNowServing(currentlyServing);
+      } else {
+        setNowServing(null);
+      }
+    } catch (error) {
+      console.error('Error loading queue:', error);
+      console.error('Failed to load queue. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    console.error('Error loading queue:', error);
-    addNotification('error', 'Failed to load queue. Please try again.');
-  } finally {
-    setIsLoading(false);
-  }
-}, [addNotification]); // Added addNotification as dependency
+  }, []);
 
   useEffect(() => {
     loadQueue();
@@ -172,18 +172,34 @@ const loadQueue = useCallback(async () => {
             await updateDoc(currentServingRef, {
               status: 'scheduled'
             });
+            
+            // Update local state for previous patient
+            setAppointments(prev => 
+              prev.map(apt => 
+                apt.id === nowServing.id 
+                  ? { ...apt, status: 'scheduled' } 
+                  : apt
+              )
+            );
           }
           
-          // Update the new appointment status to 'confirmed' (replaces the Confirm button functionality)
+          // Update the new appointment status to 'confirmed'
           const appointmentRef = doc(db, 'appointments', appointment.id);
           await updateDoc(appointmentRef, {
             status: 'confirmed'
           });
           
-          setNowServing(appointment);
+          // Update local state for new patient
+          setAppointments(prev => 
+            prev.map(apt => 
+              apt.id === appointment.id 
+                ? { ...apt, status: 'confirmed' } 
+                : apt
+            )
+          );
           
-          // Reload the queue to reflect the status change
-          await loadQueue();
+          // Update nowServing with confirmed status
+          setNowServing({ ...appointment, status: 'confirmed' });
           
           // Success message
           addNotification('success', `Now serving ${appointment.fullName} (Queue #${appointment.queueNumber})`);
@@ -215,12 +231,37 @@ const loadQueue = useCallback(async () => {
           }
           
           addNotification('success', `Appointment for ${appointment.fullName} marked as completed!`);
-          
-          // Reload the queue
-          await loadQueue();
         } catch (error) {
           console.error('Error completing appointment:', error);
           addNotification('error', 'Failed to complete appointment. Please try again.');
+        }
+      }
+    );
+  };
+
+  const handleMiss = async (appointment: Appointment) => {
+    showConfirmDialog(
+      'Mark as Missed',
+      `Mark ${appointment.fullName}'s appointment as missed? This will move to the next patient.`,
+      async () => {
+        try {
+          const appointmentRef = doc(db, 'appointments', appointment.id);
+          await updateDoc(appointmentRef, {
+            status: 'missed'
+          });
+          
+          // Remove from queue display (filter out missed appointments)
+          setAppointments(prev => prev.filter(apt => apt.id !== appointment.id));
+          
+          // If the missed appointment was the one being served, clear nowServing
+          if (nowServing && nowServing.id === appointment.id) {
+            setNowServing(null);
+          }
+          
+          addNotification('info', `${appointment.fullName} marked as missed (Queue #${appointment.queueNumber})`);
+        } catch (error) {
+          console.error('Error marking appointment as missed:', error);
+          addNotification('error', 'Failed to mark as missed. Please try again.');
         }
       }
     );
@@ -249,11 +290,67 @@ const loadQueue = useCallback(async () => {
     }
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'serving': return 'bg-green-100 text-green-800';
+      case 'confirmed': return 'bg-green-100 text-green-800';
+      case 'scheduled': return 'bg-blue-100 text-blue-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'completed': return 'bg-gray-100 text-gray-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      case 'missed': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   const convertTo12Hour = (time24: string): string => {
     const [hours, minutes] = time24.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';
     const hours12 = hours % 12 || 12;
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  const calculateWaitingTime = (timeSlot: string): string => {
+    const now = new Date();
+    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    
+    const [hours, minutes] = timeSlot.split(':').map(Number);
+    const appointmentTime = new Date(phTime);
+    appointmentTime.setHours(hours, minutes, 0, 0);
+    
+    // Calculate difference in minutes
+    const diffMs = appointmentTime.getTime() - phTime.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+    
+    if (diffMinutes > 0) {
+      // Appointment is in the future - show remaining time
+      if (diffMinutes < 60) {
+        return `${diffMinutes} min remaining`;
+      } else {
+        const hrs = Math.floor(diffMinutes / 60);
+        const mins = diffMinutes % 60;
+        if (mins === 0) {
+          return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} remaining`;
+        }
+        return `${hrs}h ${mins}m remaining`;
+      }
+    } else if (diffMinutes === 0) {
+      // Appointment is exactly now
+      return 'Starting now';
+    } else {
+      // Appointment time has passed - show how long they've been waiting
+      const waitingMinutes = Math.abs(diffMinutes);
+      if (waitingMinutes < 60) {
+        return `Waiting ${waitingMinutes} min`;
+      } else {
+        const hrs = Math.floor(waitingMinutes / 60);
+        const mins = waitingMinutes % 60;
+        if (mins === 0) {
+          return `Waiting ${hrs}h`;
+        }
+        return `Waiting ${hrs}h ${mins}m`;
+      }
+    }
   };
 
   const getNotificationColor = (type: string) => {
@@ -297,29 +394,30 @@ const loadQueue = useCallback(async () => {
             </div>
           ))}
         </div>
-          {/* Confirm Dialog */}
-          {confirmDialog.isOpen && (
-            <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-                <h3 className="text-xl font-bold text-gray-900 mb-2">{confirmDialog.title}</h3>
-                <p className="text-gray-600 mb-6">{confirmDialog.message}</p>
-                <div className="flex gap-3 justify-end">
-                  <button
-                    onClick={confirmDialog.onCancel}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmDialog.onConfirm}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
-                  >
-                    Confirm
-                  </button>
-                </div>
+
+        {/* Confirm Dialog */}
+        {confirmDialog.isOpen && (
+          <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+              <h3 className="text-xl font-bold text-gray-900 mb-2">{confirmDialog.title}</h3>
+              <p className="text-gray-600 mb-6">{confirmDialog.message}</p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={confirmDialog.onCancel}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDialog.onConfirm}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+                >
+                  Confirm
+                </button>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
         {/* Header */}
         <div className="mb-8">
@@ -392,13 +490,30 @@ const loadQueue = useCallback(async () => {
                 <h4 className="font-semibold text-gray-900 mb-1">{appointment.fullName}</h4>
                 <p className="text-sm text-gray-600 mb-2">{appointment.doctor}</p>
                 <p className="text-sm text-gray-500">{convertTo12Hour(appointment.timeSlot)}</p>
-                <button
-                  onClick={() => handleStartServing(appointment)}
-                  className="w-full mt-3 bg-yellow-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-yellow-600 transition flex items-center justify-center gap-2"
-                >
-                  <Play className="w-4 h-4" />
-                  Start Serving
-                </button>
+                
+                {/* Waiting Time */}
+                <div className="mt-2 flex items-center gap-2 text-orange-600">
+                  <Clock className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Waiting: {calculateWaitingTime(appointment.timeSlot)}</span>
+                </div>
+                
+                {/* Action Buttons */}
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => handleStartServing(appointment)}
+                    className="flex-1 bg-yellow-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-yellow-600 transition flex items-center justify-center gap-2"
+                  >
+                    <Play className="w-4 h-4" />
+                    Serve
+                  </button>
+                  <button
+                    onClick={() => handleMiss(appointment)}
+                    className="px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition"
+                    title="Mark as Missed"
+                  >
+                    Miss
+                  </button>
+                </div>
               </div>
             ))}
             {getUpNextAppointments().length === 0 && (
@@ -434,7 +549,18 @@ const loadQueue = useCallback(async () => {
                             {appointment.age} years • {appointment.gender} • {appointment.doctor}
                           </p>
                           <p className="text-sm text-gray-500">{convertTo12Hour(appointment.timeSlot)}</p>
-                          <p className="text-xs text-gray-400 mt-1">Status: {appointment.status}</p>
+                          
+                          {/* Status and Waiting Time */}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
+                              {appointment.status}
+                            </span>
+                            <span className="text-xs text-gray-300">•</span>
+                            <div className="flex items-center gap-1 text-orange-600">
+                              <Clock className="w-3 h-3" />
+                              <span className="text-xs font-semibold">Waiting: {calculateWaitingTime(appointment.timeSlot)}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                       
@@ -444,13 +570,22 @@ const loadQueue = useCallback(async () => {
                         </span>
                         
                         {(nowServing?.id !== appointment.id) && (
-                          <button
-                            onClick={() => handleStartServing(appointment)}
-                            className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition flex items-center gap-2"
-                          >
-                            <Play className="w-4 h-4" />
-                            Serve
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleStartServing(appointment)}
+                              className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition flex items-center gap-2"
+                            >
+                              <Play className="w-4 h-4" />
+                              Serve
+                            </button>
+                            <button
+                              onClick={() => handleMiss(appointment)}
+                              className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition"
+                              title="Mark as Missed"
+                            >
+                              Miss
+                            </button>
+                          </>
                         )}
                         
                         {(nowServing?.id === appointment.id) && (

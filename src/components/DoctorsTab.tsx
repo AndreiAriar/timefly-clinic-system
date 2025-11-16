@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Edit2, Trash2, User, Mail, Phone, Stethoscope, Calendar } from 'lucide-react';
+import { Search, Filter, Plus, Edit2, Trash2, User, Mail, Phone, Stethoscope, Calendar, X } from 'lucide-react';
 import { collection, query, getDocs, deleteDoc, doc, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import DoctorModal from './DoctorModal';
@@ -39,6 +39,8 @@ const DoctorsTab = () => {
   const [showDoctorModal, setShowDoctorModal] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [doctorToDelete, setDoctorToDelete] = useState<Doctor | null>(null);
 
   const specialties = [
     'Ophthalmology',
@@ -173,19 +175,29 @@ const DoctorsTab = () => {
     setShowDoctorModal(true);
   };
 
-  const handleDeleteDoctor = async (doctor: Doctor) => {
-    if (!confirm(`Are you sure you want to delete Dr. ${doctor.name}? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteDoctor = (doctor: Doctor) => {
+    setDoctorToDelete(doctor);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteDoctor = async () => {
+    if (!doctorToDelete) return;
 
     try {
-      await deleteDoc(doc(db, 'doctors', doctor.id));
+      await deleteDoc(doc(db, 'doctors', doctorToDelete.id));
       await loadDoctors();
       toast.success('Doctor deleted successfully!');
+      setShowDeleteModal(false);
+      setDoctorToDelete(null);
     } catch (error) {
       console.error('Error deleting doctor:', error);
       toast.error('Failed to delete doctor. Please try again.');
     }
+  };
+
+  const cancelDeleteDoctor = () => {
+    setShowDeleteModal(false);
+    setDoctorToDelete(null);
   };
 
   const handleDoctorModalClose = () => {
@@ -453,6 +465,67 @@ const DoctorsTab = () => {
         onDoctorAdded={loadDoctors}
         editDoctor={selectedDoctor}
       />
+
+      {/* Delete Confirmation Modal */}
+        {showDeleteModal && doctorToDelete && (
+        <div className="fixed inset-0 z-[100] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+          <div className="flex items-center justify-center min-h-screen px-4 text-center sm:block sm:p-0">
+            <div 
+              className="fixed inset-0 backdrop-blur-sm transition-opacity"
+              onClick={cancelDeleteDoctor}
+              aria-hidden="true"
+            ></div>
+
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[101]">
+              {/* Modal content remains exactly the same here */}
+              <div className="bg-white px-6 py-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 id="delete-modal-title" className="text-2xl font-bold text-gray-900">
+                    Confirm Deletion
+                  </h3>
+                  <button
+                    onClick={cancelDeleteDoctor}
+                    className="text-gray-400 hover:text-gray-600 transition"
+                    aria-label="Close modal"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="mb-6">
+                  <p className="text-gray-700 mb-4">
+                    Are you sure you want to delete <strong>Dr. {doctorToDelete.name}</strong>? This action cannot be undone.
+                  </p>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-700 text-sm font-medium">
+                      ⚠️ Warning: This will permanently remove the doctor and all associated data.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  <button
+                    type="button"
+                    onClick={cancelDeleteDoctor}
+                    className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDeleteDoctor}
+                    className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition"
+                  >
+                    Delete Doctor
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -40,56 +40,57 @@ const Appointments = () => {
     loadAppointments();
   }, []);
 
-useEffect(() => {
-  let filtered = [...appointments];
+  useEffect(() => {
+    let filtered = [...appointments];
 
-  // Search filter
-  if (searchQuery.trim()) {
-    const query = searchQuery.toLowerCase();
-    filtered = filtered.filter(apt => 
-      apt.fullName.toLowerCase().includes(query) ||
-      apt.doctor.toLowerCase().includes(query) ||
-      apt.queueNumber.toString().includes(query) ||
-      apt.phone.includes(query)
-    );
-  }
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(apt => 
+        apt.fullName.toLowerCase().includes(query) ||
+        apt.doctor.toLowerCase().includes(query) ||
+        apt.queueNumber.toString().includes(query) ||
+        apt.phone.includes(query)
+      );
+    }
 
-  // Status filter
-  if (statusFilter !== 'all') {
-    filtered = filtered.filter(apt => apt.status === statusFilter);
-  }
+    // Status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(apt => apt.status === statusFilter);
+    }
 
-  // Priority filter
-  if (priorityFilter !== 'all') {
-    filtered = filtered.filter(apt => apt.priorityLevel === priorityFilter);
-  }
-  setFilteredAppointments(filtered);
-}, [appointments, searchQuery, statusFilter, priorityFilter]);
+    // Priority filter
+    if (priorityFilter !== 'all') {
+      filtered = filtered.filter(apt => apt.priorityLevel === priorityFilter);
+    }
+    setFilteredAppointments(filtered);
+  }, [appointments, searchQuery, statusFilter, priorityFilter]);
 
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
-  const options: Intl.DateTimeFormatOptions = { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const options: Intl.DateTimeFormatOptions = { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    };
+    return date.toLocaleDateString('en-US', options);
   };
-  return date.toLocaleDateString('en-US', options);
-};
 
-const convertTo12Hour = (time24: string): string => {
-  const [hours, minutes] = time24.split(':').map(Number);
-  const period = hours >= 12 ? 'PM' : 'AM';
-  const hours12 = hours % 12 || 12;
-  return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-};
+  const convertTo12Hour = (time24: string): string => {
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
 
-const getTodayDateString = (): string => {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+  const getTodayDateString = (): string => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const loadAppointments = async () => {
     setIsLoading(true);
     try {
@@ -111,15 +112,17 @@ const getTodayDateString = (): string => {
     }
   };
 
- const getTodaysAppointments = () => {
+  // In Appointments.tsx - Update the filtering functions
+const getTodaysAppointments = () => {
   const today = getTodayDateString();
-  return filteredAppointments.filter(apt => 
-    apt.appointmentDate === today && apt.status !== 'cancelled'
-  );
+  return filteredAppointments.filter(apt => apt.appointmentDate === today);
 };
+
+
   const getMyAppointments = () => {
-    return filteredAppointments.filter(apt => apt.status !== 'cancelled');
-  };
+  return filteredAppointments; // Show all appointments to patient
+};
+
 
   const handleView = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
@@ -189,7 +192,7 @@ const getTodayDateString = (): string => {
     }
   };
 
-const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string) => {
   switch (status) {
     case 'pending': return 'bg-yellow-400 text-white';
     case 'scheduled': return 'bg-green-400 text-white';
@@ -198,95 +201,103 @@ const getStatusColor = (status: string) => {
     case 'confirmed': return 'bg-green-400 text-white';
     case 'serving': return 'bg-green-400 text-white';
     case 'completed': return 'bg-green-400 text-white';
+    case 'missed': return 'bg-red-600 text-white'; 
     default: return 'bg-gray-300 text-white';
   }
 };
 
-  const AppointmentCard = ({ appointment, showActions = true }: { appointment: Appointment; showActions?: boolean }) => (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
-      <div className="bg-blue-500 px-4 py-3 flex justify-between items-center">
-        <div className="text-white">
-          <p className="text-sm font-medium">Queue Number</p>
+const AppointmentCard = ({ appointment, showActions = true }: { appointment: Appointment; showActions?: boolean }) => (
+  <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
+    <div className="bg-blue-500 px-4 py-3 flex justify-between items-center">
+      <div className="text-white">
+        <p className="text-sm font-medium">Queue Number</p>
+      </div>
+    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
+      {appointment.status}
+    </span>
+    </div>
+
+    <div className="p-4 space-y-3">
+      {/* Reminder Message */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+        <p className="text-sm text-yellow-800 font-medium text-center">
+          Please confirm if you can attend your appointment. Click the 'View' button to confirm.
+        </p>
+      </div>
+
+      <div className="flex items-start gap-3">
+        {appointment.photo ? (
+          <img
+            src={appointment.photo}
+            alt="Patient"
+            className="w-12 h-12 rounded-full object-cover"
+          />
+        ) : (
+          <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+            <User className="w-6 h-6 text-indigo-600" />
+          </div>
+        )}
+        <div className="flex-1">
+          <h3 className="font-semibold text-gray-900">{appointment.fullName}</h3>
+          <p className="text-sm text-gray-500">{appointment.age} years, {appointment.gender}</p>
         </div>
-      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
-        {appointment.status}
+      </div>
+
+      <div className="space-y-2 pt-2 border-t">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <Calendar className="w-4 h-4" />
+        <span>{formatDate(appointment.appointmentDate)}</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <Clock className="w-4 h-4" />
+          <span>{convertTo12Hour(appointment.timeSlot)}</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <Stethoscope className="w-4 h-4" />
+          <span>{appointment.doctor}</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <Phone className="w-4 h-4" />
+          <span>{appointment.phone}</span>
+        </div>
+      </div>
+
+      <div className="pt-2">
+       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
+        <AlertCircle className="w-3 h-3" />
+        {appointment.priorityLevel}
       </span>
       </div>
 
-      <div className="p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          {appointment.photo ? (
-            <img
-              src={appointment.photo}
-              alt="Patient"
-              className="w-12 h-12 rounded-full object-cover"
-            />
-          ) : (
-            <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
-              <User className="w-6 h-6 text-indigo-600" />
-            </div>
+        {showActions && (
+        <div className="flex gap-2 pt-3">
+          <button
+            onClick={() => handleView(appointment)}
+            className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
+          >
+            View
+          </button>
+          {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
+            <>
+              <button
+                onClick={() => handleReschedule(appointment)}
+                className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
+              >
+                Reschedule
+              </button>
+              <button
+                onClick={() => handleCancel(appointment)}
+                className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
+              >
+                Cancel
+              </button>
+            </>
           )}
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-900">{appointment.fullName}</h3>
-            <p className="text-sm text-gray-500">{appointment.age} years, {appointment.gender}</p>
-          </div>
         </div>
-
-        <div className="space-y-2 pt-2 border-t">
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Calendar className="w-4 h-4" />
-          <span>{formatDate(appointment.appointmentDate)}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Clock className="w-4 h-4" />
-            <span>{convertTo12Hour(appointment.timeSlot)}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Stethoscope className="w-4 h-4" />
-            <span>{appointment.doctor}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Phone className="w-4 h-4" />
-            <span>{appointment.phone}</span>
-          </div>
-        </div>
-
-        <div className="pt-2">
-         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
-          <AlertCircle className="w-3 h-3" />
-          {appointment.priorityLevel}
-        </span>
-        </div>
-
-          {showActions && (
-          <div className="flex gap-2 pt-3">
-            <button
-              onClick={() => handleView(appointment)}
-              className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
-            >
-              View
-            </button>
-            {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
-              <>
-                <button
-                  onClick={() => handleReschedule(appointment)}
-                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
-                >
-                  Reschedule
-                </button>
-                <button
-                  onClick={() => handleCancel(appointment)}
-                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
-                >
-                  Cancel
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </div>
-  );
+  </div>
+);
 
   const todaysAppointments = getTodaysAppointments();
   const myAppointments = getMyAppointments();
@@ -456,15 +467,16 @@ const getStatusColor = (status: string) => {
 
       {/* View Modal */}
       {showViewModal && selectedAppointment && (
-        <ViewAppointmentModal
-          isOpen={showViewModal}
-          onClose={() => {
-            setShowViewModal(false);
-            setSelectedAppointment(null);
-          }}
-          appointment={selectedAppointment}
-        />
-      )}
+          <ViewAppointmentModal
+            isOpen={showViewModal}
+            onClose={() => {
+              setShowViewModal(false);
+              setSelectedAppointment(null);
+            }}
+            appointment={selectedAppointment}
+            onAppointmentUpdate={loadAppointments}
+          />
+        )}
 
       {/* Reschedule Modal */}
       {showRescheduleModal && selectedAppointment && (

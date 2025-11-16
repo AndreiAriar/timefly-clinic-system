@@ -6,6 +6,9 @@ import DoctorsTab from './DoctorsTab';
 import CalendarTab from './CalendarTab';
 import DisplayFeedback from './DisplayFeedback'; 
 import ContactMessagesTab from './ContactMessagesTab';
+import WaitingList from './WaitingList';
+import Reports from './Reports';
+
 
 interface StaffDashboardProps {
   userEmail: string;
@@ -18,15 +21,13 @@ type PageType = 'home' | 'appointments' | 'queue' | 'doctors' | 'calendar' | 're
 
 const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashboardProps) => {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
-  const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false);
-  const [isMobileDropdownOpen, setIsMobileDropdownOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [profilePhoto, setProfilePhoto] = useState<string>(userPhoto || '');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const desktopDropdownRef = useRef<HTMLDivElement>(null);
-  const mobileDropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (userPhoto) {
@@ -47,8 +48,6 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
 
   const handleChangePhotoClick = () => {
     fileInputRef.current?.click();
-    setIsDesktopDropdownOpen(false);
-    setIsMobileDropdownOpen(false);
   };
 
   const getInitials = (email: string, name?: string) => {
@@ -71,37 +70,40 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (desktopDropdownRef.current && !desktopDropdownRef.current.contains(event.target as Node)) {
-        setIsDesktopDropdownOpen(false);
-      }
-      if (mobileDropdownRef.current && !mobileDropdownRef.current.contains(event.target as Node)) {
-        setIsMobileDropdownOpen(false);
-      }
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+      // Close mobile menu when clicking outside
+      if (isMobileMenuOpen && mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
         setIsMobileMenuOpen(false);
       }
     };
 
-    if (isDesktopDropdownOpen || isMobileDropdownOpen || isMobileMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isDesktopDropdownOpen, isMobileDropdownOpen, isMobileMenuOpen]);
+  }, [isMobileMenuOpen]);
 
   const handleNavClick = (page: PageType) => {
     setCurrentPage(page);
-    setIsMobileMenuOpen(false);
+    // Only close mobile menu on mobile devices
+    if (window.innerWidth < 1024) {
+      setIsMobileMenuOpen(false);
+    }
+    // Keep sidebar open on desktop when navigating
   };
 
   const handleLogout = () => {
-    setIsDesktopDropdownOpen(false);
-    setIsMobileDropdownOpen(false);
     onLogout();
   };
-  const renderPage = () => {
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
+
+const renderPage = () => {
   switch (currentPage) {
     case 'home':
       return <StaffHome onNavigate={handleNavClick} />;
@@ -118,468 +120,256 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
     case 'contact-messages':
       return <ContactMessagesTab />;
     case 'reports':
+      return <Reports />;
     case 'waiting-list':
-      return (
-        <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {currentPage.charAt(0).toUpperCase() + currentPage.slice(1)} Section
-            </h2>
-            <p className="text-gray-600">This section is coming soon!</p>
-          </div>
-        </div>
-      );
+      return <WaitingList />;
     default:
       return <StaffHome onNavigate={handleNavClick} />;
   }
 };
 
+  const navItems = [
+    { id: 'home', label: 'Dashboard', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      </svg>
+    )},
+    { id: 'appointments', label: 'Appointments', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    )},
+    { id: 'queue', label: 'Queue', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+      </svg>
+    )},
+    { id: 'doctors', label: 'Doctors', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    )},
+    { id: 'calendar', label: 'Calendar', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    )},
+    { id: 'reports', label: 'Reports', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    )},
+    { id: 'waiting-list', label: 'Waiting List', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    )},
+    { id: 'feedback', label: 'Feedbacks', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+      </svg>
+    )},
+    { id: 'contact-messages', label: 'Patient Inquiries', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    )}
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            {/* Logo - Now Clickable */}
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 z-40 lg:hidden transition-opacity duration-300"
+          onClick={closeMobileMenu}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div 
+        ref={sidebarRef}
+        className={`
+          fixed lg:static inset-y-0 left-0 z-50
+          bg-white shadow-xl border-r border-gray-200
+          transition-all duration-300 ease-in-out
+          flex flex-col
+          ${isSidebarOpen ? 'w-64' : 'w-16'}
+          ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}
+      >
+        {/* Logo Section */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
+          <div className="flex items-center space-x-2 min-w-0">
+            <img 
+              src="/timefly_logo.png" 
+              alt="TimeFly Logo" 
+              className="h-8 w-auto flex-shrink-0"
+            />
+            <span className={`text-xl font-bold text-gray-900 transition-all duration-300 truncate ${
+              isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
+            }`}>
+              TimeFly
+            </span>
+          </div>
+          
+          {/* Desktop Toggle Button */}
+          <button
+            onClick={toggleSidebar}
+            className="p-2 rounded-lg hover:bg-gray-100 transition hidden lg:block flex-shrink-0"
+          >
+            <svg className={`w-5 h-5 text-gray-600 transition-transform ${isSidebarOpen ? 'rotate-180' : ''}`} 
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          </button>
+
+          {/* Mobile Close Button */}
+          <button
+            onClick={closeMobileMenu}
+            className="p-2 rounded-lg hover:bg-gray-100 transition lg:hidden flex-shrink-0"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Navigation Items */}
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => handleNavClick(item.id as PageType)}
+              className={`
+                w-full flex items-center p-3 rounded-lg transition-all duration-200
+                ${currentPage === item.id 
+                  ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' 
+                  : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                }
+                ${isSidebarOpen ? 'justify-start space-x-3' : 'justify-center'}
+                group
+              `}
+              title={!isSidebarOpen ? item.label : ''}
+            >
+              <div className={`flex-shrink-0 ${currentPage === item.id ? 'text-indigo-600' : 'text-gray-500 group-hover:text-gray-700'}`}>
+                {item.icon}
+              </div>
+              <span className={`font-medium transition-all duration-300 truncate ${
+                isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
+              }`}>
+                {item.label}
+              </span>
+            </button>
+          ))}
+        </nav>
+
+        {/* User Profile Section */}
+        <div className="border-t border-gray-200 bg-white flex-shrink-0">
+          <div className={`p-4 ${isSidebarOpen ? 'space-y-3' : 'space-y-2'}`}>
+            <div className={`flex items-center ${isSidebarOpen ? 'space-x-3' : 'justify-center'}`}>
+              {profilePhoto ? (
+                <img 
+                  src={profilePhoto} 
+                  alt="Profile" 
+                  className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600 flex-shrink-0"
+                  onError={() => setProfilePhoto('')}
+                />
+              ) : (
+                <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold border-2 border-indigo-600 flex-shrink-0">
+                  {getInitials(userEmail, userName)}
+                </div>
+              )}
+              
+              <div className={`min-w-0 transition-all duration-300 ${
+                isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
+              }`}>
+                <p className="font-semibold text-gray-900 truncate text-sm">{displayName}</p>
+                <p className="text-gray-500 text-xs truncate">{userEmail}</p>
+              </div>
+            </div>
+
+            {/* Profile Actions */}
+            <div className={`transition-all duration-300 space-y-1 ${
+              isSidebarOpen ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
+            }`}>
+              <button
+                onClick={handleChangePhotoClick}
+                className="w-full text-left text-sm text-gray-600 hover:text-gray-900 p-2 rounded hover:bg-gray-100 transition"
+              >
+                Change Photo
+              </button>
+              <button
+                onClick={handleLogout}
+                className="w-full text-left text-sm text-red-600 hover:text-red-700 p-2 rounded hover:bg-red-50 transition"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-h-screen transition-all duration-300">
+        {/* Mobile Header */}
+        <header className="lg:hidden bg-white shadow-sm border-b border-gray-200 p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            {/* Mobile Menu Toggle */}
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-2 rounded-lg hover:bg-gray-100 transition"
+            >
+              <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            {/* Logo and Title */}
             <button 
               onClick={handleHomeClick}
-              className="flex items-center space-x-2 hover:opacity-80 transition-opacity focus:outline-none"
+              className="flex items-center space-x-2"
             >
               <img 
                 src="/timefly_logo.png" 
                 alt="TimeFly Logo" 
-                className="h-12 w-auto"
+                className="h-8 w-auto"
               />
-              <span className="text-2xl font-bold text-gray-900">TimeFly</span>
-              <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full">
-                STAFF
-              </span>
+              <span className="text-xl font-bold text-gray-900">TimeFly</span>
             </button>
 
-            {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center space-x-8">
-              <button
-                onClick={() => handleNavClick('appointments')}
-                className={`font-medium transition pb-2 ${
-                  currentPage === 'appointments' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
-                }`}
-              >
-                Appointments
-              </button>
-              <button
-                onClick={() => handleNavClick('queue')}
-                className={`font-medium transition pb-2 ${
-                  currentPage === 'queue' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
-                }`}
-              >
-                Queue
-              </button>
-              <button
-                onClick={() => handleNavClick('doctors')}
-                className={`font-medium transition pb-2 ${
-                  currentPage === 'doctors' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
-                }`}
-              >
-                Doctors
-              </button>
-              <button
-                onClick={() => handleNavClick('calendar')}
-                className={`font-medium transition pb-2 ${
-                  currentPage === 'calendar' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
-                }`}
-              >
-                Calendar
-              </button>
-              <button
-                onClick={() => handleNavClick('reports')}
-                className={`font-medium transition pb-2 ${
-                  currentPage === 'reports' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
-                }`}
-              >
-                Reports
-              </button>
-              <button
-                onClick={() => handleNavClick('waiting-list')}
-                className={`font-medium transition pb-2 ${
-                  currentPage === 'waiting-list' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
-                }`}
-              >
-                Waiting List
-              </button>
-              <button
-                onClick={() => handleNavClick('feedback')}
-                className={`font-medium transition pb-2 ${
-                  currentPage === 'feedback' 
-                    ? 'text-blue-600 border-b-2 border-blue-600' 
-                    : 'text-gray-700 hover:text-blue-600'
-                }`}
-              >
-                Feedback
-              </button>
-              <button
-              onClick={() => handleNavClick('contact-messages')}
-              className={`font-medium transition pb-2 ${
-                currentPage === 'contact-messages' 
-                  ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                  : 'text-gray-700 hover:text-indigo-600'
-              }`}
-            >
-               Contact
-            </button>
-              
-              {/* Desktop Profile Dropdown */}
-              <div className="relative" ref={desktopDropdownRef}>
-                <button
-                  onClick={() => setIsDesktopDropdownOpen(!isDesktopDropdownOpen)}
-                  className="flex items-center space-x-2 focus:outline-none"
-                >
-                  {profilePhoto ? (
-                    <img 
-                      src={profilePhoto} 
-                      alt="Profile" 
-                      className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600"
-                      onError={() => {
-                        setProfilePhoto('');
-                      }}
-                    />
-                  ) : (
-                    <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold border-2 border-indigo-600">
-                      {getInitials(userEmail, userName)}
-                    </div>
-                  )}
-                  <svg 
-                    className={`w-4 h-4 text-gray-700 transition-transform ${isDesktopDropdownOpen ? 'rotate-180' : ''}`}
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {isDesktopDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl overflow-hidden z-50">
-                    <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
-                      <div className="flex items-center space-x-3">
-                        {profilePhoto ? (
-                          <img 
-                            src={profilePhoto} 
-                            alt="Profile" 
-                            className="h-16 w-16 rounded-full object-cover border-2 border-white"
-                            onError={() => {
-                              setProfilePhoto('');
-                            }}
-                          />
-                        ) : (
-                          <div className="h-16 w-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold border-2 border-white">
-                            {getInitials(userEmail, userName)}
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <p className="font-semibold text-lg">{displayName}</p>
-                          <p className="text-sm text-white/90 truncate">{userEmail}</p>
-                          <p className="text-xs text-white/80 mt-1">Staff Member</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="py-2">
-                      <button
-                        onClick={handleChangePhotoClick}
-                        className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-100 flex items-center space-x-3 transition"
-                      >
-                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span>Change Photo</span>
-                      </button>
-
-                      <div className="border-t border-gray-200 my-2"></div>
-
-                      <button
-                        onClick={handleLogout}
-                        className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 flex items-center space-x-3 transition"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        <span>Logout</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Mobile Profile and Menu */}
-            <div className="md:hidden flex items-center space-x-3">
-              <div className="relative" ref={mobileDropdownRef}>
-                <button
-                  onClick={() => setIsMobileDropdownOpen(!isMobileDropdownOpen)}
-                  className="flex items-center focus:outline-none"
-                >
-                  {profilePhoto ? (
-                    <img 
-                      src={profilePhoto} 
-                      alt="Profile" 
-                      className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600"
-                      onError={() => {
-                        setProfilePhoto('');
-                      }}
-                    />
-                  ) : (
-                    <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold border-2 border-indigo-600">
-                      {getInitials(userEmail, userName)}
-                    </div>
-                  )}
-                </button>
-
-                {isMobileDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl overflow-hidden z-50">
-                    <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
-                      <div className="flex items-center space-x-3">
-                        {profilePhoto ? (
-                          <img 
-                            src={profilePhoto} 
-                            alt="Profile" 
-                            className="h-16 w-16 rounded-full object-cover border-2 border-white"
-                            onError={() => {
-                              setProfilePhoto('');
-                            }}
-                          />
-                        ) : (
-                          <div className="h-16 w-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold border-2 border-white">
-                            {getInitials(userEmail, userName)}
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <p className="font-semibold text-lg">{displayName}</p>
-                          <p className="text-sm text-white/90 truncate">{userEmail}</p>
-                          <p className="text-xs text-white/80 mt-1">Staff Member</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="py-2">
-                      <button
-                        onClick={handleChangePhotoClick}
-                        className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-100 flex items-center space-x-3 transition"
-                      >
-                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span>Change Photo</span>
-                      </button>
-
-                      <div className="border-t border-gray-200 my-2"></div>
-
-                      <button
-                        onClick={handleLogout}
-                        className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 flex items-center space-x-3 transition"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        <span>Logout</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoChange}
-                className="hidden"
-              />
-
-              <button 
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="p-2 rounded-lg hover:bg-gray-100"
-              >
-                <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
+            {/* Mobile Profile */}
+            <div className="flex items-center space-x-3">
+              {profilePhoto ? (
+                <img 
+                  src={profilePhoto} 
+                  alt="Profile" 
+                  className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600"
+                  onError={() => setProfilePhoto('')}
+                />
+              ) : (
+                <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold border-2 border-indigo-600">
+                  {getInitials(userEmail, userName)}
+                </div>
+              )}
             </div>
           </div>
+        </header>
 
-          {/* Mobile Menu */}
-          {isMobileMenuOpen && (
-            <div ref={mobileMenuRef} className="md:hidden pb-4 bg-white rounded-b-lg shadow-lg">
-              <div className="flex flex-col space-y-1 p-2">
-                <button
-                  onClick={() => handleNavClick('appointments')}
-                  className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'appointments' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Appointments
-                </button>
-                <button
-                  onClick={() => handleNavClick('queue')}
-                  className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'queue' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Queue
-                </button>
-                <button
-                  onClick={() => handleNavClick('doctors')}
-                  className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'doctors' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Doctors
-                </button>
-                <button
-                  onClick={() => handleNavClick('calendar')}
-                  className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'calendar' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Calendar
-                </button>
-                <button
-                  onClick={() => handleNavClick('reports')}
-                  className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'reports' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Reports
-                </button>
-                <button
-                  onClick={() => handleNavClick('waiting-list')}
-                  className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'waiting-list' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Waiting List
-                </button>
-              <button
-                  onClick={() => handleNavClick('feedback')}
-                  className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'feedback' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Feedback
-                </button>
-                <button
-                  onClick={() => handleNavClick('contact-messages')}
-                  className={`font-medium transition py-3 px-4 text-left rounded ${
-                    currentPage === 'contact-messages' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Contact
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </nav>
-
-      {/* Page Content */}
-      <div className="flex-1 pt-20">
-        {renderPage()}
+        {/* Page Content */}
+        <main className="flex-1 overflow-auto">
+          {renderPage()}
+        </main>
       </div>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-            <div className="col-span-1">
-              <div className="flex items-center space-x-2 mb-4">
-                <img 
-                  src="/timefly_logo.png" 
-                  alt="TimeFly Logo" 
-                  className="h-8 w-auto brightness-0 invert"
-                />
-              </div>
-              <p className="text-gray-400 text-sm">
-                TimeFly - Clinic Scheduling and Queue Management
-              </p>
-            </div>
-
-            <div>
-              <h3 className="font-semibold text-lg mb-4">Quick Links</h3>
-              <ul className="space-y-2">
-                <li><button onClick={() => handleNavClick('appointments')} className="text-gray-400 hover:text-white transition">Appointments</button></li>
-                <li><button onClick={() => handleNavClick('queue')} className="text-gray-400 hover:text-white transition">Current Queue</button></li>
-                <li><button onClick={() => handleNavClick('doctors')} className="text-gray-400 hover:text-white transition">Doctors</button></li>
-                <li><button onClick={() => handleNavClick('reports')} className="text-gray-400 hover:text-white transition">Reports</button></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold text-lg mb-4">Contact</h3>
-              <ul className="space-y-2 text-gray-400 text-sm">
-                <li>Email: timefly.healthcare@gmail.com</li>
-                <li>Phone: 0909 400 6245</li>
-                <li>Address: Ground Floor Saint Paul Surigao University Hospital, Km. 4 National Highway, Surigao City, Philippines</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-800 pt-8 flex flex-col items-center">
-            <p className="text-gray-400 text-sm mb-4">
-              © 2025 TimeFly.  All rights reserved.
-            </p>
-            <div className="flex space-x-6">
-              <a href="https://facebook.com/timefly" className="text-gray-400 hover:text-white transition">
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                </svg>
-              </a>
-              <a href="mailto:timefly.healthcare@gmail.com" className="text-gray-400 hover:text-white transition">
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-                </svg>
-              </a>
-              <a href="https://instagram.com/timefly" className="text-gray-400 hover:text-white transition">
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-                </svg>
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handlePhotoChange}
+        className="hidden"
+      />
     </div>
   );
 };
