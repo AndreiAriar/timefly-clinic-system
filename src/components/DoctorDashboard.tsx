@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import DoctorHeader from './doctorheader';
-import Footer from './footer';
-import DoctorHome from './doctorhome';
-import DoctorAppointments from './appointments';
-import DoctorQueue from './queue';
+import { useEffect, useState } from 'react';
+import DoctorHeader from './DoctorHeader';
+import Footer from './Footer';
+import DoctorHome from './DoctorHome';
+import DoctorAppointment from './DoctorAppointment';
+import DoctorQueue from './DoctorQueue';
 
 type View = 'home' | 'appointments' | 'queue';
 
@@ -41,7 +41,7 @@ const DoctorDashboard = ({ userEmail, userName, userPhoto, onLogout }: DoctorDas
           />
         );
       case 'appointments':
-        return <DoctorAppointments doctorName={doctorName} />;
+       return <DoctorAppointment doctorName={doctorName} />;
       case 'queue':
         return <DoctorQueue doctorName={doctorName} />;
       default:
