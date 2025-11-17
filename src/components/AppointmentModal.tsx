@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, X } from 'lucide-react';
-import { collection, addDoc, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, doc, updateDoc, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 
 interface AppointmentModalProps {
@@ -444,7 +444,7 @@ useEffect(() => {
       document.body.style.overflow = 'unset';
     };
   }, [isOpen]);
-  
+
 const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   if (file) {
@@ -511,7 +511,6 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     reader.readAsDataURL(file);
   }
 };
-
 const handleSubmit = async () => {
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
@@ -538,26 +537,90 @@ const handleSubmit = async () => {
       ? formData.customCondition 
       : formData.medicalCondition;
 
-    const appointment: Appointment = {
-      fullName: formData.fullName,
-      age: formData.age,
-      photo: formData.photo,
-      doctor: formData.doctor,
-      appointmentDate: formData.appointmentDate,
-      gender: formData.gender,
-      medicalCondition: finalMedicalCondition,
-      phone: formData.phone,
-      email: userEmail, // Add logged-in user's email
-      priorityLevel: formData.priorityLevel,
-      timeSlot: formData.timeSlot,
-      queueNumber: 0, // Temporary, will be recalculated
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    };
+    // 🔒 TRANSACTION: Atomic check and book operation
+    const { runTransaction } = await import('firebase/firestore');
+    
+    const appointmentData = await runTransaction(db, async (transaction) => {
+      // Step 1: Check if slot is still available
+      const appointmentsRef = collection(db, 'appointments');
+      const conflictQuery = query(
+        appointmentsRef,
+        where('doctor', '==', formData.doctor),
+        where('appointmentDate', '==', formData.appointmentDate),
+        where('timeSlot', '==', formData.timeSlot),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const conflictSnapshot = await getDocs(conflictQuery);
+      
+      // If slot is already taken, abort transaction
+      if (!conflictSnapshot.empty) {
+        throw new Error('SLOT_TAKEN');
+      }
 
-    // Add to Firestore
-    const appointmentsRef = collection(db, 'appointments');
-    const docRef = await addDoc(appointmentsRef, appointment);
+      // Step 2: Check doctor capacity limits
+      const doctorsRef = collection(db, 'doctors');
+      const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
+      const doctorSnapshot = await getDocs(doctorQuery);
+      
+      if (!doctorSnapshot.empty) {
+        const doctorData = doctorSnapshot.docs[0].data();
+        
+        // Check unavailable dates
+        const unavailableDates = doctorData.unavailableDates || {};
+        if (unavailableDates[formData.appointmentDate] === true) {
+          throw new Error('DOCTOR_UNAVAILABLE');
+        }
+        
+        // Check max slots capacity
+        const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+        const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
+        const globalMaxSlots = doctorData.maxSlots || 10;
+        const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+        
+        // Count current bookings for this date
+        const dateBookingsQuery = query(
+          appointmentsRef,
+          where('doctor', '==', formData.doctor),
+          where('appointmentDate', '==', formData.appointmentDate),
+          where('status', '!=', 'cancelled')
+        );
+        
+        const dateBookingsSnapshot = await getDocs(dateBookingsQuery);
+        
+        if (dateBookingsSnapshot.size >= maxSlots) {
+          throw new Error('DOCTOR_FULLY_BOOKED');
+        }
+      }
+
+      // Step 3: Create the appointment (still in transaction)
+      const appointment: Appointment = {
+        fullName: formData.fullName,
+        age: formData.age,
+        photo: formData.photo,
+        doctor: formData.doctor,
+        appointmentDate: formData.appointmentDate,
+        gender: formData.gender,
+        medicalCondition: finalMedicalCondition,
+        phone: formData.phone,
+        email: userEmail,
+        priorityLevel: formData.priorityLevel,
+        timeSlot: formData.timeSlot,
+        queueNumber: 0, // Will be recalculated
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
+
+      // Create new document reference
+      const newAppointmentRef = doc(collection(db, 'appointments'));
+      
+      // Set the document in the transaction
+      transaction.set(newAppointmentRef, appointment);
+      
+      return { appointmentId: newAppointmentRef.id, appointment };
+    });
+
+    console.log('✅ Appointment booked successfully via transaction:', appointmentData.appointmentId);
 
     // Recalculate queue numbers for all appointments on this date
     await recalculateQueueNumbers(formData.appointmentDate);
@@ -565,7 +628,7 @@ const handleSubmit = async () => {
     // Get the actual queue number that was assigned to this appointment
     const appointmentDoc = await getDocs(query(
       collection(db, 'appointments'),
-      where('__name__', '==', docRef.id)
+      where('__name__', '==', appointmentData.appointmentId)
     ));
     
     const actualQueueNumber = appointmentDoc.docs[0]?.data().queueNumber || 1;
@@ -579,9 +642,28 @@ const handleSubmit = async () => {
     setTimeout(() => {
       handleClose();
     }, 2000);
-  } catch (error) {
+    
+  } catch (error: any) {
     console.error('Error booking appointment:', error);
-    alert('Failed to book appointment. Please try again.');
+    
+    // Handle specific error cases
+    if (error.message === 'SLOT_TAKEN') {
+      alert('⚠️ This time slot was just booked by another user. Please refresh and choose another time.');
+      // Refresh available slots
+      if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+        await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+      }
+    } else if (error.message === 'DOCTOR_UNAVAILABLE') {
+      alert('⚠️ This doctor is no longer available on the selected date. Please choose another date.');
+    } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
+      alert('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.');
+      // Refresh available slots
+      if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+        await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+      }
+    } else {
+      alert('Failed to book appointment. Please try again.');
+    }
   } finally {
     setIsSubmitting(false);
   }
