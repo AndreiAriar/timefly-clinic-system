@@ -511,6 +511,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     reader.readAsDataURL(file);
   }
 };
+
 const handleSubmit = async () => {
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
@@ -537,88 +538,92 @@ const handleSubmit = async () => {
       ? formData.customCondition 
       : formData.medicalCondition;
 
-    // 🔒 TRANSACTION: Atomic check and book operation
-    const { runTransaction } = await import('firebase/firestore');
+   const appointmentData = await runTransaction(db, async (transaction) => {
+  // ✅ Step 1: Fetch all appointments for this doctor and date WITHIN TRANSACTION
+  const appointmentsRef = collection(db, 'appointments');
+  const conflictQuery = query(
+    appointmentsRef,
+    where('doctor', '==', formData.doctor),
+    where('appointmentDate', '==', formData.appointmentDate)
+    // ✅ Removed timeSlot and status filters to avoid complex index requirements
+  );
+  
+  // ✅ Use transaction.get() instead of getDocs()
+  const conflictSnapshot = await transaction.get(conflictQuery);
+  
+  // ✅ Filter for the specific slot and non-cancelled status in memory
+  let slotTaken = false;
+  let activeBookingsCount = 0;
+  
+  conflictSnapshot.forEach((doc) => {
+    const data = doc.data();
+    if (data.status !== 'cancelled') {
+      activeBookingsCount++;
+      if (data.timeSlot === formData.timeSlot) {
+        slotTaken = true;
+      }
+    }
+  });
+  
+  // If slot is already taken, abort transaction
+  if (slotTaken) {
+    throw new Error('SLOT_TAKEN');
+  }
+
+  // ✅ Step 2: Check doctor capacity limits WITHIN TRANSACTION
+  const doctorsRef = collection(db, 'doctors');
+  const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
+  
+  // ✅ Use transaction.get() instead of getDocs()
+  const doctorSnapshot = await transaction.get(doctorQuery);
+  
+  if (!doctorSnapshot.empty) {
+    const doctorData = doctorSnapshot.docs[0].data();
     
-    const appointmentData = await runTransaction(db, async (transaction) => {
-      // Step 1: Check if slot is still available
-      const appointmentsRef = collection(db, 'appointments');
-      const conflictQuery = query(
-        appointmentsRef,
-        where('doctor', '==', formData.doctor),
-        where('appointmentDate', '==', formData.appointmentDate),
-        where('timeSlot', '==', formData.timeSlot),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const conflictSnapshot = await getDocs(conflictQuery);
-      
-      // If slot is already taken, abort transaction
-      if (!conflictSnapshot.empty) {
-        throw new Error('SLOT_TAKEN');
-      }
+    // Check unavailable dates
+    const unavailableDates = doctorData.unavailableDates || {};
+    if (unavailableDates[formData.appointmentDate] === true) {
+      throw new Error('DOCTOR_UNAVAILABLE');
+    }
+    
+    // Check max slots capacity
+    const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+    const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
+    const globalMaxSlots = doctorData.maxSlots || 10;
+    const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+    
+    // ✅ Use activeBookingsCount we already calculated above
+    if (activeBookingsCount >= maxSlots) {
+      throw new Error('DOCTOR_FULLY_BOOKED');
+    }
+  }
 
-      // Step 2: Check doctor capacity limits
-      const doctorsRef = collection(db, 'doctors');
-      const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
-      const doctorSnapshot = await getDocs(doctorQuery);
-      
-      if (!doctorSnapshot.empty) {
-        const doctorData = doctorSnapshot.docs[0].data();
-        
-        // Check unavailable dates
-        const unavailableDates = doctorData.unavailableDates || {};
-        if (unavailableDates[formData.appointmentDate] === true) {
-          throw new Error('DOCTOR_UNAVAILABLE');
-        }
-        
-        // Check max slots capacity
-        const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-        const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
-        const globalMaxSlots = doctorData.maxSlots || 10;
-        const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
-        
-        // Count current bookings for this date
-        const dateBookingsQuery = query(
-          appointmentsRef,
-          where('doctor', '==', formData.doctor),
-          where('appointmentDate', '==', formData.appointmentDate),
-          where('status', '!=', 'cancelled')
-        );
-        
-        const dateBookingsSnapshot = await getDocs(dateBookingsQuery);
-        
-        if (dateBookingsSnapshot.size >= maxSlots) {
-          throw new Error('DOCTOR_FULLY_BOOKED');
-        }
-      }
+  // ✅ Step 3: Create the appointment WITHIN TRANSACTION
+  const appointment: Appointment = {
+    fullName: formData.fullName,
+    age: formData.age,
+    photo: formData.photo,
+    doctor: formData.doctor,
+    appointmentDate: formData.appointmentDate,
+    gender: formData.gender,
+    medicalCondition: finalMedicalCondition,
+    phone: formData.phone,
+    email: userEmail,
+    priorityLevel: formData.priorityLevel,
+    timeSlot: formData.timeSlot,
+    queueNumber: 0, // Will be recalculated
+    status: 'pending',
+    createdAt: new Date().toISOString()
+  };
 
-      // Step 3: Create the appointment (still in transaction)
-      const appointment: Appointment = {
-        fullName: formData.fullName,
-        age: formData.age,
-        photo: formData.photo,
-        doctor: formData.doctor,
-        appointmentDate: formData.appointmentDate,
-        gender: formData.gender,
-        medicalCondition: finalMedicalCondition,
-        phone: formData.phone,
-        email: userEmail,
-        priorityLevel: formData.priorityLevel,
-        timeSlot: formData.timeSlot,
-        queueNumber: 0, // Will be recalculated
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      };
-
-      // Create new document reference
-      const newAppointmentRef = doc(collection(db, 'appointments'));
-      
-      // Set the document in the transaction
-      transaction.set(newAppointmentRef, appointment);
-      
-      return { appointmentId: newAppointmentRef.id, appointment };
-    });
+  // Create new document reference
+  const newAppointmentRef = doc(collection(db, 'apartments'));
+  
+  // Set the document in the transaction
+  transaction.set(newAppointmentRef, appointment);
+  
+  return { appointmentId: newAppointmentRef.id, appointment };
+});
 
     console.log('✅ Appointment booked successfully via transaction:', appointmentData.appointmentId);
 
