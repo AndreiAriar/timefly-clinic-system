@@ -276,12 +276,12 @@ const DoctorHeader = ({
             >
               <div className="relative">
                 {displayPhoto ? (
-                  <img
-                    className="h-10 w-10 rounded-full object-cover border-2 border-blue-300"
-                    src={displayPhoto}
-                    alt="Profile"
-                    style={{ imageRendering: 'high-quality' }} // Improved image rendering
-                  />
+                 <img
+                      className="h-10 w-10 rounded-full object-cover border-2 border-blue-300"
+                      src={displayPhoto}
+                      alt="Profile"
+                      style={{ imageRendering: 'auto' as const }} // Changed to 'auto'
+                    />
                 ) : (
                   <div className="h-10 w-10 rounded-full bg-blue-400 flex items-center justify-center border-2 border-blue-300">
                     <User className="h-5 w-5 text-white" />
@@ -303,7 +303,7 @@ const DoctorHeader = ({
                         className="h-14 w-14 rounded-full object-cover border-2 border-gray-200"
                         src={displayPhoto}
                         alt="Profile"
-                        style={{ imageRendering: 'high-quality' }} // Improved image rendering
+                        style={{ imageRendering: 'auto' as const }} // Changed to 'auto'
                       />
                     ) : (
                       <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center border-2 border-gray-200">

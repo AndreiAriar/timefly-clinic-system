@@ -117,11 +117,11 @@ const Appointments = () => {
       
       // Filter out appointments deleted by patient
       const appointmentsData = querySnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }))
-        .filter(apt => !apt.deletedByPatient) as Appointment[];
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Appointment))
+      .filter(apt => !apt.deletedByPatient);
       
       setAppointments(appointmentsData);
     } catch (error) {

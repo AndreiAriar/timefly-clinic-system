@@ -55,6 +55,7 @@ const StaffAppointments = () => {
   const showToast = (message: string, type: ToastType) => {
     setToast({ message, type, isVisible: true });
   };
+  
   useEffect(() => {
   const loadAppointments = async () => {
     setIsLoading(true);
@@ -91,12 +92,12 @@ const StaffAppointments = () => {
       const querySnapshot = await getDocs(q);
       
       // Filter out appointments deleted by staff
-      const appointmentsData = querySnapshot.docs
+     const appointmentsData = querySnapshot.docs
         .map(doc => ({
           id: doc.id,
           ...doc.data()
-        }))
-        .filter(apt => !apt.deletedByStaff) as Appointment[];
+        } as Appointment))
+        .filter(apt => !apt.deletedByStaff);
       
       setAppointments(appointmentsData);
     } catch (error) {
@@ -200,56 +201,9 @@ const StaffAppointments = () => {
     const period = hours >= 12 ? 'PM' : 'AM';
     const hours12 = hours % 12 || 12;
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };const loadAppointments = async () => {
-  setIsLoading(true);
-  try {
-    const appointmentsRef = collection(db, 'appointments');
-    
-    // Get current user's email
-    const userEmail = auth.currentUser?.email;
-    
-    if (!userEmail) {
-      console.error('No user email found');
-      setIsLoading(false);
-      return;
-    }
-
-    // Get user role from Firestore
-    const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-    const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-    let q;
-    
-    // If staff or doctor, show all appointments
-    if (userRole === 'staff' || userRole === 'doctor') {
-      q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-    } else {
-      // If patient, show only their appointments
-      q = query(
-        appointmentsRef, 
-        where('email', '==', userEmail),
-        orderBy('createdAt', 'desc')
-      );
-    }
-    
-    const querySnapshot = await getDocs(q);
-    
-    // Filter out appointments deleted by staff
-    const appointmentsData = querySnapshot.docs
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }))
-      .filter(apt => !apt.deletedByStaff) as Appointment[];
-    
-    setAppointments(appointmentsData);
-  } catch (error) {
-    console.error('Error loading appointments:', error);
-    showToast('Failed to load appointments. Please try again.', 'error');
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
+  
+ 
 
   const handleView = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
@@ -286,7 +240,7 @@ const StaffAppointments = () => {
     setSelectedAppointment(appointment);
     setShowDeleteModal(true);
   };
-  
+
 const confirmDelete = async () => {
     if (!selectedAppointment) return;
 
