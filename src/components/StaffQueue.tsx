@@ -267,12 +267,17 @@ const StaffQueue = () => {
       }
     );
   };
+const sendReminder = async (appointment: Appointment) => {
+  // Check if email exists
+  if (!appointment.email) {
+    addNotification('error', 'Patient email not available');
+    return;
+  }
 
-  const sendReminder = async (appointment: Appointment) => {
   // Show confirm dialog before sending
   showConfirmDialog(
     'Send Reminder',
-    `Send appointment reminder to ${appointment.fullName} at ${appointment.phone}?`,
+    `Send appointment reminder to ${appointment.fullName} at ${appointment.email}?`,
     async () => {
       setSendingReminder(appointment.id);
 
@@ -283,7 +288,7 @@ const StaffQueue = () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            patientEmail: appointment.email, 
+            patientEmail: appointment.email,
             patientName: appointment.fullName,
             appointmentTime: convertTo12Hour(appointment.timeSlot),
             queueNumber: appointment.queueNumber
@@ -293,7 +298,7 @@ const StaffQueue = () => {
         const data = await response.json();
 
         if (response.ok) {
-          addNotification('success', `Reminder sent to ${appointment.fullName}!`);
+          addNotification('success', `Reminder sent to ${appointment.fullName} at ${appointment.email}!`);
         } else {
           addNotification('error', data.error || 'Failed to send reminder');
         }
