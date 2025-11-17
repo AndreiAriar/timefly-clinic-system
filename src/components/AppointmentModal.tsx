@@ -498,9 +498,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     
     reader.readAsDataURL(file);
   }
-};
-
-const handleSubmit = async () => {
+};const handleSubmit = async () => {
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
     showToast('Please fill in all required fields', 'warning');
@@ -527,7 +525,7 @@ const handleSubmit = async () => {
 
     // 🔒 TRANSACTION: Atomic check and book operation
     const appointmentData = await runTransaction(db, async (transaction) => {
-      // ✅ Step 1: Fetch all appointments for this doctor and date WITHIN TRANSACTION
+      // ✅ Step 1: Fetch all appointments for this doctor and date
       const appointmentsRef = collection(db, 'appointments');
       const conflictQuery = query(
         appointmentsRef,
@@ -535,8 +533,8 @@ const handleSubmit = async () => {
         where('appointmentDate', '==', formData.appointmentDate)
       );
       
-      // ✅ Use transaction.get() instead of getDocs()
-      const conflictSnapshot = await transaction.get(conflictQuery);
+      // ✅ Use getDocs() for queries (not transaction.get())
+      const conflictSnapshot = await getDocs(conflictQuery);
       
       // ✅ Filter for the specific slot and non-cancelled status in memory
       let slotTaken = false;
@@ -557,12 +555,12 @@ const handleSubmit = async () => {
         throw new Error('SLOT_TAKEN');
       }
 
-      // ✅ Step 2: Check doctor capacity limits WITHIN TRANSACTION
+      // ✅ Step 2: Check doctor capacity limits
       const doctorsRef = collection(db, 'doctors');
       const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
       
-      // ✅ Use transaction.get() instead of getDocs()
-      const doctorSnapshot = await transaction.get(doctorQuery);
+      // ✅ Use getDocs() for queries (not transaction.get())
+      const doctorSnapshot = await getDocs(doctorQuery);
       
       if (!doctorSnapshot.empty) {
         const doctorData = doctorSnapshot.docs[0].data();
