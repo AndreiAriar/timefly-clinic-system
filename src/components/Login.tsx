@@ -83,16 +83,20 @@ const Login = ({ onSwitchToSignup }: LoginProps) => {
                 <label htmlFor="email" className="block text-sm font-medium text-white drop-shadow-md mb-1">
                   Email Address
                 </label>
-              <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition focus:bg-white/10"
-                  placeholder="your.email@example.com"
-                  disabled={loading}
-                />
+             <input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition focus:bg-white/10"
+              placeholder="your.email@example.com"
+              disabled={loading}
+              style={{
+                WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
+                WebkitTextFillColor: 'white',
+              }}
+            />
               </div>
 
               <div>
@@ -101,15 +105,19 @@ const Login = ({ onSwitchToSignup }: LoginProps) => {
                 </label>
                 <div className="relative">
                   <input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition pr-10 focus:bg-white/10"
-                      placeholder="••••••••"
-                      disabled={loading}
-                    />
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition pr-10 focus:bg-white/10"
+                    placeholder="••••••••"
+                    disabled={loading}
+                    style={{
+                      WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
+                      WebkitTextFillColor: 'white',
+                    }}
+                  />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}

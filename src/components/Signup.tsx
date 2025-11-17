@@ -277,14 +277,18 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                 Full Name
               </label>
               <input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition"
-                placeholder="Tyler Durden"
-                disabled={success || loading}
-              />
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition"
+              placeholder="Tyler Durden"
+              disabled={success || loading}
+              style={{
+                WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
+                WebkitTextFillColor: 'white',
+              }}
+            />
             </div>
 
             <div>
@@ -300,6 +304,10 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                   className="flex-1 px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition"
                   placeholder="your.email@example.com"
                   disabled={success || loading || verificationSent}
+                  style={{
+                    WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
+                    WebkitTextFillColor: 'white',
+                  }}
                 />
                 <button
                   type="button"
@@ -322,7 +330,7 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                 <label htmlFor="verificationCode" className="block text-sm font-medium text-white drop-shadow-md mb-1">
                   Verification Code
                 </label>
-                <input
+               <input
                   id="verificationCode"
                   type="text"
                   value={verificationCode}
@@ -331,6 +339,10 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                   placeholder="Enter 6-digit code"
                   disabled={success || loading}
                   maxLength={6}
+                  style={{
+                    WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
+                    WebkitTextFillColor: 'white',
+                  }}
                 />
               </div>
             )}
@@ -348,6 +360,10 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                   className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition pr-10"
                   placeholder="••••••••"
                   disabled={success || loading}
+                  style={{
+                    WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
+                    WebkitTextFillColor: 'white',
+                  }}
                 />
                 <button
                   type="button"
@@ -378,6 +394,10 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                   className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition pr-10"
                   placeholder="••••••••"
                   disabled={success || loading}
+                  style={{
+                    WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
+                    WebkitTextFillColor: 'white',
+                  }}
                 />
                 <button
                   type="button"
