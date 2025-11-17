@@ -1,10 +1,6 @@
 import nodemailer from 'nodemailer';
 
-// In-memory storage (consider using Vercel KV or database for production)
-const verificationCodes = new Map();
-
 export default async function handler(req, res) {
-  // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -21,22 +17,15 @@ export default async function handler(req, res) {
 
   const { email } = req.body;
 
-  console.log('📧 Received request to send verification code to:', email);
-
   if (!email) {
     return res.status(400).json({ error: 'Email is required' });
   }
 
-  // Check if email credentials are set
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
-    console.log('❌ Missing email credentials');
-    return res.status(500).json({ 
-      error: 'Email service not configured' 
-    });
+    return res.status(500).json({ error: 'Email service not configured' });
   }
 
   try {
-    // Create transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -45,19 +34,8 @@ export default async function handler(req, res) {
       },
     });
 
-    // Generate 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Store code with expiration (10 minutes)
-    verificationCodes.set(email, {
-      code,
-      expiresAt: Date.now() + 10 * 60 * 1000,
-    });
 
-    console.log(`📧 Attempting to send email to: ${email}`);
-    console.log(`🔑 Generated code: ${code}`);
-
-    // Send email
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
@@ -72,23 +50,18 @@ export default async function handler(req, res) {
       `,
     };
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log('✅ Email sent successfully:', result.messageId);
+    await transporter.sendMail(mailOptions);
 
     res.status(200).json({ 
       success: true, 
-      message: 'Verification code sent successfully' 
+      message: 'Verification code sent successfully',
+      code: code
     });
 
   } catch (error) {
-    console.error('❌ Error sending verification code:', error.message);
-    
     res.status(500).json({ 
       success: false,
       error: `Failed to send verification code: ${error.message}` 
     });
   }
-
-  // Export codes for verify-code function to access
-  global.verificationCodes = verificationCodes;
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import type { User } from 'firebase/auth';
 import { onAuthStateChange, logoutUser } from './services/authService';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
@@ -13,8 +13,6 @@ import Error404 from './components/Error404';
 import ToastNotification from './components/ToastNotification';
 import type { ToastType } from './components/ToastNotification';
 
-type ViewType = 'login' | 'signup';
-
 interface UserData {
   displayName: string;
   email: string;
@@ -22,13 +20,13 @@ interface UserData {
   role: 'patient' | 'staff' | 'doctor';
 }
 
-function App() {
+function AppContent() {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<'patient' | 'staff' | 'doctor' | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [roleLoading, setRoleLoading] = useState(false);
-  const [currentView, setCurrentView] = useState<ViewType>('login');
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
     message: '',
@@ -266,13 +264,15 @@ function App() {
       setUser(null);
       setUserRole(null);
       setUserData(null);
-      setCurrentView('login');
       
       // Reset tracking refs
       hasShownLoginNotification.current = false;
       isInitialLoad.current = true;
       
       showToast('Logged out successfully', 'info');
+      
+      // Navigate to login after logout
+      navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
       showToast('Error logging out. Please try again.', 'error');
@@ -281,18 +281,20 @@ function App() {
 
   const handleSignupSuccess = () => {
     setIsSigningUp(false);
-    setCurrentView('login');
     
     // Show success toast on login page
     showToast('Account created successfully! Please sign in.', 'success');
+    
+    // Navigate to login
+    navigate('/login');
   };
 
   const handleSwitchToLogin = () => {
-    setCurrentView('login');
+    navigate('/login');
   };
 
   const handleSwitchToSignup = () => {
-    setCurrentView('signup');
+    navigate('/signup');
   };
 
   // Role-based access control helper
@@ -389,146 +391,133 @@ function App() {
         onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
       />
       
-      <Router>
-        <Routes>
-          {/* Public routes - redirect to appropriate dashboard if already logged in */}
-          <Route 
-            path="/login" 
-            element={
-              !user ? (
-                currentView === 'login' ? (
-                  <Login onSwitchToSignup={handleSwitchToSignup} />
-                ) : (
-                  <Signup 
-                    onSignup={handleSignupSuccess}
-                    onSwitchToLogin={handleSwitchToLogin}
-                    onSignupStart={() => setIsSigningUp(true)}
-                  />
-                )
-              ) : (
-                // If user is already logged in, redirect to appropriate dashboard
-                (() => {
-                  console.log('🔀 Login route redirect - Current user role:', userRole);
-                  return <Navigate to={getRedirectPath()} replace />;
-                })()
-              )
-            } 
-          />
-          
-          <Route 
-            path="/signup" 
-            element={
-              !user ? (
-                <Signup 
-                  onSignup={handleSignupSuccess}
-                  onSwitchToLogin={handleSwitchToLogin}
-                  onSignupStart={() => setIsSigningUp(true)}
+      <Routes>
+        {/* Public routes - redirect to appropriate dashboard if already logged in */}
+        <Route 
+          path="/login" 
+          element={
+            !user ? (
+              <Login onSwitchToSignup={handleSwitchToSignup} />
+            ) : (
+              <Navigate to={getRedirectPath()} replace />
+            )
+          } 
+        />
+        
+        <Route 
+          path="/signup" 
+          element={
+            !user ? (
+              <Signup 
+                onSignup={handleSignupSuccess}
+                onSwitchToLogin={handleSwitchToLogin}
+                onSignupStart={() => setIsSigningUp(true)}
+              />
+            ) : (
+              <Navigate to={getRedirectPath()} replace />
+            )
+          } 
+        />
+        
+        {/* Main dashboard route - handles all roles appropriately */}
+        <Route 
+          path="/" 
+          element={renderDashboard()}
+        />
+        
+        {/* Doctor-specific route with role protection */}
+        <Route 
+          path="/doctor" 
+          element={
+            user && userRole ? (
+              hasAccessToRoute('doctor') ? (
+                <DoctorDashboard 
+                  userEmail={userData?.email || ''} 
+                  userName={userData?.displayName || ''}
+                  userPhoto={userData?.photoURL || ''}
+                  onLogout={handleLogout} 
                 />
               ) : (
-                // If user is already logged in, redirect to appropriate dashboard
                 (() => {
-                  console.log('🔀 Signup route redirect - Current user role:', userRole);
-                  return <Navigate to={getRedirectPath()} replace />;
+                  console.log('🚫 Non-doctor accessing /doctor, current role:', userRole);
+                  return <Navigate to="/404" replace />;
                 })()
               )
-            } 
-          />
-          
-          {/* Main dashboard route - handles all roles appropriately */}
-          <Route 
-            path="/" 
-            element={renderDashboard()}
-          />
-          
-          {/* Doctor-specific route with role protection */}
-          <Route 
-            path="/doctor" 
-            element={
-              user && userRole ? (
-                hasAccessToRoute('doctor') ? (
-                  <DoctorDashboard 
-                    userEmail={userData?.email || ''} 
-                    userName={userData?.displayName || ''}
-                    userPhoto={userData?.photoURL || ''}
-                    onLogout={handleLogout} 
-                  />
-                ) : (
-                  // If non-doctor tries to access /doctor, redirect to 404
-                  (() => {
-                    console.log('🚫 Non-doctor accessing /doctor, current role:', userRole);
-                    return <Navigate to="/404" replace />;
-                  })()
-                )
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
-          {/* Staff-specific route with role protection */}
-          <Route 
-            path="/staff" 
-            element={
-              user && userRole ? (
-                hasAccessToRoute('staff') ? (
-                  <StaffDashboard 
-                    userEmail={userData?.email || ''} 
-                    userName={userData?.displayName || ''}
-                    userPhoto={userData?.photoURL || ''}
-                    onLogout={handleLogout} 
-                  />
-                ) : (
-                  // If non-staff tries to access /staff, redirect to 404
-                  (() => {
-                    console.log('🚫 Non-staff accessing /staff, current role:', userRole);
-                    return <Navigate to="/404" replace />;
-                  })()
-                )
+        {/* Staff-specific route with role protection */}
+        <Route 
+          path="/staff" 
+          element={
+            user && userRole ? (
+              hasAccessToRoute('staff') ? (
+                <StaffDashboard 
+                  userEmail={userData?.email || ''} 
+                  userName={userData?.displayName || ''}
+                  userPhoto={userData?.photoURL || ''}
+                  onLogout={handleLogout} 
+                />
               ) : (
-                <Navigate to="/login" replace />
+                (() => {
+                  console.log('🚫 Non-staff accessing /staff, current role:', userRole);
+                  return <Navigate to="/404" replace />;
+                })()
               )
-            }
-          />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
-          {/* Patient-specific route with role protection */}
-          <Route 
-            path="/patient" 
-            element={
-              user && userRole ? (
-                hasAccessToRoute('patient') ? (
-                  <Dashboard 
-                    userEmail={userData?.email || ''} 
-                    userName={userData?.displayName || ''}
-                    userPhoto={userData?.photoURL || ''}
-                    onLogout={handleLogout} 
-                  />
-                ) : (
-                  // If non-patient tries to access /patient, redirect to 404
-                  (() => {
-                    console.log('🚫 Non-patient accessing /patient, current role:', userRole);
-                    return <Navigate to="/404" replace />;
-                  })()
-                )
+        {/* Patient-specific route with role protection */}
+        <Route 
+          path="/patient" 
+          element={
+            user && userRole ? (
+              hasAccessToRoute('patient') ? (
+                <Dashboard 
+                  userEmail={userData?.email || ''} 
+                  userName={userData?.displayName || ''}
+                  userPhoto={userData?.photoURL || ''}
+                  onLogout={handleLogout} 
+                />
               ) : (
-                <Navigate to="/login" replace />
+                (() => {
+                  console.log('🚫 Non-patient accessing /patient, current role:', userRole);
+                  return <Navigate to="/404" replace />;
+                })()
               )
-            }
-          />
-          
-          {/* 404 Error Page */}
-          <Route 
-            path="/404" 
-            element={<Error404 />}
-          />
-          
-          {/* Fallback route - redirect to 404 */}
-          <Route 
-            path="*" 
-            element={<Error404 />}
-          />
-        </Routes>
-      </Router>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        
+        {/* 404 Error Page */}
+        <Route 
+          path="/404" 
+          element={<Error404 />}
+        />
+        
+        {/* Fallback route - redirect to 404 */}
+        <Route 
+          path="*" 
+          element={<Error404 />}
+        />
+      </Routes>
     </>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   );
 }
 

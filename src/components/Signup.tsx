@@ -23,18 +23,19 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [sentCode, setSentCode] = useState('');
 
   // Send verification code
   const sendVerificationCode = async () => {
-    if (!email || !/\S+@\S+\.\S+/.test(email)) {
-      setError('Please enter a valid email address');
-      return;
-    }
+  if (!email || !/\S+@\S+\.\S+/.test(email)) {
+    setError('Please enter a valid email address');
+    return;
+  }
 
-    setLoading(true);
-    setError('');
+  setLoading(true);
+  setError('');
 
-    try {
+  try {
     const response = await fetch('/api/send-verification-code', {
       method: 'POST',
       headers: {
@@ -42,32 +43,33 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
       },
       body: JSON.stringify({ email }),
     });
-      const data = await response.json();
 
-      if (response.ok) {
-        setVerificationSent(true);
-        setCountdown(60); // 60 seconds countdown
-        
-        // Start countdown
-        const timer = setInterval(() => {
-          setCountdown((prev) => {
-            if (prev <= 1) {
-              clearInterval(timer);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-        
-      } else {
-        setError(data.error || 'Failed to send verification code');
-      }
-    } catch {
-      setError('Network error. Please try again.');
-    } finally {
-      setLoading(false);
+    const data = await response.json();
+
+    if (response.ok) {
+      setVerificationSent(true);
+      setSentCode(data.code); // Store the code from API response
+      setCountdown(60);
+      
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+    } else {
+      setError(data.error || 'Failed to send verification code');
     }
-  };
+  } catch {
+    setError('Network error. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,20 +105,13 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
     onSignupStart();
 
     try {
-      // Verify the code first
-    const verifyResponse = await fetch('/api/verify-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, code: verificationCode }),
-    });
-
-      const verifyData = await verifyResponse.json();
-
-      if (!verifyResponse.ok) {
-        setError(verifyData.error || 'Invalid verification code');
-        setLoading(false);
-        return;
-      }
+   
+      // Verify the code locally
+        if (verificationCode !== sentCode) {
+          setError('Invalid verification code');
+          setLoading(false);
+          return;
+        }
 
       // Step 1: Create the user account
       const result = await registerUser(email, password);
