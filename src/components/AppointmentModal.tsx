@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, X } from 'lucide-react';
 import { collection, addDoc, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 
 interface AppointmentModalProps {
   isOpen: boolean;
@@ -33,6 +33,7 @@ interface Appointment {
   gender: string;
   medicalCondition: string;
   phone: string;
+  email: string; // Add this line
   priorityLevel: string;
   timeSlot: string;
   queueNumber: number;
@@ -454,8 +455,7 @@ useEffect(() => {
       reader.readAsDataURL(file);
     }
   };
-
-// UPDATED: Handle booking completion
+  
 const handleSubmit = async () => {
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
@@ -465,6 +465,13 @@ const handleSubmit = async () => {
 
   if (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim()) {
     alert('Please specify your medical condition');
+    return;
+  }
+
+  // Get logged-in user's email
+  const userEmail = auth.currentUser?.email;
+  if (!userEmail) {
+    alert('User email not found. Please log in again.');
     return;
   }
 
@@ -484,6 +491,7 @@ const handleSubmit = async () => {
       gender: formData.gender,
       medicalCondition: finalMedicalCondition,
       phone: formData.phone,
+      email: userEmail, // Add logged-in user's email
       priorityLevel: formData.priorityLevel,
       timeSlot: formData.timeSlot,
       queueNumber: 0, // Temporary, will be recalculated

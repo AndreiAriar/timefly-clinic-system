@@ -270,30 +270,29 @@ const loadQueue = useCallback(async () => {
       }
     );
   };
+
   const sendReminder = async (appointment: Appointment) => {
-  // Use email if available, otherwise use phone
-  const contactInfo = appointment.email || appointment.phone;
-  
-  if (!contactInfo) {
-    addNotification('error', 'Patient contact information not available');
+  // Use email field only
+  if (!appointment.email) {
+    addNotification('error', 'Patient email not available');
     return;
   }
 
   // Show confirm dialog before sending
   showConfirmDialog(
     'Send Reminder',
-    `Send appointment reminder to ${appointment.fullName} at ${contactInfo}?`,
+    `Send appointment reminder to ${appointment.fullName} at ${appointment.email}?`,
     async () => {
       setSendingReminder(appointment.id);
 
       try {
-        const response = await fetch('/api/send-reminder', {
+       const response = await fetch('/api/send-reminder', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            patientEmail: contactInfo,
+            patientEmail: appointment.email,
             patientName: appointment.fullName,
             appointmentTime: convertTo12Hour(appointment.timeSlot),
             queueNumber: appointment.queueNumber
@@ -303,7 +302,7 @@ const loadQueue = useCallback(async () => {
         const data = await response.json();
 
         if (response.ok) {
-          addNotification('success', `Reminder sent to ${appointment.fullName} at ${contactInfo}!`);
+          addNotification('success', `Reminder sent to ${appointment.fullName} at ${appointment.email}!`);
         } else {
           addNotification('error', data.error || 'Failed to send reminder');
         }
