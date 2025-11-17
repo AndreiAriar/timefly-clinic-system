@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Stethoscope } from 'lucide-react';
-import { collection, query, getDocs, updateDoc, doc, orderBy } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { collection, query, getDocs, updateDoc, doc, orderBy, where } from 'firebase/firestore';
+import { db, auth } from '../firebase/config';
 import ViewAppointmentModal from './ViewAppointmentModal';
 import RescheduleModal from './RescheduleModal';
 import CancelModal from './CancelModal';
@@ -91,26 +91,40 @@ const Appointments = () => {
     return `${year}-${month}-${day}`;
   };
 
-  const loadAppointments = async () => {
-    setIsLoading(true);
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      
-      const appointmentsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-      
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
-      alert('Failed to load appointments. Please try again.');
-    } finally {
+const loadAppointments = async () => {
+  setIsLoading(true);
+  try {
+    // Get current user's email from auth
+    const userEmail = auth.currentUser?.email;
+    
+    if (!userEmail) {
+      console.error('No user email found');
       setIsLoading(false);
+      return;
     }
-  };
+
+    const appointmentsRef = collection(db, 'appointments');
+    // Filter appointments by current user's email
+    const q = query(
+      appointmentsRef, 
+      where('email', '==', userEmail),
+      orderBy('createdAt', 'desc')
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const appointmentsData = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Appointment[];
+    
+    setAppointments(appointmentsData);
+  } catch (error) {
+    console.error('Error loading appointments:', error);
+    alert('Failed to load appointments. Please try again.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // In Appointments.tsx - Update the filtering functions
 const getTodaysAppointments = () => {
