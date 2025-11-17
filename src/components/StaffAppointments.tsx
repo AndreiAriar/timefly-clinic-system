@@ -57,76 +57,56 @@ const StaffAppointments = () => {
   };
 
   // Move loadAppointments outside the useEffect
-const loadAppointments = async () => {
-  setIsLoading(true);
-  try {
-    const appointmentsRef = collection(db, 'appointments');
-    
-    // Get current user's email
-    const userEmail = auth.currentUser?.email;
-    
-    if (!userEmail) {
-      console.error('No user email found');
+  const loadAppointments = async () => {
+    setIsLoading(true);
+    try {
+      const appointmentsRef = collection(db, 'appointments');
+      
+      // Get current user's email
+      const userEmail = auth.currentUser?.email;
+      
+      if (!userEmail) {
+        console.error('No user email found');
+        setIsLoading(false);
+        return;
+      }
+
+      // Get user role from Firestore
+      const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+      const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+      let q;
+      
+      // If staff or doctor, show all appointments
+      if (userRole === 'staff' || userRole === 'doctor') {
+        q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+      } else {
+        // If patient, show only their appointments
+        q = query(
+          appointmentsRef, 
+          where('email', '==', userEmail),
+          orderBy('createdAt', 'desc')
+        );
+      }
+      
+      const querySnapshot = await getDocs(q);
+      
+      // Filter out appointments deleted by staff
+      const appointmentsData = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Appointment))
+        .filter(apt => !apt.deletedByStaff);
+      
+      setAppointments(appointmentsData);
+    } catch (error) {
+      console.error('Error loading appointments:', error);
+      showToast('Failed to load appointments. Please try again.', 'error');
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    // Get user role from Firestore
-    const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-    const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-    let q;
-    
-    // If staff or doctor, show all appointments
-    if (userRole === 'staff' || userRole === 'doctor') {
-      q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-    } else {
-      // If patient, show only their appointments
-      q = query(
-        appointmentsRef, 
-        where('email', '==', userEmail),
-        orderBy('createdAt', 'desc')
-      );
-    }
-    
-    const querySnapshot = await getDocs(q);
-    
-    // Filter out appointments deleted by staff
-    const appointmentsData = querySnapshot.docs
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Appointment))
-      .filter(apt => !apt.deletedByStaff);
-    
-    setAppointments(appointmentsData);
-  } catch (error) {
-    console.error('Error loading appointments:', error);
-    showToast('Failed to load appointments. Please try again.', 'error');
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-const loadDoctors = async () => {
-  try {
-    const doctorsRef = collection(db, 'doctors');
-    const q = query(doctorsRef, where('isActive', '==', true));
-    const querySnapshot = await getDocs(q);
-    
-    const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
-    setDoctors(doctorsData);
-  } catch (error) {
-    console.error('Error loading doctors:', error);
-    showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-  }
-};
-
-// Use useEffect to call the functions on component mount
-useEffect(() => {
-  loadAppointments();
-  loadDoctors();
-}, []);
+  };
 
   const loadDoctors = async () => {
     try {
@@ -142,9 +122,11 @@ useEffect(() => {
     }
   };
 
-  loadAppointments();
-  loadDoctors();
-}, []);
+  // Use useEffect to call the functions on component mount
+  useEffect(() => {
+    loadAppointments();
+    loadDoctors();
+  }, []);
 
   useEffect(() => {
     let filtered = [...appointments];
@@ -195,7 +177,7 @@ useEffect(() => {
     });
 
     setFilteredAppointments(filtered);
-}, [appointments, searchQuery, statusFilter, priorityFilter, doctorFilter, sortField, sortDirection, loadAppointments]);
+  }, [appointments, searchQuery, statusFilter, priorityFilter, doctorFilter, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -222,8 +204,6 @@ useEffect(() => {
     const hours12 = hours % 12 || 12;
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
-  
- 
 
   const handleView = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
@@ -261,7 +241,7 @@ useEffect(() => {
     setShowDeleteModal(true);
   };
 
-const confirmDelete = async () => {
+  const confirmDelete = async () => {
     if (!selectedAppointment) return;
 
     try {
@@ -287,18 +267,18 @@ const confirmDelete = async () => {
     }
   };
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'pending': return 'bg-yellow-100 text-yellow-800';
-    case 'confirmed': return 'bg-green-100 text-green-800';
-    case 'scheduled': return 'bg-blue-100 text-blue-800';
-    case 'rescheduled': return 'bg-purple-100 text-purple-800';
-    case 'cancelled': return 'bg-red-100 text-red-800';
-    case 'completed': return 'bg-gray-100 text-gray-800';
-    case 'missed': return 'bg-red-100 text-red-800'; 
-    default: return 'bg-gray-100 text-gray-800';
-  }
-};
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'confirmed': return 'bg-green-100 text-green-800';
+      case 'scheduled': return 'bg-blue-100 text-blue-800';
+      case 'rescheduled': return 'bg-purple-100 text-purple-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      case 'completed': return 'bg-gray-100 text-gray-800';
+      case 'missed': return 'bg-red-100 text-red-800'; 
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
 
   const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <th 
