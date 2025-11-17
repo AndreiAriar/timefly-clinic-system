@@ -7,7 +7,6 @@ import RescheduleModal from './RescheduleModal';
 import ToastNotification from './ToastNotification';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
-
 interface Appointment {
   id: string;
   fullName: string;
@@ -23,6 +22,9 @@ interface Appointment {
   queueNumber: number;
   status: string;
   createdAt: string;
+  cancelReason?: string;
+  deletedByStaff?: boolean;
+  deletedByPatient?: boolean;
 }
 
 type SortField = 'appointmentDate' | 'timeSlot' | 'fullName' | 'doctor' | 'status' | 'queueNumber';
@@ -53,7 +55,7 @@ const StaffAppointments = () => {
   const showToast = (message: string, type: ToastType) => {
     setToast({ message, type, isVisible: true });
   };
-useEffect(() => {
+  useEffect(() => {
   const loadAppointments = async () => {
     setIsLoading(true);
     try {
@@ -88,10 +90,13 @@ useEffect(() => {
       
       const querySnapshot = await getDocs(q);
       
-      const appointmentsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
+      // Filter out appointments deleted by staff
+      const appointmentsData = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(apt => !apt.deletedByStaff) as Appointment[];
       
       setAppointments(appointmentsData);
     } catch (error) {
@@ -195,8 +200,7 @@ useEffect(() => {
     const period = hours >= 12 ? 'PM' : 'AM';
     const hours12 = hours % 12 || 12;
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
-const loadAppointments = async () => {
+  };const loadAppointments = async () => {
   setIsLoading(true);
   try {
     const appointmentsRef = collection(db, 'appointments');
@@ -230,10 +234,13 @@ const loadAppointments = async () => {
     
     const querySnapshot = await getDocs(q);
     
-    const appointmentsData = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Appointment[];
+    // Filter out appointments deleted by staff
+    const appointmentsData = querySnapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      .filter(apt => !apt.deletedByStaff) as Appointment[];
     
     setAppointments(appointmentsData);
   } catch (error) {
@@ -279,12 +286,15 @@ const loadAppointments = async () => {
     setSelectedAppointment(appointment);
     setShowDeleteModal(true);
   };
-
-  const confirmDelete = async () => {
+  
+const confirmDelete = async () => {
     if (!selectedAppointment) return;
 
     try {
-      await deleteDoc(doc(db, 'appointments', selectedAppointment.id));
+      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
+      await updateDoc(appointmentRef, {
+        deletedByStaff: true
+      });
       await loadAppointments();
       setShowDeleteModal(false);
       setSelectedAppointment(null);

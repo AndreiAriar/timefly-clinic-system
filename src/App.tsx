@@ -1,18 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import type { User } from 'firebase/auth';
 import { onAuthStateChange, logoutUser } from './services/authService';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase/config';
-import Dashboard from './components/Dashboard';
-import StaffDashboard from './components/StaffDashboard';
-import DoctorDashboard from './components/DoctorDashboard';
-import Login from './components/Login';
-import Signup from './components/Signup';
-import Error404 from './components/Error404';
-import ToastNotification from './components/ToastNotification';
-import type { ToastType } from './components/ToastNotification';
-import { Bird } from 'lucide-react';
+
+// Lazy load components for better performance
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const StaffDashboard = lazy(() => import('./components/StaffDashboard'));
+const DoctorDashboard = lazy(() => import('./components/DoctorDashboard'));
+const Login = lazy(() => import('./components/Login'));
+const Signup = lazy(() => import('./components/Signup'));
+const Error404 = lazy(() => import('./components/Error404'));
+const ToastNotification = lazy(() => import('./components/ToastNotification'));
 
 interface UserData {
   displayName: string;
@@ -21,15 +21,25 @@ interface UserData {
   role: 'patient' | 'staff' | 'doctor';
 }
 
+interface ToastType {
+  message: string;
+  type: 'info' | 'success' | 'error' | 'warning';
+  isVisible: boolean;
+}
+
+// Ultra-minimal loading component - just a subtle background
+const MinimalLoader = () => (
+  <div className="min-h-screen bg-gray-50 transition-opacity duration-200" />
+);
+
 function AppContent() {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<'patient' | 'staff' | 'doctor' | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [roleLoading, setRoleLoading] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
+  const [toast, setToast] = useState<ToastType>({
     message: '',
     type: 'info',
     isVisible: false
@@ -38,159 +48,115 @@ function AppContent() {
   // Refs to track authentication state changes
   const isInitialLoad = useRef(true);
   const hasShownLoginNotification = useRef(false);
-  const isAuthenticating = useRef(false);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Show toast notification
-  const showToast = (message: string, type: ToastType) => {
+  // Memoized toast function to prevent unnecessary re-renders
+  const showToast = useCallback((message: string, type: ToastType['type']) => {
     setToast({ message, type, isVisible: true });
-  };
+  }, []);
 
-  // Real-time user data subscription
-  useEffect(() => {
-    let unsubscribeUserData: (() => void) | undefined;
-
-    const setupUserDataListener = async (userId: string) => {
-      try {
-        const userDocRef = doc(db, 'users', userId);
-        
-        // Set up real-time listener for user data changes
-        unsubscribeUserData = onSnapshot(userDocRef, (docSnapshot) => {
-          if (docSnapshot.exists()) {
-            const userData = docSnapshot.data();
-            const newRole = userData.role || 'patient';
-            
-            console.log('🔄 Real-time user data update detected:', userData);
-            console.log('🎯 New role:', newRole, 'Previous role:', userRole);
-            
-            // Update user role if it changed
-            if (userRole !== newRole) {
-              console.log('🔄 Role changed! Updating from', userRole, 'to', newRole);
-              setUserRole(newRole);
+  // Memoized user data listener setup
+  const setupUserDataListener = useCallback(async (userId: string) => {
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      
+      // Set up real-time listener for user data changes
+      unsubscribeRef.current = onSnapshot(userDocRef, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const userData = docSnapshot.data();
+          const newRole = userData.role || 'patient';
+          
+          // Update user role if it changed
+          setUserRole(prevRole => {
+            if (prevRole !== newRole) {
+              console.log('🔄 Role changed! Updating from', prevRole, 'to', newRole);
               
               // Update complete user data
-              setUserData({
-                displayName: userData.displayName || user?.displayName || 'User',
-                email: userData.email || user?.email || '',
-                photoURL: userData.photoURL || user?.photoURL || '',
-                role: newRole
-              });
-
-              // Show role change notification ONLY if:
-              // 1. User was already authenticated (not initial load)
-              // 2. Previous role existed (role actually changed, not first time setting)
-              if (!isInitialLoad.current && userRole && userRole !== newRole) {
-                showToast(`Role updated to ${newRole}`, 'info');
-              }
-            } else {
-              // Still update user data even if role didn't change
               setUserData(prev => prev ? {
                 ...prev,
                 displayName: userData.displayName || prev.displayName,
-                photoURL: userData.photoURL || prev.photoURL
-              } : prev);
-            }
-          } else {
-            console.log('⚠️ User document no longer exists');
-            setUserRole('patient');
-            setUserData(prev => prev ? { ...prev, role: 'patient' } : null);
-          }
-        }, (error) => {
-          console.error('❌ Error in user data listener:', error);
-        });
+                photoURL: userData.photoURL || prev.photoURL,
+                role: newRole
+              } : null);
 
-      } catch (error) {
-        console.error('❌ Error setting up user data listener:', error);
-      }
-    };
-
-    const unsubscribeAuth = onAuthStateChange(async (user) => {
-      if (isSigningUp) {
-        console.log('🔄 Ignoring auth change during signup');
-        return;
-      }
-
-      if (user) {
-        // Check sessionStorage to see if we've already shown login notification this session
-        const sessionKey = `login_notified_${user.uid}`;
-        const hasNotifiedThisSession = sessionStorage.getItem(sessionKey) === 'true';
-        
-        console.log('🔐 Auth state change:', {
-          userId: user.uid,
-          hasNotifiedThisSession,
-          sessionStorageKey: sessionKey
-        });
-
-        // Set role loading to true before fetching
-        setRoleLoading(true);
-        setUser(user);
-        isAuthenticating.current = true;
-        
-        try {
-          console.log('🔍 Fetching initial user data for:', user.uid);
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            const role = userData.role || 'patient';
-            
-            console.log('✅ Initial user data fetched:', userData);
-            console.log('🎯 Initial user role detected:', role);
-            setUserRole(role);
-            
-            // Store complete user data including name and photo
-            setUserData({
-              displayName: userData.displayName || user.displayName || 'User',
-              email: userData.email || user.email || '',
-              photoURL: userData.photoURL || user.photoURL || '',
-              role: role
-            });
-            
-            // Set up real-time listener for future role changes
-            await setupUserDataListener(user.uid);
-            
-            // Show notification ONLY if we haven't notified this session
-            if (!hasNotifiedThisSession) {
-              console.log('🔔 Showing login notification for first time this session');
-              if (role === 'staff') {
-                showToast('Staff authenticated successfully!', 'success');
-              } else if (role === 'doctor') {
-                showToast('Doctor authenticated successfully!', 'success');
-              } else {
-                const displayName = userData.displayName || user.displayName || 'User';
-                showToast(`Welcome back, ${displayName}!`, 'success');
+              // Show role change notification ONLY if not initial load
+              if (!isInitialLoad.current && prevRole) {
+                showToast(`Role updated to ${newRole}`, 'info');
               }
-              // Mark as notified in sessionStorage
-              sessionStorage.setItem(sessionKey, 'true');
-              hasShownLoginNotification.current = true;
-            } else {
-              console.log('🔕 Skipping notification - already shown this session');
+              return newRole;
             }
-          } else {
-            console.log('⚠️ No user document found, defaulting to patient');
-            setUserRole('patient');
-            
-            // Set user data with fallbacks
-            setUserData({
-              displayName: user.displayName || 'User',
-              email: user.email || '',
-              photoURL: user.photoURL || '',
-              role: 'patient'
-            });
-            
-            // Only show welcome message on first time this session
-            if (!hasNotifiedThisSession) {
-              console.log('🔔 Showing welcome notification for new user');
-              showToast('Welcome! Setting up your account...', 'info');
-              sessionStorage.setItem(sessionKey, 'true');
-              hasShownLoginNotification.current = true;
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error fetching user data:', error);
+            return prevRole;
+          });
+
+          // Update user data even if role didn't change
+          setUserData(prev => prev ? {
+            ...prev,
+            displayName: userData.displayName || prev.displayName,
+            photoURL: userData.photoURL || prev.photoURL
+          } : prev);
+        } else {
+          console.log('⚠️ User document no longer exists');
           setUserRole('patient');
+          setUserData(prev => prev ? { ...prev, role: 'patient' } : null);
+        }
+      }, (error) => {
+        console.error('❌ Error in user data listener:', error);
+      });
+
+    } catch (error) {
+      console.error('❌ Error setting up user data listener:', error);
+    }
+  }, [showToast]);
+
+  // Optimized auth state change handler - no artificial delays
+  const handleAuthStateChange = useCallback(async (user: User | null) => {
+    if (isSigningUp) {
+      return;
+    }
+
+    if (user) {
+      // Check sessionStorage to see if we've already shown login notification this session
+      const sessionKey = `login_notified_${user.uid}`;
+      const hasNotifiedThisSession = sessionStorage.getItem(sessionKey) === 'true';
+      
+      setUser(user);
+      
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const role = userData.role || 'patient';
           
-          // Set fallback user data on error
+          setUserRole(role);
+          
+          // Store complete user data including name and photo
+          setUserData({
+            displayName: userData.displayName || user.displayName || 'User',
+            email: userData.email || user.email || '',
+            photoURL: userData.photoURL || user.photoURL || '',
+            role: role
+          });
+          
+          // Set up real-time listener for future role changes
+          await setupUserDataListener(user.uid);
+          
+          // Show notification ONLY if we haven't notified this session
+          if (!hasNotifiedThisSession) {
+            if (role === 'staff') {
+              showToast('Staff authenticated successfully!', 'success');
+            } else if (role === 'doctor') {
+              showToast('Doctor authenticated successfully!', 'success');
+            } else {
+              const displayName = userData.displayName || user.displayName || 'User';
+              showToast(`Welcome back, ${displayName}!`, 'success');
+            }
+            sessionStorage.setItem(sessionKey, 'true');
+            hasShownLoginNotification.current = true;
+          }
+        } else {
+          setUserRole('patient');
           setUserData({
             displayName: user.displayName || 'User',
             email: user.email || '',
@@ -198,67 +164,73 @@ function AppContent() {
             role: 'patient'
           });
           
-          // Only show error on first time this session
           if (!hasNotifiedThisSession) {
-            console.log('🔔 Showing error notification');
-            showToast('Error loading profile. Defaulting to patient view.', 'error');
+            showToast('Welcome! Setting up your account...', 'info');
             sessionStorage.setItem(sessionKey, 'true');
             hasShownLoginNotification.current = true;
           }
-    } finally {
-            // Add 0.5-second delay before hiding loading screen
-            setTimeout(() => {
-              setRoleLoading(false);
-              setLoading(false);
-              isInitialLoad.current = false;
-              isAuthenticating.current = false;
-            }, 500);
-          }
-      } else {
-        // No user logged in - cleanup listeners and reset state
-        console.log('👤 User logged out - resetting state');
-        
-        if (unsubscribeUserData) {
-          unsubscribeUserData();
         }
-        
-        setUser(null);
-        setUserRole(null);
-        setUserData(null);
-        
-        // Add delay for logout state as well
-        setTimeout(() => {
-          setRoleLoading(false);
-          setLoading(false);
-        }, 3000);
-
-        // Reset tracking refs
-        hasShownLoginNotification.current = false;
-        isInitialLoad.current = true;
-        
-        // Clear sessionStorage on logout to allow notification on next login
-        // Clear all login notification flags
-        const keys = Object.keys(sessionStorage);
-        keys.forEach(key => {
-          if (key.startsWith('login_notified_')) {
-            sessionStorage.removeItem(key);
-          }
+      } catch (error) {
+        console.error('❌ Error fetching user data:', error);
+        setUserRole('patient');
+        setUserData({
+          displayName: user.displayName || 'User',
+          email: user.email || '',
+          photoURL: user.photoURL || '',
+          role: 'patient'
         });
+        
+        if (!hasNotifiedThisSession) {
+          showToast('Error loading profile. Defaulting to patient view.', 'error');
+          sessionStorage.setItem(sessionKey, 'true');
+          hasShownLoginNotification.current = true;
+        }
+      } finally {
+        // IMMEDIATE loading completion - no delays
+        setLoading(false);
+        isInitialLoad.current = false;
       }
-    });
+    } else {
+      // No user logged in - cleanup listeners and reset state
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+      
+      setUser(null);
+      setUserRole(null);
+      setUserData(null);
+      
+      // IMMEDIATE state reset - no delays
+      setLoading(false);
 
+      // Reset tracking refs
+      hasShownLoginNotification.current = false;
+      isInitialLoad.current = true;
+      
+      // Clear sessionStorage on logout
+      const keys = Object.keys(sessionStorage);
+      keys.forEach(key => {
+        if (key.startsWith('login_notified_')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    }
+  }, [isSigningUp, setupUserDataListener, showToast]);
+
+  // Optimized auth state subscription
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChange(handleAuthStateChange);
     return () => {
       unsubscribeAuth();
-      if (unsubscribeUserData) {
-        unsubscribeUserData();
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
       }
     };
-  }, [isSigningUp]); // Only depend on isSigningUp
+  }, [handleAuthStateChange]);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
-      console.log('🚪 Logging out user');
-      
       // Clear sessionStorage notification flag before logout
       if (user?.uid) {
         const sessionKey = `login_notified_${user.uid}`;
@@ -267,7 +239,7 @@ function AppContent() {
       
       await logoutUser();
       
-      // Reset all state
+      // Reset all state immediately
       setUser(null);
       setUserRole(null);
       setUserData(null);
@@ -277,35 +249,29 @@ function AppContent() {
       isInitialLoad.current = true;
       
       showToast('Logged out successfully', 'info');
-      
-      // Navigate to login after logout
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
       showToast('Error logging out. Please try again.', 'error');
     }
-  };
+  }, [user, showToast, navigate]);
 
-  const handleSignupSuccess = () => {
+  const handleSignupSuccess = useCallback(() => {
     setIsSigningUp(false);
-    
-    // Show success toast on login page
     showToast('Account created successfully! Please sign in.', 'success');
-    
-    // Navigate to login
     navigate('/login');
-  };
+  }, [showToast, navigate]);
 
-  const handleSwitchToLogin = () => {
+  const handleSwitchToLogin = useCallback(() => {
     navigate('/login');
-  };
+  }, [navigate]);
 
-  const handleSwitchToSignup = () => {
+  const handleSwitchToSignup = useCallback(() => {
     navigate('/signup');
-  };
+  }, [navigate]);
 
-  // Role-based access control helper
-  const hasAccessToRoute = (requiredRole: string | string[]): boolean => {
+  // Memoized role-based access control helper
+  const hasAccessToRoute = useCallback((requiredRole: string | string[]): boolean => {
     if (!userRole) return false;
     
     if (Array.isArray(requiredRole)) {
@@ -313,69 +279,10 @@ function AppContent() {
     }
     
     return userRole === requiredRole;
-  };
+  }, [userRole]);
 
-// Show loading screen if either loading or roleLoading is true
-if (loading || roleLoading) {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="relative">
-        {/* Spinning arc */}
-        <div className="w-24 h-24 rounded-full border-[6px] border-transparent border-t-blue-600 border-r-blue-500 border-b-blue-400 animate-spin"></div>
-        {/* Lucide Bird icon in center */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Bird className="w-10 h-10 text-blue-600" />
-        </div>
-      </div>
-    </div>
-  );
-}
-  // Render the appropriate dashboard based on current user role
-  const renderDashboard = () => {
-    if (!user || !userRole || !userData) {
-      console.log('🚫 No user data, redirecting to login');
-      return <Navigate to="/login" replace />;
-    }
-
-    console.log('🎯 Rendering dashboard for role:', userRole);
-    
-    switch (userRole) {
-      case 'staff':
-        console.log('👨‍💼 Rendering StaffDashboard');
-        return (
-          <StaffDashboard 
-            userEmail={userData.email} 
-            userName={userData.displayName}
-            userPhoto={userData.photoURL}
-            onLogout={handleLogout} 
-          />
-        );
-      case 'doctor':
-        console.log('👨‍⚕️ Rendering DoctorDashboard');
-        return (
-          <DoctorDashboard 
-            userEmail={userData.email} 
-            userName={userData.displayName}
-            userPhoto={userData.photoURL}
-            onLogout={handleLogout} 
-          />
-        );
-      case 'patient':
-      default:
-        console.log('👤 Rendering Patient Dashboard');
-        return (
-          <Dashboard 
-            userEmail={userData.email} 
-            userName={userData.displayName}
-            userPhoto={userData.photoURL}
-            onLogout={handleLogout} 
-          />
-        );
-    }
-  };
-
-  // Helper function to determine redirect path based on current role
-  const getRedirectPath = () => {
+  // Memoized redirect path helper
+  const getRedirectPath = useCallback(() => {
     if (!userRole) return '/login';
     
     switch (userRole) {
@@ -387,25 +294,59 @@ if (loading || roleLoading) {
       default:
         return '/';
     }
-  };
+  }, [userRole]);
 
+  // Memoized dashboard renderer
+  const renderDashboard = useCallback(() => {
+    if (!user || !userRole || !userData) {
+      return <Navigate to="/login" replace />;
+    }
+    
+    const dashboardProps = {
+      userEmail: userData.email,
+      userName: userData.displayName,
+      userPhoto: userData.photoURL,
+      onLogout: handleLogout
+    };
+    
+    switch (userRole) {
+      case 'staff':
+        return <StaffDashboard {...dashboardProps} />;
+      case 'doctor':
+        return <DoctorDashboard {...dashboardProps} />;
+      case 'patient':
+      default:
+        return <Dashboard {...dashboardProps} />;
+    }
+  }, [user, userRole, userData, handleLogout]);
+
+  // Show minimal loader only during very initial load
+  if (loading && isInitialLoad.current) {
+    return <MinimalLoader />;
+  }
+
+  // Main app content - renders immediately once auth is determined
   return (
     <>
       {/* Global Toast Notification */}
-      <ToastNotification
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
-      />
+      <Suspense fallback={null}>
+        <ToastNotification
+          message={toast.message}
+          type={toast.type}
+          isVisible={toast.isVisible}
+          onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
+        />
+      </Suspense>
       
       <Routes>
-        {/* Public routes - redirect to appropriate dashboard if already logged in */}
+        {/* Public routes */}
         <Route 
           path="/login" 
           element={
             !user ? (
-              <Login onSwitchToSignup={handleSwitchToSignup} />
+              <Suspense fallback={<MinimalLoader />}>
+                <Login onSwitchToSignup={handleSwitchToSignup} />
+              </Suspense>
             ) : (
               <Navigate to={getRedirectPath()} replace />
             )
@@ -416,40 +357,45 @@ if (loading || roleLoading) {
           path="/signup" 
           element={
             !user ? (
-              <Signup 
-                onSignup={handleSignupSuccess}
-                onSwitchToLogin={handleSwitchToLogin}
-                onSignupStart={() => setIsSigningUp(true)}
-              />
+              <Suspense fallback={<MinimalLoader />}>
+                <Signup 
+                  onSignup={handleSignupSuccess}
+                  onSwitchToLogin={handleSwitchToLogin}
+                  onSignupStart={() => setIsSigningUp(true)}
+                />
+              </Suspense>
             ) : (
               <Navigate to={getRedirectPath()} replace />
             )
           } 
         />
         
-        {/* Main dashboard route - handles all roles appropriately */}
+        {/* Main dashboard route */}
         <Route 
           path="/" 
-          element={renderDashboard()}
+          element={
+            <Suspense fallback={<MinimalLoader />}>
+              {renderDashboard()}
+            </Suspense>
+          }
         />
         
-        {/* Doctor-specific route with role protection */}
+        {/* Role-specific routes */}
         <Route 
           path="/doctor" 
           element={
             user && userRole ? (
               hasAccessToRoute('doctor') ? (
-                <DoctorDashboard 
-                  userEmail={userData?.email || ''} 
-                  userName={userData?.displayName || ''}
-                  userPhoto={userData?.photoURL || ''}
-                  onLogout={handleLogout} 
-                />
+                <Suspense fallback={<MinimalLoader />}>
+                  <DoctorDashboard 
+                    userEmail={userData?.email || ''} 
+                    userName={userData?.displayName || ''}
+                    userPhoto={userData?.photoURL || ''}
+                    onLogout={handleLogout} 
+                  />
+                </Suspense>
               ) : (
-                (() => {
-                  console.log('🚫 Non-doctor accessing /doctor, current role:', userRole);
-                  return <Navigate to="/404" replace />;
-                })()
+                <Navigate to="/404" replace />
               )
             ) : (
               <Navigate to="/login" replace />
@@ -457,23 +403,21 @@ if (loading || roleLoading) {
           }
         />
 
-        {/* Staff-specific route with role protection */}
         <Route 
           path="/staff" 
           element={
             user && userRole ? (
               hasAccessToRoute('staff') ? (
-                <StaffDashboard 
-                  userEmail={userData?.email || ''} 
-                  userName={userData?.displayName || ''}
-                  userPhoto={userData?.photoURL || ''}
-                  onLogout={handleLogout} 
-                />
+                <Suspense fallback={<MinimalLoader />}>
+                  <StaffDashboard 
+                    userEmail={userData?.email || ''} 
+                    userName={userData?.displayName || ''}
+                    userPhoto={userData?.photoURL || ''}
+                    onLogout={handleLogout} 
+                  />
+                </Suspense>
               ) : (
-                (() => {
-                  console.log('🚫 Non-staff accessing /staff, current role:', userRole);
-                  return <Navigate to="/404" replace />;
-                })()
+                <Navigate to="/404" replace />
               )
             ) : (
               <Navigate to="/login" replace />
@@ -481,23 +425,21 @@ if (loading || roleLoading) {
           }
         />
 
-        {/* Patient-specific route with role protection */}
         <Route 
           path="/patient" 
           element={
             user && userRole ? (
               hasAccessToRoute('patient') ? (
-                <Dashboard 
-                  userEmail={userData?.email || ''} 
-                  userName={userData?.displayName || ''}
-                  userPhoto={userData?.photoURL || ''}
-                  onLogout={handleLogout} 
-                />
+                <Suspense fallback={<MinimalLoader />}>
+                  <Dashboard 
+                    userEmail={userData?.email || ''} 
+                    userName={userData?.displayName || ''}
+                    userPhoto={userData?.photoURL || ''}
+                    onLogout={handleLogout} 
+                  />
+                </Suspense>
               ) : (
-                (() => {
-                  console.log('🚫 Non-patient accessing /patient, current role:', userRole);
-                  return <Navigate to="/404" replace />;
-                })()
+                <Navigate to="/404" replace />
               )
             ) : (
               <Navigate to="/login" replace />
@@ -508,13 +450,21 @@ if (loading || roleLoading) {
         {/* 404 Error Page */}
         <Route 
           path="/404" 
-          element={<Error404 />}
+          element={
+            <Suspense fallback={<MinimalLoader />}>
+              <Error404 />
+            </Suspense>
+          }
         />
         
-        {/* Fallback route - redirect to 404 */}
+        {/* Fallback route */}
         <Route 
           path="*" 
-          element={<Error404 />}
+          element={
+            <Suspense fallback={<MinimalLoader />}>
+              <Error404 />
+            </Suspense>
+          }
         />
       </Routes>
     </>

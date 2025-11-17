@@ -439,19 +439,32 @@ useEffect(() => {
       document.body.style.overflow = 'unset';
     };
   }, [isOpen]);
+
 const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   if (file) {
-    const maxSize = 10 * 1024 * 1024;
+    // ✅ INCREASED UPLOAD SIZE LIMIT: From 10MB to 25MB
+    const maxSize = 25 * 1024 * 1024;
     
     if (file.size > maxSize) {
-      showToast('File size is too large. Please upload an image smaller than 10MB.', 'error');
+      showToast('File size is too large. Please upload an image smaller than 25MB.', 'error');
       return;
     }
 
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    // ✅ ADDED MORE IMAGE FORMATS for better compatibility
+    const validTypes = [
+      'image/jpeg', 
+      'image/jpg', 
+      'image/png', 
+      'image/gif', 
+      'image/webp',
+      'image/bmp',
+      'image/tiff',
+      'image/svg+xml'
+    ];
+    
     if (!validTypes.includes(file.type)) {
-      showToast('Please upload a valid image file (JPEG, PNG, GIF, or WebP).', 'error');
+      showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
       return;
     }
 
@@ -460,45 +473,73 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     reader.onloadend = () => {
       const img = new Image();
       img.onload = () => {
+        // ✅ INCREASED MAX DIMENSIONS for higher quality
+        const maxWidth = 2048; // Increased from 1024
+        const maxHeight = 2048; // Increased from 1024
+        
+        let width = img.width;
+        let height = img.height;
+
+        // ✅ IMPROVED SCALING ALGORITHM - Only scale if necessary
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.floor(width * ratio);
+          height = Math.floor(height * ratio);
+        }
+
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        const maxWidth = 1024;
-        const maxHeight = 1024;
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > height) {
-          if (width > maxWidth) {
-            height *= maxWidth / width;
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width *= maxHeight / height;
-            height = maxHeight;
-          }
+        // ✅ SET HIGH-QUALITY RENDERING
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
         }
         
         canvas.width = width;
         canvas.height = height;
         
         ctx?.drawImage(img, 0, 0, width, height);
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // ✅ IMPROVED QUALITY SETTINGS:
+        // - Use original format when possible
+        // - Higher quality compression (0.95 instead of 0.8)
+        // - Preserve transparency for PNG
+        let compressedDataUrl;
+        if (file.type === 'image/png' || file.type === 'image/gif') {
+          // Preserve transparency for PNG/GIF
+          compressedDataUrl = canvas.toDataURL('image/png');
+        } else if (file.type === 'image/webp') {
+          // Use WebP for better compression
+          compressedDataUrl = canvas.toDataURL('image/webp', 0.95);
+        } else {
+          // High quality JPEG for other formats
+          compressedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        }
         
         setFormData(prev => ({ ...prev, photo: compressedDataUrl }));
+        
+        // ✅ LOG IMAGE QUALITY INFO (for debugging)
+        console.log('🖼️ Image processed:', {
+          originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+          originalDimensions: `${img.width}x${img.height}`,
+          processedDimensions: `${width}x${height}`,
+          format: file.type,
+          quality: 'high'
+        });
       };
       
       img.src = reader.result as string;
     };
     
     reader.onerror = () => {
-      alert('Error reading file. Please try again.');
+      showToast('Error reading file. Please try again.', 'error');
     };
     
     reader.readAsDataURL(file);
   }
-};const handleSubmit = async () => {
+};
+const handleSubmit = async () => {
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
     showToast('Please fill in all required fields', 'warning');
@@ -523,67 +564,87 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       ? formData.customCondition 
       : formData.medicalCondition;
 
-    // 🔒 TRANSACTION: Atomic check and book operation
+    // 🔒 TRANSACTION: Atomic check and book operation with queue number generation
     const appointmentData = await runTransaction(db, async (transaction) => {
-      // ✅ Step 1: Fetch all appointments for this doctor and date
-      const appointmentsRef = collection(db, 'appointments');
-      const conflictQuery = query(
-        appointmentsRef,
-        where('doctor', '==', formData.doctor),
-        where('appointmentDate', '==', formData.appointmentDate)
-      );
+      // ✅ Step 1: Create unique slot document reference for atomic locking
+      const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
       
-      // ✅ Use getDocs() for queries (not transaction.get())
-      const conflictSnapshot = await getDocs(conflictQuery);
+      // Try to read the slot lock - this will fail if slot is taken
+      const slotLockDoc = await transaction.get(slotLockRef);
       
-      // ✅ Filter for the specific slot and non-cancelled status in memory
-      let slotTaken = false;
-      let activeBookingsCount = 0;
-      
-      conflictSnapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.status !== 'cancelled') {
-          activeBookingsCount++;
-          if (data.timeSlot === formData.timeSlot) {
-            slotTaken = true;
-          }
-        }
-      });
-      
-      // If slot is already taken, abort transaction
-      if (slotTaken) {
+      if (slotLockDoc.exists()) {
         throw new Error('SLOT_TAKEN');
       }
-
-      // ✅ Step 2: Check doctor capacity limits
+      
+      // ✅ Step 2: Check doctor availability and capacity
       const doctorsRef = collection(db, 'doctors');
       const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
-      
-      // ✅ Use getDocs() for queries (not transaction.get())
       const doctorSnapshot = await getDocs(doctorQuery);
       
+      let maxSlots = 10;
+      
       if (!doctorSnapshot.empty) {
-        const doctorData = doctorSnapshot.docs[0].data();
+        const doctorDocRef = doc(db, 'doctors', doctorSnapshot.docs[0].id);
+        const doctorDoc = await transaction.get(doctorDocRef);
+        const doctorData = doctorDoc.data();
         
-        // Check unavailable dates
-        const unavailableDates = doctorData.unavailableDates || {};
-        if (unavailableDates[formData.appointmentDate] === true) {
-          throw new Error('DOCTOR_UNAVAILABLE');
-        }
-        
-        // Check max slots capacity
-        const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-        const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
-        const globalMaxSlots = doctorData.maxSlots || 10;
-        const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
-        
-        // ✅ Use activeBookingsCount we already calculated above
-        if (activeBookingsCount >= maxSlots) {
-          throw new Error('DOCTOR_FULLY_BOOKED');
+        if (doctorData) {
+          // Check unavailable dates
+          const unavailableDates = doctorData.unavailableDates || {};
+          if (unavailableDates[formData.appointmentDate] === true) {
+            throw new Error('DOCTOR_UNAVAILABLE');
+          }
+          
+          // Get max slots
+          const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+          const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
+          const globalMaxSlots = doctorData.maxSlots || 10;
+          maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
         }
       }
-
-      // ✅ Step 3: Create the appointment WITHIN TRANSACTION
+      
+      // ✅ Step 3: Get all appointments for queue number calculation (read within transaction)
+      const appointmentsRef = collection(db, 'appointments');
+      const appointmentsQuery = query(
+        appointmentsRef,
+        where('doctor', '==', formData.doctor),
+        where('appointmentDate', '==', formData.appointmentDate),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const appointmentsSnapshot = await getDocs(appointmentsQuery);
+      const activeBookingsCount = appointmentsSnapshot.size;
+      
+      // Check if doctor is fully booked
+      if (activeBookingsCount >= maxSlots) {
+        throw new Error('DOCTOR_FULLY_BOOKED');
+      }
+      
+      // ✅ Step 4: Calculate queue number based on time slot order
+      const existingAppointments = appointmentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        timeSlot: doc.data().timeSlot as string
+      }));
+      
+      // Add current time slot to the list for proper sorting
+      existingAppointments.push({
+        id: 'current',
+        timeSlot: formData.timeSlot
+      });
+      
+      // Sort by time slot
+      existingAppointments.sort((a, b) => {
+        const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
+        const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
+        const timeA = hoursA * 60 + minutesA;
+        const timeB = hoursB * 60 + minutesB;
+        return timeA - timeB;
+      });
+      
+      // Find the queue number for current appointment
+      const queueNumber = existingAppointments.findIndex(apt => apt.id === 'current') + 1;
+      
+      // ✅ Step 5: Create the appointment with correct queue number
       const appointment: Appointment = {
         fullName: formData.fullName,
         age: formData.age,
@@ -596,7 +657,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         email: userEmail,
         priorityLevel: formData.priorityLevel,
         timeSlot: formData.timeSlot,
-        queueNumber: 0,
+        queueNumber: queueNumber,
         status: 'pending',
         createdAt: new Date().toISOString()
       };
@@ -604,25 +665,29 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       // Create new document reference
       const newAppointmentRef = doc(collection(db, 'appointments'));
       
-      // Set the document in the transaction
+      // Set the appointment document in the transaction
       transaction.set(newAppointmentRef, appointment);
       
-      return { appointmentId: newAppointmentRef.id, appointment };
+      // Set the slot lock in the transaction to prevent concurrent bookings
+      transaction.set(slotLockRef, {
+        doctor: formData.doctor,
+        appointmentDate: formData.appointmentDate,
+        timeSlot: formData.timeSlot,
+        appointmentId: newAppointmentRef.id,
+        bookedAt: new Date().toISOString()
+      });
+      
+      return { appointmentId: newAppointmentRef.id, appointment, queueNumber };
     });
 
     console.log('✅ Appointment booked successfully via transaction:', appointmentData.appointmentId);
+    console.log('✅ Queue number assigned:', appointmentData.queueNumber);
 
-    // Recalculate queue numbers for all appointments on this date
+    // Recalculate queue numbers for all other appointments on this date
     await recalculateQueueNumbers(formData.appointmentDate);
 
-    // Get the actual queue number that was assigned to this appointment
-    const appointmentDoc = await getDocs(query(
-      collection(db, 'appointments'),
-      where('__name__', '==', appointmentData.appointmentId)
-    ));
-    
-    const actualQueueNumber = appointmentDoc.docs[0]?.data().queueNumber || 1;
-    setQueueNumber(actualQueueNumber);
+    // Set the queue number for display
+    setQueueNumber(appointmentData.queueNumber);
 
     // Show success toast notification
     showToast('🎉 Appointment booked successfully!', 'success');
@@ -661,6 +726,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     setIsSubmitting(false);
   }
 };
+
   const handleClose = () => {
     setFormData({
       fullName: '',

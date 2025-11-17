@@ -23,10 +23,6 @@ interface Appointment {
   status: string;
   createdAt: string;
   cancelReason?: string;
-  confirmationStatus?: 'confirmed' | 'cancelled';
-  confirmationMessage?: string;
-  cancellationReason?: string;
-  otherReason?: string;
 }
 
 interface ViewAppointmentModalProps {
@@ -37,12 +33,6 @@ interface ViewAppointmentModalProps {
 }
 
 const ViewAppointmentModal = ({ isOpen, onClose, appointment, onAppointmentUpdate }: ViewAppointmentModalProps) => {
-  const [confirmationStatus, setConfirmationStatus] = useState<'confirmed' | 'cancelled' | null>(
-    appointment.confirmationStatus || null
-  );
-  const [confirmationMessage, setConfirmationMessage] = useState(appointment.confirmationMessage || '');
-  const [cancellationReason, setCancellationReason] = useState(appointment.cancellationReason || '');
-  const [otherReason, setOtherReason] = useState(appointment.otherReason || '');
   const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
     message: '',
     type: 'info',
@@ -53,78 +43,6 @@ const ViewAppointmentModal = ({ isOpen, onClose, appointment, onAppointmentUpdat
 
   const showToast = (message: string, type: ToastType) => {
     setToast({ message, type, isVisible: true });
-  };
-
-  const handleConfirmation = async (status: 'confirmed' | 'cancelled', message?: string, reason?: string, otherReason?: string) => {
-    try {
-      const appointmentRef = doc(db, 'appointments', appointment.id);
-      
-      // Update data object with proper TypeScript type
-      const updateData: {
-        confirmationStatus: 'confirmed' | 'cancelled';
-        confirmationMessage?: string;
-        cancellationReason?: string;
-        otherReason?: string;
-        status?: string;
-        cancelReason?: string;
-      } = {
-        confirmationStatus: status,
-        confirmationMessage: message,
-        cancellationReason: reason,
-        otherReason: otherReason
-      };
-
-      // Automatically update status to "cancelled" if "Cancel" is selected
-      if (status === 'cancelled') {
-        updateData.status = 'cancelled';
-        updateData.cancelReason = reason === 'other' ? otherReason : reason;
-      }
-
-      await updateDoc(appointmentRef, updateData);
-
-      showToast(
-        `Appointment ${status === 'confirmed' ? 'confirmed' : 'cancelled'} successfully!`,
-        'success'
-      );
-      
-      // Trigger parent component to reload appointments
-      if (onAppointmentUpdate) {
-        onAppointmentUpdate();
-      }
-      
-      setTimeout(() => {
-        onClose();
-      }, 1500);
-    } catch (error) {
-      console.error('Error updating confirmation status:', error);
-      showToast('Failed to update confirmation status. Please try again.', 'error');
-    }
-  };
-
-  const handleSubmit = () => {
-    if (confirmationStatus === 'confirmed' && !confirmationMessage.trim()) {
-      showToast('Please enter a confirmation message.', 'warning');
-      return;
-    }
-    if (confirmationStatus === 'cancelled' && !cancellationReason) {
-      showToast('Please select a reason for cancellation.', 'warning');
-      return;
-    }
-    if (confirmationStatus === 'cancelled' && cancellationReason === 'other' && !otherReason.trim()) {
-      showToast('Please specify the other reason.', 'warning');
-      return;
-    }
-
-    if (confirmationStatus === 'confirmed' || confirmationStatus === 'cancelled') {
-      handleConfirmation(
-        confirmationStatus, 
-        confirmationMessage, 
-        cancellationReason,
-        otherReason
-      );
-    } else {
-      console.warn('Confirmation status is null, cannot submit confirmation.');
-    }
   };
 
   const getPriorityColor = (priority: string) => {
@@ -142,13 +60,10 @@ const ViewAppointmentModal = ({ isOpen, onClose, appointment, onAppointmentUpdat
       case 'cancelled': return 'bg-red-100 text-red-800';
       case 'completed': return 'bg-gray-100 text-gray-800';
       case 'confirmed': return 'bg-green-100 text-green-800';
-      case 'missed': return 'bg-red-100 text-red-800'; // ✅ NEW
+      case 'missed': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
-
-  // Show confirmation section for ALL appointment statuses for testing
-  const shouldShowConfirmation = true;
 
   return (
     <>
@@ -280,132 +195,6 @@ const ViewAppointmentModal = ({ isOpen, onClose, appointment, onAppointmentUpdat
                 </h4>
                 <div className="bg-red-50 rounded-lg p-4 border border-red-200">
                   <p className="text-gray-700">{appointment.cancelReason}</p>
-                </div>
-              </section>
-            )}
-
-            {shouldShowConfirmation && (
-              <section className="mb-6">
-                <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-green-600" aria-hidden="true" />
-                  Appointment Confirmation
-                </h4>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-                  <div className="mb-4">
-                    <p className="text-sm font-medium text-gray-700">
-                      Please confirm if you can show for your appointment or not.
-                    </p>
-                  </div>
-
-                  <div className="flex gap-4 mb-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`confirmation-${appointment.id}`}
-                        value="confirmed"
-                        checked={confirmationStatus === 'confirmed'}
-                        onChange={(e) => setConfirmationStatus(e.target.value as 'confirmed')}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">Confirm</span>
-                    </label>
-                    
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`confirmation-${appointment.id}`}
-                        value="cancelled"
-                        checked={confirmationStatus === 'cancelled'}
-                        onChange={(e) => setConfirmationStatus(e.target.value as 'cancelled')}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">Cancel</span>
-                    </label>
-                  </div>
-
-                  {confirmationStatus === 'confirmed' && (
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Confirmation Message
-                      </label>
-                      <textarea
-                        value={confirmationMessage}
-                        onChange={(e) => setConfirmationMessage(e.target.value)}
-                        placeholder="Type your confirmation message here..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        rows={3}
-                      />
-                    </div>
-                  )}
-
-                  {confirmationStatus === 'cancelled' && (
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Reason for Cancellation
-                      </label>
-                      <select
-                        value={cancellationReason}
-                        onChange={(e) => setCancellationReason(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="">Select a reason</option>
-                        <option value="sick">Feeling Sick</option>
-                        <option value="emergency">Emergency</option>
-                        <option value="transportation">Transportation Issues</option>
-                        <option value="work">Work Conflict</option>
-                        <option value="other">Other</option>
-                      </select>
-
-                      {cancellationReason === 'other' && (
-                        <div className="mt-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Please specify the reason
-                          </label>
-                          <input
-                            type="text"
-                            value={otherReason}
-                            onChange={(e) => setOtherReason(e.target.value)}
-                            placeholder="Type your reason here..."
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {confirmationStatus && (
-                    <button
-                      onClick={handleSubmit}
-                      className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
-                    >
-                      Submit Confirmation
-                    </button>
-                  )}
-
-                  {appointment.confirmationStatus && (
-                    <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm font-medium text-gray-700">
-                        Current Status: <span className={`font-semibold ${appointment.confirmationStatus === 'confirmed' ? 'text-green-600' : 'text-red-600'}`}>
-                          {appointment.confirmationStatus === 'confirmed' ? 'Confirmed' : 'Cancelled'}
-                        </span>
-                      </p>
-                      {appointment.confirmationMessage && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          <strong>Message:</strong> {appointment.confirmationMessage}
-                        </p>
-                      )}
-                      {appointment.cancellationReason && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          <strong>Reason:</strong> {appointment.cancellationReason}
-                        </p>
-                      )}
-                      {appointment.otherReason && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          <strong>Other Reason:</strong> {appointment.otherReason}
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </div>
               </section>
             )}

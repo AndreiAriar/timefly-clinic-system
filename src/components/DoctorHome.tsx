@@ -1,4 +1,4 @@
-import { Calendar, Clock, Users, Activity } from 'lucide-react';
+import { Calendar, Clock, Users, Activity, Sun, Cloud, Moon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs} from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -34,6 +34,44 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments, onNavigateToQueue }:
   });
   const [isLoading, setIsLoading] = useState(true);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [greeting, setGreeting] = useState({ text: '', icon: <Sun className="h-8 w-8" /> });
+
+  // Real-time greeting based on Philippine time
+  useEffect(() => {
+    const updateGreeting = () => {
+      const phTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+      const hours = phTime.getHours();
+      
+      if (hours >= 5 && hours < 12) {
+        setGreeting({ 
+          text: 'Good morning', 
+          icon: <Sun className="h-8 w-8 text-yellow-500 flex-shrink-0" />
+        });
+      } else if (hours >= 12 && hours < 18) {
+        setGreeting({ 
+          text: 'Good afternoon', 
+          icon: (
+            <div className="flex items-center flex-shrink-0">
+              <Sun className="h-6 w-6 text-yellow-500" />
+              <Cloud className="h-7 w-7 text-gray-400 -ml-2" />
+            </div>
+          )
+        });
+      } else {
+        setGreeting({ 
+          text: 'Good evening', 
+          icon: <Moon className="h-8 w-8 text-blue-400 flex-shrink-0" />
+        });
+      }
+    };
+
+    // Update immediately
+    updateGreeting();
+
+    // Update every minute to handle day transitions
+    const interval = setInterval(updateGreeting, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const loadStats = async () => {
@@ -256,12 +294,7 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments, onNavigateToQueue }:
 
   if (isLoading) {
     return (
-      <div 
-        className="min-h-screen bg-cover bg-center bg-fixed flex items-center justify-center"
-        style={{
-          backgroundImage: 'url(/bgdoctor.png)'
-        }}
-      >
+      <div className="min-h-screen bg-blue-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading dashboard...</p>
@@ -272,88 +305,78 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments, onNavigateToQueue }:
 
   return (
     <>
-      <div className="min-h-screen bg-cover bg-center bg-fixed relative">
-        {/* EXTREMELY DARK OVERLAY */}
-        <div className="absolute inset-0 bg-black/90 backdrop-blur-lg"></div>
-        
-        {/* Background Image - Very low opacity */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center opacity-20"
-          style={{
-            backgroundImage: 'url(/bgdoctor.jpg)'
-          }}
-        ></div>
-
+      <div className="min-h-screen bg-gray-50">
         {/* Content */}
-        <div className="relative z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            {/* Welcome Section */}
-            <div className="text-center mb-12">
-              <h1 className="text-4xl font-bold text-white mb-4 drop-shadow-lg">
-                Welcome back, Dr. {doctorName}!
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+       {/* Welcome Section - Fixed mobile alignment */}
+          <div className="text-center mb-12">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
+              {greeting.icon}
+              <h1 className="text-3xl sm:text-4xl font-bold text-black">
+                {greeting.text},<br className="sm:hidden" /> Dr. {doctorName}!
               </h1>
-              <p className="text-xl text-white/90 max-w-2xl mx-auto drop-shadow-md">
-                Manage your appointments and patient queue efficiently with TimeFly's scheduling system.
-              </p>
             </div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-              {/* Today's Appointments */}
-              <div className="bg-white/20 backdrop-blur-lg rounded-xl shadow-2xl p-6 border-l-4 border-blue-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white drop-shadow-sm">Today's Appointments</p>
-                    <p className="text-3xl font-bold text-white drop-shadow">{stats.todayAppointments}</p>
-                  </div>
-                  <Calendar className="h-8 w-8 text-blue-300 drop-shadow" />
+            <p className="text-lg sm:text-xl text-black max-w-2xl mx-auto px-4">
+              Manage your appointments and patient queue efficiently with TimeFly's scheduling system.
+            </p>
+          </div>
+          
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+            {/* Today's Appointments */}
+            <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Today's Appointments</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.todayAppointments}</p>
                 </div>
-              </div>
-
-              {/* Pending Queue */}
-              <div className="bg-white/20 backdrop-blur-lg rounded-xl shadow-2xl p-6 border-l-4 border-yellow-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white drop-shadow-sm">Pending in Queue</p>
-                    <p className="text-3xl font-bold text-white drop-shadow">{stats.pendingQueue}</p>
-                  </div>
-                  <Users className="h-8 w-8 text-yellow-300 drop-shadow" />
-                </div>
-              </div>
-
-              {/* Completed Today */}
-              <div className="bg-white/20 backdrop-blur-lg rounded-xl shadow-2xl p-6 border-l-4 border-green-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white drop-shadow-sm">Completed Today</p>
-                    <p className="text-3xl font-bold text-white drop-shadow">{stats.completedToday}</p>
-                  </div>
-                  <Activity className="h-8 w-8 text-green-300 drop-shadow" />
-                </div>
-              </div>
-
-              {/* Available Slots */}
-              <div className="bg-white/20 backdrop-blur-lg rounded-xl shadow-2xl p-6 border-l-4 border-purple-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white drop-shadow-sm">Available Slots</p>
-                    <p className="text-3xl font-bold text-white drop-shadow">{stats.availableSlots}</p>
-                  </div>
-                  <Clock className="h-8 w-8 text-purple-300 drop-shadow" />
-                </div>
+                <Calendar className="h-8 w-8 text-blue-500" />
               </div>
             </div>
 
-            {/* Center Calendar Button */}
-            <div className="flex justify-center">
-              <button
-                onClick={() => setShowCalendarModal(true)}
-                className="bg-white/20 backdrop-blur-lg text-white px-12 py-6 rounded-2xl font-semibold text-lg hover:bg-white/45 transition-all duration-300 shadow-2xl flex items-center space-x-4 border border-white/60 hover:border-white/80"
-              >
-                <Calendar className="h-8 w-8" />
-                <span>View Calendar</span>
-              </button>
+            {/* Pending Queue */}
+            <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-yellow-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Pending in Queue</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.pendingQueue}</p>
+                </div>
+                <Users className="h-8 w-8 text-yellow-500" />
+              </div>
             </div>
+
+            {/* Completed Today */}
+            <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Completed Today</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.completedToday}</p>
+                </div>
+                <Activity className="h-8 w-8 text-green-500" />
+              </div>
+            </div>
+
+            {/* Available Slots */}
+            <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-purple-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Available Slots</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.availableSlots}</p>
+                </div>
+                <Clock className="h-8 w-8 text-purple-500" />
+              </div>
+            </div>
+          </div>
+
+          {/* Center Calendar Button */}
+          <div className="flex justify-center">
+            <button
+              onClick={() => setShowCalendarModal(true)}
+              className="bg-blue-600 text-white px-8 sm:px-12 py-4 sm:py-6 rounded-xl font-semibold text-base sm:text-lg hover:bg-blue-700 transition-all duration-300 shadow-lg flex items-center space-x-3 border border-blue-700"
+            >
+              <Calendar className="h-6 w-6 sm:h-8 sm:w-8" />
+              <span>View Calendar</span>
+            </button>
           </div>
         </div>
       </div>

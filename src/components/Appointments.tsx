@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Stethoscope } from 'lucide-react';
+import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Stethoscope, Eye, X, Trash2 } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, orderBy, where } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import ViewAppointmentModal from './ViewAppointmentModal';
@@ -22,6 +22,8 @@ interface Appointment {
   status: string;
   createdAt: string;
   cancelReason?: string;
+  deletedByStaff?: boolean;
+  deletedByPatient?: boolean;
 }
 
 const Appointments = () => {
@@ -31,6 +33,7 @@ const Appointments = () => {
   const [showViewModal, setShowViewModal] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -91,52 +94,53 @@ const Appointments = () => {
     return `${year}-${month}-${day}`;
   };
 
-const loadAppointments = async () => {
-  setIsLoading(true);
-  try {
-    // Get current user's email from auth
-    const userEmail = auth.currentUser?.email;
-    
-    if (!userEmail) {
-      console.error('No user email found');
-      setIsLoading(false);
-      return;
-    }
+  const loadAppointments = async () => {
+    setIsLoading(true);
+    try {
+      // Get current user's email from auth
+      const userEmail = auth.currentUser?.email;
+      
+      if (!userEmail) {
+        console.error('No user email found');
+        setIsLoading(false);
+        return;
+      }
 
-    const appointmentsRef = collection(db, 'appointments');
-    // Filter appointments by current user's email
-    const q = query(
-      appointmentsRef, 
-      where('email', '==', userEmail),
-      orderBy('createdAt', 'desc')
-    );
-    const querySnapshot = await getDocs(q);
-    
-    const appointmentsData = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Appointment[];
-    
-    setAppointments(appointmentsData);
-  } catch (error) {
-    console.error('Error loading appointments:', error);
-    alert('Failed to load appointments. Please try again.');
-  } finally {
-    setIsLoading(false);
-  }
-};
+      const appointmentsRef = collection(db, 'appointments');
+      // Filter appointments by current user's email
+      const q = query(
+        appointmentsRef, 
+        where('email', '==', userEmail),
+        orderBy('createdAt', 'desc')
+      );
+      const querySnapshot = await getDocs(q);
+      
+      // Filter out appointments deleted by patient
+      const appointmentsData = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(apt => !apt.deletedByPatient) as Appointment[];
+      
+      setAppointments(appointmentsData);
+    } catch (error) {
+      console.error('Error loading appointments:', error);
+      alert('Failed to load appointments. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // In Appointments.tsx - Update the filtering functions
-const getTodaysAppointments = () => {
-  const today = getTodayDateString();
-  return filteredAppointments.filter(apt => apt.appointmentDate === today);
-};
-
+  const getTodaysAppointments = () => {
+    const today = getTodayDateString();
+    return filteredAppointments.filter(apt => apt.appointmentDate === today);
+  };
 
   const getMyAppointments = () => {
-  return filteredAppointments; // Show all appointments to patient
-};
-
+    return filteredAppointments; // Show all appointments to patient
+  };
 
   const handleView = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
@@ -198,6 +202,32 @@ const getTodaysAppointments = () => {
     }
   };
 
+  const handleDelete = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedAppointment) return;
+
+    try {
+      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
+      await updateDoc(appointmentRef, {
+        deletedByPatient: true
+      });
+
+      // Reload appointments
+      await loadAppointments();
+      
+      setShowDeleteModal(false);
+      setSelectedAppointment(null);
+      alert('Appointment deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting appointment:', error);
+      alert('Failed to delete appointment. Please try again.');
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'emergency': return 'bg-red-100 text-red-800';
@@ -207,38 +237,31 @@ const getTodaysAppointments = () => {
   };
 
   const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'pending': return 'bg-yellow-400 text-white';
-    case 'scheduled': return 'bg-green-400 text-white';
-    case 'rescheduled': return 'bg-blue-400 text-white';
-    case 'cancelled': return 'bg-red-400 text-white';
-    case 'confirmed': return 'bg-green-400 text-white';
-    case 'serving': return 'bg-green-400 text-white';
-    case 'completed': return 'bg-green-400 text-white';
-    case 'missed': return 'bg-red-600 text-white'; 
-    default: return 'bg-gray-300 text-white';
-  }
-};
-
+    switch (status) {
+      case 'pending': return 'bg-yellow-400 text-white';
+      case 'scheduled': return 'bg-green-400 text-white';
+      case 'rescheduled': return 'bg-blue-400 text-white';
+      case 'cancelled': return 'bg-red-400 text-white';
+      case 'confirmed': return 'bg-green-400 text-white';
+      case 'serving': return 'bg-green-400 text-white';
+      case 'completed': return 'bg-green-400 text-white';
+      case 'missed': return 'bg-red-600 text-white'; 
+      default: return 'bg-gray-300 text-white';
+    }
+  };
 const AppointmentCard = ({ appointment, showActions = true }: { appointment: Appointment; showActions?: boolean }) => (
   <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
     <div className="bg-blue-500 px-4 py-3 flex justify-between items-center">
       <div className="text-white">
         <p className="text-sm font-medium">Queue Number</p>
+        <p className="text-3xl font-bold mt-1">#{appointment.queueNumber}</p>
       </div>
-    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
-      {appointment.status}
-    </span>
+      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
+        {appointment.status}
+      </span>
     </div>
 
     <div className="p-4 space-y-3">
-      {/* Reminder Message */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-        <p className="text-sm text-yellow-800 font-medium text-center">
-          Please confirm if you can attend your appointment. Click the 'View' button to confirm.
-        </p>
-      </div>
-
       <div className="flex items-start gap-3">
         {appointment.photo ? (
           <img
@@ -260,7 +283,7 @@ const AppointmentCard = ({ appointment, showActions = true }: { appointment: App
       <div className="space-y-2 pt-2 border-t">
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Calendar className="w-4 h-4" />
-        <span>{formatDate(appointment.appointmentDate)}</span>
+          <span>{formatDate(appointment.appointmentDate)}</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Clock className="w-4 h-4" />
@@ -277,36 +300,43 @@ const AppointmentCard = ({ appointment, showActions = true }: { appointment: App
       </div>
 
       <div className="pt-2">
-       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
-        <AlertCircle className="w-3 h-3" />
-        {appointment.priorityLevel}
-      </span>
+        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
+          <AlertCircle className="w-3 h-3" />
+          {appointment.priorityLevel}
+        </span>
       </div>
 
-        {showActions && (
-        <div className="flex gap-2 pt-3">
+      {/* Action Buttons - Text Only with Icons - 2 per row */}
+      {showActions && (
+        <div className="pt-4 border-t grid grid-cols-2 gap-2">
           <button
             onClick={() => handleView(appointment)}
-            className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
+            className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition text-sm font-medium"
           >
-            View
+            <Eye className="w-4 h-4" />
+            <span>View</span>
           </button>
-          {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
-            <>
-              <button
-                onClick={() => handleReschedule(appointment)}
-                className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
-              >
-                Reschedule
-              </button>
-              <button
-                onClick={() => handleCancel(appointment)}
-                className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg bg-white"
-              >
-                Cancel
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => handleReschedule(appointment)}
+            className="flex items-center gap-2 px-3 py-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition text-sm font-medium"
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Reschedule</span>
+          </button>
+          <button
+            onClick={() => handleCancel(appointment)}
+            className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition text-sm font-medium"
+          >
+            <X className="w-4 h-4" />
+            <span>Cancel</span>
+          </button>
+          <button
+            onClick={() => handleDelete(appointment)}
+            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg transition text-sm font-medium"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete</span>
+          </button>
         </div>
       )}
     </div>
@@ -424,6 +454,7 @@ const AppointmentCard = ({ appointment, showActions = true }: { appointment: App
             </div>
           )}
         </div>
+
         {/* Today's Appointments Section */}
         <section className="mb-12">
           <div className="mb-6">
@@ -481,16 +512,16 @@ const AppointmentCard = ({ appointment, showActions = true }: { appointment: App
 
       {/* View Modal */}
       {showViewModal && selectedAppointment && (
-          <ViewAppointmentModal
-            isOpen={showViewModal}
-            onClose={() => {
-              setShowViewModal(false);
-              setSelectedAppointment(null);
-            }}
-            appointment={selectedAppointment}
-            onAppointmentUpdate={loadAppointments}
-          />
-        )}
+        <ViewAppointmentModal
+          isOpen={showViewModal}
+          onClose={() => {
+            setShowViewModal(false);
+            setSelectedAppointment(null);
+          }}
+          appointment={selectedAppointment}
+          onAppointmentUpdate={loadAppointments}
+        />
+      )}
 
       {/* Reschedule Modal */}
       {showRescheduleModal && selectedAppointment && (
@@ -516,6 +547,50 @@ const AppointmentCard = ({ appointment, showActions = true }: { appointment: App
           appointment={selectedAppointment}
           onConfirm={confirmCancel}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && selectedAppointment && (
+        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Deletion</h3>
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setSelectedAppointment(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-gray-700 mb-6">
+                Are you sure you want to delete this appointment? This action cannot be undone.
+              </p>
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setSelectedAppointment(null);
+                  }}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

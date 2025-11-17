@@ -16,10 +16,6 @@ interface Appointment {
   status: string;
   createdAt: string;
   cancelReason?: string;
-  confirmationStatus?: 'confirmed' | 'not-confirmed';
-  confirmationMessage?: string;
-  cancellationReason?: string;
-  otherReason?: string;
 }
 
 interface StaffViewAppointmentsProps {
@@ -173,47 +169,6 @@ const StaffViewAppointments = ({ isOpen, onClose, appointment}: StaffViewAppoint
               </h4>
               <div className="bg-red-50 rounded-lg p-4 border border-red-200">
                 <p className="text-gray-700">{appointment.cancelReason}</p>
-              </div>
-            </section>
-          )}
-
-          {/* Confirmation Information - Read Only */}
-          {(appointment.confirmationStatus || appointment.confirmationMessage || appointment.cancellationReason) && (
-            <section className="mb-6">
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-green-600" aria-hidden="true" />
-                Confirmation Information
-              </h4>
-              <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-                {appointment.confirmationStatus && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-1">Current Status</p>
-                    <p className={`text-sm font-semibold ${appointment.confirmationStatus === 'confirmed' ? 'text-green-600' : 'text-red-600'}`}>
-                      {appointment.confirmationStatus === 'confirmed' ? 'Confirmed' : 'Not Confirmed'}
-                    </p>
-                  </div>
-                )}
-
-                {appointment.confirmationMessage && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-1">Confirmation Message</p>
-                    <p className="text-sm text-gray-600 bg-white p-3 rounded border">{appointment.confirmationMessage}</p>
-                  </div>
-                )}
-
-                {appointment.cancellationReason && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-1">Cancellation Reason</p>
-                    <p className="text-sm text-gray-600 bg-white p-3 rounded border">{appointment.cancellationReason}</p>
-                  </div>
-                )}
-
-                {appointment.otherReason && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-1">Additional Reason</p>
-                    <p className="text-sm text-gray-600 bg-white p-3 rounded border">{appointment.otherReason}</p>
-                  </div>
-                )}
               </div>
             </section>
           )}

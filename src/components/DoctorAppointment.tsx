@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Calendar, Clock, User, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Search, Filter, Clock, User, Eye } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
@@ -28,9 +28,6 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -80,50 +77,6 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
     setFilteredAppointments(filtered);
   }, [appointments, searchQuery, statusFilter, priorityFilter]);
 
-  const getDaysInMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  const generateCalendarDays = () => {
-    const daysInMonth = getDaysInMonth(currentMonth);
-    const days: string[] = [];
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const year = currentMonth.getFullYear();
-      const month = String(currentMonth.getMonth() + 1).padStart(2, '0');
-      const dayStr = String(day).padStart(2, '0');
-      const dateString = `${year}-${month}-${dayStr}`;
-      days.push(dateString);
-    }
-
-    return days;
-  };
-
-  const getAppointmentsForDate = (date: string) => {
-    return appointments.filter(apt => apt.appointmentDate === date);
-  };
-
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    setCurrentMonth(prev => {
-      const newMonth = new Date(prev);
-      if (direction === 'prev') {
-        newMonth.setMonth(prev.getMonth() - 1);
-      } else {
-        newMonth.setMonth(prev.getMonth() + 1);
-      }
-      return newMonth;
-    });
-  };
-
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'emergency': return 'bg-red-100 text-red-800';
@@ -140,6 +93,16 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
       case 'completed': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const options: Intl.DateTimeFormatOptions = { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    };
+    return date.toLocaleDateString('en-US', options);
   };
 
   const convertTo12Hour = (time24: string): string => {
@@ -222,203 +185,161 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
                 </select>
               </div>
             </div>
-
-            {/* View Toggle */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`px-4 py-2 rounded-lg font-medium ${
-                  viewMode === 'list'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                List View
-              </button>
-              <button
-                onClick={() => setViewMode('calendar')}
-                className={`px-4 py-2 rounded-lg font-medium ${
-                  viewMode === 'calendar'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                Calendar View
-              </button>
-            </div>
           </div>
         </div>
 
-        {viewMode === 'list' ? (
-          /* List View */
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            {filteredAppointments.length === 0 ? (
-              <div className="text-center py-12">
-                <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
-                <p className="text-gray-500">
-                  {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all'
-                    ? 'No appointments match your current filters.'
-                    : 'No appointments scheduled.'}
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-200">
-                {filteredAppointments.map((appointment) => (
-                  <div key={appointment.id} className="p-6 hover:bg-gray-50 transition">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4 flex-1">
-                        {appointment.photo ? (
-                          <img
-                            src={appointment.photo}
-                            alt="Patient"
-                            className="w-12 h-12 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                            <User className="w-6 h-6 text-blue-600" />
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <h3 className="text-lg font-semibold text-gray-900">{appointment.fullName}</h3>
-                          <p className="text-sm text-gray-600">
-                            {appointment.age} years • {appointment.gender}
-                          </p>
-                          <p className="text-sm text-gray-500">{appointment.medicalCondition}</p>
+        {/* List View */}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          {filteredAppointments.length === 0 ? (
+            <div className="text-center py-12">
+              <User className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
+              <p className="text-gray-500">
+                {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all'
+                  ? 'No appointments match your current filters.'
+                  : 'No appointments scheduled.'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {filteredAppointments.map((appointment) => (
+                <div key={appointment.id} className="p-6 hover:bg-gray-50 transition">
+                  {/* Mobile Layout (stacked) */}
+                  <div className="lg:hidden flex flex-col space-y-4">
+                    {/* Patient Info Row */}
+                    <div className="flex items-center space-x-4">
+                      {appointment.photo ? (
+                        <img
+                          src={appointment.photo}
+                          alt="Patient"
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                          <User className="w-6 h-6 text-blue-600" />
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-6">
-                        {/* Queue Number Badge */}
-                        <div className="text-center">
-                          <p className="text-xs text-gray-500 font-medium mb-1">Queue</p>
-                          <div className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-lg">
-                            #{appointment.queueNumber}
-                          </div>
-                        </div>
-
-                        {/* Date and Time Info */}
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900 flex items-center justify-end gap-1">
-                            <Calendar className="w-4 h-4" />
-                            {new Date(appointment.appointmentDate).toLocaleDateString()}
-                          </p>
-                          <p className="text-sm text-gray-600 flex items-center justify-end gap-1 mt-1">
-                            <Clock className="w-4 h-4" />
-                            {convertTo12Hour(appointment.timeSlot)}
-                          </p>
-                          <div className="flex gap-2 mt-2 justify-end">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
-                              {appointment.status}
-                            </span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
-                              {appointment.priorityLevel}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* View Button */}
-                        <button
-                          onClick={() => handleViewAppointment(appointment.id)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-                        >
-                          <Eye className="w-4 h-4" />
-                          View
-                        </button>
+                      )}
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900">{appointment.fullName}</h3>
+                        <p className="text-sm text-gray-600">
+                          {appointment.age} years • {appointment.gender}
+                        </p>
+                        <p className="text-sm text-gray-600">{appointment.medicalCondition}</p>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Calendar View */
-          <div className="bg-white rounded-lg shadow-md p-6">
-            {/* Calendar Header */}
-            <div className="flex items-center justify-between mb-6">
-              <button
-                onClick={() => navigateMonth('prev')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
-              >
-                <ChevronLeft className="w-5 h-5 text-gray-600" />
-              </button>
-              
-              <h2 className="text-xl font-semibold text-gray-800">
-                {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-              </h2>
-              
-              <button
-                onClick={() => navigateMonth('next')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
-              >
-                <ChevronRight className="w-5 h-5 text-gray-600" />
-              </button>
-            </div>
 
-            {/* Calendar Grid */}
-            <div className="grid grid-cols-7 gap-1 mb-2">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                <div key={day} className="p-2 text-center text-sm font-medium text-gray-600 bg-gray-50">
-                  {day}
+                    {/* Queue Number and Status Row */}
+                    <div className="flex items-center justify-between">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-900 font-medium mb-1">Queue</p>
+                        <div className="text-blue-600 px-4 py-2 rounded-lg font-bold text-lg">
+                          #{appointment.queueNumber}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end space-y-2">
+                        <div className="flex gap-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
+                            {appointment.status}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
+                            {appointment.priorityLevel}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Date and Time Row */}
+                    <div className="flex flex-col space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Clock className="w-4 h-4" />
+                        <span>{formatDate(appointment.appointmentDate)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Clock className="w-4 h-4" />
+                        <span>{convertTo12Hour(appointment.timeSlot)}</span>
+                      </div>
+                    </div>
+
+                    {/* View Button Row */}
+                    <div className="pt-2">
+                      <button
+                        onClick={() => handleViewAppointment(appointment.id)}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View Details
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Desktop Layout (horizontal) */}
+                  <div className="hidden lg:flex items-center justify-between">
+                    <div className="flex items-center space-x-4 flex-1">
+                      {appointment.photo ? (
+                        <img
+                          src={appointment.photo}
+                          alt="Patient"
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                          <User className="w-6 h-6 text-blue-600" />
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900">{appointment.fullName}</h3>
+                        <p className="text-sm text-gray-600">
+                          {appointment.age} years • {appointment.gender}
+                        </p>
+                        <p className="text-sm text-gray-600">{appointment.medicalCondition}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-6">
+                      {/* Queue Number Badge */}
+                      <div className="text-center">
+                        <p className="text-xs text-gray-900 font-medium mb-1">Queue</p>
+                        <div className="text-blue-600 px-4 py-2 rounded-lg font-bold text-lg">
+                          #{appointment.queueNumber}
+                        </div>
+                      </div>
+
+                      {/* Date and Time Info */}
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-600 flex items-center justify-end gap-1">
+                          <Clock className="w-4 h-4" />
+                          {formatDate(appointment.appointmentDate)}
+                        </p>
+                        <p className="text-sm text-gray-600 flex items-center justify-end gap-1 mt-1">
+                          <Clock className="w-4 h-4" />
+                          {convertTo12Hour(appointment.timeSlot)}
+                        </p>
+                        <div className="flex gap-2 mt-2 justify-end">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
+                            {appointment.status}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
+                            {appointment.priorityLevel}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* View Button */}
+                      <button
+                        onClick={() => handleViewAppointment(appointment.id)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-            
-            <div className="grid grid-cols-7 gap-1">
-              {/* Empty cells for proper day alignment */}
-              {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, index) => (
-                <div key={`empty-${index}`} className="min-h-[100px] bg-gray-50 rounded-lg" />
-              ))}
-              
-              {/* Current month days */}
-              {generateCalendarDays().map((date) => {
-                const dateAppointments = getAppointmentsForDate(date);
-                const isToday = date === new Date().toISOString().split('T')[0];
-                const isPast = new Date(date) < new Date(new Date().toISOString().split('T')[0]);
-
-                return (
-                  <div
-                    key={date}
-                    className={`min-h-[100px] p-2 rounded-lg border transition ${
-                      isToday
-                        ? 'border-blue-500 bg-blue-50'
-                        : isPast
-                        ? 'border-gray-200 bg-gray-50'
-                        : 'border-gray-200 bg-white hover:border-blue-300'
-                    }`}
-                  >
-                    <div className="flex flex-col h-full">
-                      <span className={`text-sm font-medium ${
-                        isToday ? 'text-blue-700' : isPast ? 'text-gray-400' : 'text-gray-700'
-                      }`}>
-                        {new Date(date).getDate()}
-                      </span>
-                      
-                      <div className="flex-1 mt-2 space-y-1 overflow-y-auto max-h-20">
-                        {dateAppointments.map(apt => (
-                          <div
-                            key={apt.id}
-                            className="text-xs p-1 rounded bg-blue-100 text-blue-800 truncate"
-                            title={`${apt.fullName} - ${convertTo12Hour(apt.timeSlot)} - Queue #${apt.queueNumber}`}
-                          >
-                            {convertTo12Hour(apt.timeSlot)} - {apt.fullName}
-                          </div>
-                        ))}
-                      </div>
-                      
-                      {dateAppointments.length > 0 && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          {dateAppointments.length} appointment{dateAppointments.length !== 1 ? 's' : ''}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

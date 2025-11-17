@@ -202,16 +202,16 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
 
   return (
     <div className="fixed inset-0 backdrop-blur-md flex items-center justify-center p-4 z-50">
-      <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-y-auto border border-white/60">
+      <div className="bg-white/95 backdrop-blur-lg rounded-xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-y-auto border border-white/20">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/60">
-          <div>
-            <h1 className="text-3xl font-bold text-white drop-shadow-lg">Doctor Availability Calendar</h1>
-            <p className="text-white/90 mt-2 drop-shadow-md">View your scheduled appointments and available slots</p>
+        <div className="flex items-start justify-between p-6 border-b border-gray-200 bg-white/80 backdrop-blur-sm rounded-t-xl">
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold text-gray-900">Doctor Availability Calendar</h1>
+            <p className="text-gray-600 mt-2">View your scheduled appointments and available slots</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/20 rounded-lg transition text-white drop-shadow-lg"
+            className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-600 ml-4 flex-shrink-0 md:relative absolute top-4 right-4 md:top-auto md:right-auto"
             aria-label="Close modal"
           >
             <X className="w-6 h-6" />
@@ -219,41 +219,41 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-6 bg-transparent">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4 drop-shadow-lg"></div>
-                <p className="text-white/90 drop-shadow-md">Loading calendar...</p>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading calendar...</p>
               </div>
             </div>
           ) : !doctor ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
-                <p className="text-white/90 drop-shadow-md text-xl">Doctor not found</p>
+                <p className="text-gray-600 text-xl">Doctor not found</p>
               </div>
             </div>
           ) : (
             <>
               {/* Calendar View */}
-              <div className="bg-transparent rounded-xl p-6">
+              <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 border border-gray-200">
                 <div className="flex items-center justify-center mb-6">
                   <div className="flex items-center gap-4">
                     <button
                       onClick={() => navigateMonth('prev')}
-                      className="p-2 hover:bg-white/20 rounded-lg transition text-white drop-shadow-lg"
+                      className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-700 border border-gray-300"
                       aria-label="Previous month"
                     >
                       <ChevronLeft className="w-5 h-5" />
                     </button>
                     
-                    <h2 className="text-xl font-semibold text-white text-center min-w-[200px] drop-shadow-lg">
+                    <h2 className="text-xl font-semibold text-gray-900 text-center min-w-[200px]">
                       {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
                     </h2>
                     
                     <button
                       onClick={() => navigateMonth('next')}
-                      className="p-2 hover:bg-white/20 rounded-lg transition text-white drop-shadow-lg"
+                      className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-700 border border-gray-300"
                       aria-label="Next month"
                     >
                       <ChevronRight className="w-5 h-5" />
@@ -262,18 +262,18 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                 </div>
 
                 {/* Calendar Grid */}
-                <div className="grid grid-cols-7 gap-1 mb-2">
+                <div className="grid grid-cols-7 gap-2 mb-4">
                   {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
-                    <div key={day} className="p-1 text-center text-xs font-medium text-white/90 drop-shadow-md">
+                    <div key={day} className="p-2 text-center text-sm font-medium text-gray-700 bg-gray-100/80 backdrop-blur-sm rounded-lg">
                       {day}
                     </div>
                   ))}
                 </div>
                 
-                <div className="grid grid-cols-7 gap-1">
+                <div className="grid grid-cols-7 gap-2">
                   {/* Empty cells for proper day alignment */}
                   {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, index) => (
-                    <div key={`empty-${index}`} className="min-h-[60px]" />
+                    <div key={`empty-${index}`} className="min-h-[80px]" />
                   ))}
                   
                   {/* Current month days only */}
@@ -286,27 +286,27 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                     return (
                       <div
                         key={date}
-                        className={`p-1.5 rounded-lg transition min-h-[60px] flex flex-col ${
+                        className={`p-2 rounded-lg border min-h-[80px] flex flex-col backdrop-blur-sm ${
                           isToday
-                            ? 'border-2 border-white bg-white/10'
-                            : 'border border-transparent'
-                        }`}
+                            ? 'border-2 border-blue-500 bg-blue-100/80'
+                            : 'border-gray-200 bg-white/90'
+                        } ${isPast ? 'opacity-60' : ''}`}
                       >
                         <div className="flex flex-col items-center justify-between flex-1">
-                          <span className={`text-xs font-medium drop-shadow-md ${
-                            isToday ? 'text-white font-bold' : isPast ? 'text-white/60' : 'text-white'
+                          <span className={`text-sm font-medium ${
+                            isToday ? 'text-blue-700 font-bold' : 'text-gray-700'
                           }`}>
                             {new Date(date).getDate()}
                           </span>
                           {!isPast && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full drop-shadow-sm ${
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium backdrop-blur-sm ${
                               totalSlots === 0
-                                ? 'bg-gray-500/30 text-white/80'
+                                ? 'bg-gray-200/80 text-gray-600'
                                 : bookedSlots >= totalSlots
-                                ? 'bg-red-500/30 text-white'
+                                ? 'bg-red-100/80 text-red-700'
                                 : bookedSlots > 0
-                                ? 'bg-green-500/30 text-white'
-                                : 'bg-white/30 text-white'
+                                ? 'bg-green-100/80 text-green-700'
+                                : 'bg-blue-100/80 text-blue-700'
                             }`}>
                               {totalSlots === 0 ? 'No slots' : `${bookedSlots}/${totalSlots}`}
                             </span>

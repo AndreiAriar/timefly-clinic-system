@@ -43,11 +43,12 @@ const DoctorHeader = ({
         img.onload = () => {
           const canvas = document.createElement('canvas');
           
-          // Very small dimensions - 80x80 for tiny base64
-          const maxDimension = 80;
+          // Increased dimensions for better quality - 200x200
+          const maxDimension = 200;
           let width = img.width;
           let height = img.height;
           
+          // Maintain aspect ratio while resizing
           if (width > height && width > maxDimension) {
             height = (height * maxDimension) / width;
             width = maxDimension;
@@ -65,18 +66,23 @@ const DoctorHeader = ({
             return;
           }
           
-          // Draw image
+          // Enable high-quality image rendering
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          
+          // Draw image with better quality
           ctx.drawImage(img, 0, 0, width, height);
           
-          // Start with very low quality - target 20KB max
-          let quality = 0.4;
+          // Start with higher quality - target 100KB max for better clarity
+          let quality = 0.8;
           let result = canvas.toDataURL('image/jpeg', quality);
           
-          // Target: under 20KB for base64 string
-          const maxSizeKB = 20;
+          // Target: under 100KB for base64 string (increased from 20KB)
+          const maxSizeKB = 100;
           
-          while (result.length > maxSizeKB * 1024 && quality > 0.1) {
-            quality -= 0.05;
+          // Only compress if absolutely necessary
+          while (result.length > maxSizeKB * 1024 && quality > 0.5) {
+            quality -= 0.1;
             result = canvas.toDataURL('image/jpeg', quality);
           }
           
@@ -85,8 +91,9 @@ const DoctorHeader = ({
           console.log('📸 Final dimensions:', width, 'x', height);
           
           if (result.length > maxSizeKB * 1024) {
-            reject(new Error('Could not compress image to required size'));
-            return;
+            // If still too large, use the best quality we can get
+            result = canvas.toDataURL('image/jpeg', 0.5);
+            console.log('⚠️ Using fallback quality 0.5');
           }
           
           resolve(result);
@@ -104,9 +111,9 @@ const DoctorHeader = ({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('File size too large. Please select an image under 5MB.', {
+      // Increased file size limit to 10MB for higher quality images
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('File size too large. Please select an image under 10MB.', {
           position: "top-right",
           autoClose: 3000,
         });
@@ -135,7 +142,7 @@ const DoctorHeader = ({
           throw new Error('No authenticated user');
         }
 
-        // Compress image with ultra-aggressive settings
+        // Compress image with better quality settings
         const compressedBase64 = await compressImage(file);
 
         // Update local state IMMEDIATELY for instant UI update
@@ -221,7 +228,7 @@ const DoctorHeader = ({
   const displayPhoto = localProfilePhoto || profilePhoto;
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
+    <header className="bg-blue-600 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo and Navigation */}
@@ -234,9 +241,9 @@ const DoctorHeader = ({
               <img 
                 src="/timefly_logo.png" 
                 alt="TimeFly" 
-                className="h-8 w-auto"
+                className="h-10 w-auto filter brightness-0 invert" // Increased from h-8 to h-10
               />
-              <span className="text-xl font-bold text-gray-900">TimeFly</span>
+              <span className="text-xl font-bold text-white">TimeFly</span>
             </button>
 
             {/* Desktop Navigation Links */}
@@ -249,11 +256,11 @@ const DoctorHeader = ({
                     onClick={() => onViewChange(item.key)}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       currentView === item.key
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        ? 'bg-blue-500 text-white'
+                        : 'text-blue-100 hover:text-white hover:bg-blue-500'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
+                    <Icon className="w-4 h-4 text-white" /> {/* Added text-white for consistent brightness */}
                     <span>{item.label}</span>
                   </button>
                 );
@@ -265,23 +272,23 @@ const DoctorHeader = ({
           <div className="relative">
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center space-x-2 text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 p-1 hover:bg-gray-100 transition-colors"
+              className="flex items-center space-x-2 text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600 p-1 hover:bg-blue-500 transition-colors"
             >
               <div className="relative">
                 {displayPhoto ? (
                   <img
-                    className="h-10 w-10 rounded-full object-cover border-2 border-gray-300"
+                    className="h-10 w-10 rounded-full object-cover border-2 border-blue-300"
                     src={displayPhoto}
                     alt="Profile"
-                    style={{ imageRendering: 'auto' }}
+                    style={{ imageRendering: 'high-quality' }} // Improved image rendering
                   />
                 ) : (
-                  <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center border-2 border-gray-300">
-                    <User className="h-5 w-5 text-blue-600" />
+                  <div className="h-10 w-10 rounded-full bg-blue-400 flex items-center justify-center border-2 border-blue-300">
+                    <User className="h-5 w-5 text-white" />
                   </div>
                 )}
-                <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5">
-                  <ChevronDown className="h-3 w-3 text-gray-400" />
+                <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full p-0.5">
+                  <ChevronDown className="h-3 w-3 text-white" />
                 </div>
               </div>
             </button>
@@ -296,7 +303,7 @@ const DoctorHeader = ({
                         className="h-14 w-14 rounded-full object-cover border-2 border-gray-200"
                         src={displayPhoto}
                         alt="Profile"
-                        style={{ imageRendering: 'auto' }}
+                        style={{ imageRendering: 'high-quality' }} // Improved image rendering
                       />
                     ) : (
                       <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center border-2 border-gray-200">
@@ -328,7 +335,7 @@ const DoctorHeader = ({
                             : 'text-gray-700 hover:bg-gray-50'
                         }`}
                       >
-                        <Icon className="h-4 w-4 mr-3" />
+                        <Icon className="h-4 w-4 mr-3 text-gray-700" /> {/* Consistent icon styling */}
                         {item.label}
                       </button>
                     );
@@ -350,7 +357,7 @@ const DoctorHeader = ({
                     disabled={isUploading}
                     className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Camera className="h-4 w-4 mr-3" />
+                    <Camera className="h-4 w-4 mr-3 text-gray-700" /> {/* Consistent icon styling */}
                     {isUploading ? 'Uploading...' : 'Change Photo'}
                   </button>
                   <button
@@ -360,7 +367,7 @@ const DoctorHeader = ({
                     }}
                     className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
                   >
-                    <LogOut className="h-4 w-4 mr-3" />
+                    <LogOut className="h-4 w-4 mr-3 text-gray-700" /> {/* Consistent icon styling */}
                     Logout
                   </button>
                 </div>

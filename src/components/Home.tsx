@@ -72,7 +72,7 @@ const Home = () => {
 
   return (
     <div className="min-h-screen">
-      {/* Hero Section */}
+     {/* Hero Section */}
       <section 
         className="hero-section relative flex items-center justify-center overflow-hidden min-h-screen bg-cover bg-center bg-no-repeat bg-fixed"
       >
@@ -80,19 +80,19 @@ const Home = () => {
 
         <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto py-20">
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight drop-shadow-lg">
-            Welcome to <span className="text-indigo-700">TimeFly</span>
+            Welcome to <span className="text-blue-500 drop-shadow-none">TimeFly</span>
           </h1>
           
-          <p className="text-xl sm:text-2xl text-white mb-12 max-w-2xl mx-auto leading-relaxed drop-shadow-md">
+          <p className="text-xl sm:text-3xl text-white mb-12 max-w-3xl mx-auto leading-relaxed drop-shadow-md">
             Manage your eye care appointments and checkups with real-time queue updates.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
               onClick={() => setIsModalOpen(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-10 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200"
+              className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-10 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200"
             >
-              Set An Appointment
+              Book An Appointment
             </button>
             
             <button 

@@ -593,18 +593,17 @@ const SupportMessages = () => {
               <MessageCircle className="w-6 h-6 text-gray-800 mr-2" />
               <h2 className="text-xl font-semibold text-gray-800">Messages</h2>
             </div>
-            
-            {/* Search bar - perfectly aligned with Messages heading baseline */}
-            <div className="relative w-full max-w-md">
-              <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search patients..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white/95 backdrop-blur-sm shadow-sm"
-              />
-            </div>
+          {/* Search bar - perfectly aligned with Messages heading baseline */}
+          <div className="relative w-full max-w-md">
+            <Search className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 transform -translate-y-1/2 z-10" />
+            <input
+              type="text"
+              placeholder="Search patients..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white shadow-sm"
+            />
+          </div>
           </div>
           
           <div className="max-h-[500px] overflow-y-auto">
