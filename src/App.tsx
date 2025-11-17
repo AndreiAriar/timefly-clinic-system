@@ -12,6 +12,7 @@ import Signup from './components/Signup';
 import Error404 from './components/Error404';
 import ToastNotification from './components/ToastNotification';
 import type { ToastType } from './components/ToastNotification';
+import { Bird } from 'lucide-react';
 
 interface UserData {
   displayName: string;
@@ -204,13 +205,15 @@ function AppContent() {
             sessionStorage.setItem(sessionKey, 'true');
             hasShownLoginNotification.current = true;
           }
-        } finally {
-          // Set both loading states to false
-          setRoleLoading(false);
-          setLoading(false);
-          isInitialLoad.current = false;
-          isAuthenticating.current = false;
-        }
+    } finally {
+            // Add 0.5-second delay before hiding loading screen
+            setTimeout(() => {
+              setRoleLoading(false);
+              setLoading(false);
+              isInitialLoad.current = false;
+              isAuthenticating.current = false;
+            }, 500);
+          }
       } else {
         // No user logged in - cleanup listeners and reset state
         console.log('👤 User logged out - resetting state');
@@ -222,9 +225,13 @@ function AppContent() {
         setUser(null);
         setUserRole(null);
         setUserData(null);
-        setRoleLoading(false);
-        setLoading(false);
         
+        // Add delay for logout state as well
+        setTimeout(() => {
+          setRoleLoading(false);
+          setLoading(false);
+        }, 3000);
+
         // Reset tracking refs
         hasShownLoginNotification.current = false;
         isInitialLoad.current = true;
@@ -308,20 +315,21 @@ function AppContent() {
     return userRole === requiredRole;
   };
 
-  // Show loading screen if either loading or roleLoading is true
-  if (loading || roleLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">
-            {roleLoading ? 'Authenticating...' : 'Loading...'}
-          </p>
+// Show loading screen if either loading or roleLoading is true
+if (loading || roleLoading) {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="relative">
+        {/* Spinning arc */}
+        <div className="w-24 h-24 rounded-full border-[6px] border-transparent border-t-blue-600 border-r-blue-500 border-b-blue-400 animate-spin"></div>
+        {/* Lucide Bird icon in center */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Bird className="w-10 h-10 text-blue-600" />
         </div>
       </div>
-    );
-  }
-
+    </div>
+  );
+}
   // Render the appropriate dashboard based on current user role
   const renderDashboard = () => {
     if (!user || !userRole || !userData) {

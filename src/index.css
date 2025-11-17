@@ -2,13 +2,13 @@
 
 /* Prevent white flash on page load */
 html {
-  background-color: #1a1a1a;
+  background-color: #f9fafb;
   margin: 0;
   padding: 0;
 }
 
 body {
-  background-color: #1a1a1a;
+  background-color: #f9fafb;
   margin: 0;
   padding: 0;
 }
@@ -63,5 +63,19 @@ input:-moz-autofill-preview {
 }
 
 .animate-fade-in-down {
-  animation: fade-in-down 0.3s ease-out;
+  animation: fade-in-down 0.2s ease-out;
+}
+
+/* Bird orbiting around the circle - FASTER */
+@keyframes orbit-bird {
+  0% {
+    transform: rotate(0deg) translateX(60px) rotate(-0deg);
+  }
+  100% {
+    transform: rotate(360deg) translateX(60px) rotate(-360deg);
+  }
+}
+
+.animate-orbit {
+  animation: orbit-bird 0.8s linear infinite;
 }
