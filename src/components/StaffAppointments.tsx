@@ -55,58 +55,78 @@ const StaffAppointments = () => {
   const showToast = (message: string, type: ToastType) => {
     setToast({ message, type, isVisible: true });
   };
-  
-  useEffect(() => {
-  const loadAppointments = async () => {
-    setIsLoading(true);
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      
-      // Get current user's email
-      const userEmail = auth.currentUser?.email;
-      
-      if (!userEmail) {
-        console.error('No user email found');
-        setIsLoading(false);
-        return;
-      }
 
-      // Get user role from Firestore
-      const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-      const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-      let q;
-      
-      // If staff or doctor, show all appointments
-      if (userRole === 'staff' || userRole === 'doctor') {
-        q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-      } else {
-        // If patient, show only their appointments
-        q = query(
-          appointmentsRef, 
-          where('email', '==', userEmail),
-          orderBy('createdAt', 'desc')
-        );
-      }
-      
-      const querySnapshot = await getDocs(q);
-      
-      // Filter out appointments deleted by staff
-     const appointmentsData = querySnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Appointment))
-        .filter(apt => !apt.deletedByStaff);
-      
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
-      showToast('Failed to load appointments. Please try again.', 'error');
-    } finally {
+  // Move loadAppointments outside the useEffect
+const loadAppointments = async () => {
+  setIsLoading(true);
+  try {
+    const appointmentsRef = collection(db, 'appointments');
+    
+    // Get current user's email
+    const userEmail = auth.currentUser?.email;
+    
+    if (!userEmail) {
+      console.error('No user email found');
       setIsLoading(false);
+      return;
     }
-  };
+
+    // Get user role from Firestore
+    const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+    const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+    let q;
+    
+    // If staff or doctor, show all appointments
+    if (userRole === 'staff' || userRole === 'doctor') {
+      q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+    } else {
+      // If patient, show only their appointments
+      q = query(
+        appointmentsRef, 
+        where('email', '==', userEmail),
+        orderBy('createdAt', 'desc')
+      );
+    }
+    
+    const querySnapshot = await getDocs(q);
+    
+    // Filter out appointments deleted by staff
+    const appointmentsData = querySnapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Appointment))
+      .filter(apt => !apt.deletedByStaff);
+    
+    setAppointments(appointmentsData);
+  } catch (error) {
+    console.error('Error loading appointments:', error);
+    showToast('Failed to load appointments. Please try again.', 'error');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+const loadDoctors = async () => {
+  try {
+    const doctorsRef = collection(db, 'doctors');
+    const q = query(doctorsRef, where('isActive', '==', true));
+    const querySnapshot = await getDocs(q);
+    
+    const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
+    setDoctors(doctorsData);
+  } catch (error) {
+    console.error('Error loading doctors:', error);
+    showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+  }
+};
+
+// Use useEffect to call the functions on component mount
+useEffect(() => {
+  loadAppointments();
+  loadDoctors();
+}, []);
 
   const loadDoctors = async () => {
     try {
@@ -175,7 +195,7 @@ const StaffAppointments = () => {
     });
 
     setFilteredAppointments(filtered);
-  }, [appointments, searchQuery, statusFilter, priorityFilter, doctorFilter, sortField, sortDirection]);
+}, [appointments, searchQuery, statusFilter, priorityFilter, doctorFilter, sortField, sortDirection, loadAppointments]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
