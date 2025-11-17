@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, X } from 'lucide-react';
+import { Camera, X, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { collection, addDoc, query, where, getDocs, doc, updateDoc, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 
@@ -33,7 +33,7 @@ interface Appointment {
   gender: string;
   medicalCondition: string;
   phone: string;
-  email: string; // Add this line
+  email: string;
   priorityLevel: string;
   timeSlot: string;
   queueNumber: number;
@@ -41,7 +41,6 @@ interface Appointment {
   createdAt: string;
 }
 
-// Add Doctor interface
 interface Doctor {
   id: string;
   name: string;
@@ -74,9 +73,8 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
   const [hasAvailableSlots, setHasAvailableSlots] = useState(true);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Updated doctors state to fetch from Firebase
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+
 
   const eyeConditions = [
     'Blurred Vision',
@@ -99,7 +97,6 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
     'Other (Please Specify)'
   ];
   
-  // NEW: Set pre-filled data when modal opens or preFilledData changes
   useEffect(() => {
     if (isOpen && preFilledData) {
       setFormData(prev => ({
@@ -111,7 +108,20 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
     }
   }, [isOpen, preFilledData]);
 
-// Load doctors from Firebase
+
+
+// Add Toast state
+const [toast, setToast] = useState<{
+  show: boolean;
+  message: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+} | null>(null);
+
+const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
+  setToast({ show: true, message, type });
+  setTimeout(() => setToast(null), 5000);
+};
+
 const loadDoctors = async () => {
   try {
     const doctorsRef = collection(db, 'doctors');
@@ -126,7 +136,7 @@ const loadDoctors = async () => {
     setDoctors(doctorsData);
   } catch (error) {
     console.error('Error loading doctors:', error);
-    alert('Failed to load doctors. Please check your permissions or try again.');
+    showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
   }
 };
 
@@ -146,13 +156,11 @@ const recalculateQueueNumbers = async (appointmentDate: string) => {
     
     if (querySnapshot.empty) return;
     
-    // Get all appointments for this date
     const appointments = querySnapshot.docs.map(doc => ({
       id: doc.id,
       timeSlot: doc.data().timeSlot as string
     }));
     
-    // Sort by time chronologically
     appointments.sort((a, b) => {
       const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
       const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
@@ -161,7 +169,6 @@ const recalculateQueueNumbers = async (appointmentDate: string) => {
       return timeA - timeB;
     });
     
-    // Update queue numbers for all appointments in chronological order
     const updatePromises = appointments.map((apt, index) => {
       const appointmentRef = doc(db, 'appointments', apt.id);
       return updateDoc(appointmentRef, {
@@ -191,7 +198,7 @@ const recalculateQueueNumbers = async (appointmentDate: string) => {
       appointmentsRef,
       where('doctor', '==', doctor),
       where('appointmentDate', '==', appointmentDate),
-      where('status', '!=', 'cancelled')  // ✅ Exclude cancelled appointments
+      where('status', '!=', 'cancelled')
     );
     
     const querySnapshot = await getDocs(q);
@@ -214,13 +221,10 @@ const recalculateQueueNumbers = async (appointmentDate: string) => {
   }
 }, []);
 
-
-// Add this new function after getBookedTimeSlots
 const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: string): Promise<boolean> => {
   if (!doctor || !appointmentDate) return false;
   
   try {
-    // Get doctor's max slots configuration
     const doctorsRef = collection(db, 'doctors');
     const doctorQuery = query(doctorsRef, where('name', '==', doctor));
     const doctorSnapshot = await getDocs(doctorQuery);
@@ -229,14 +233,12 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
     
     const doctorData = doctorSnapshot.docs[0].data();
     
-    // Check if doctor is unavailable on this date
     const unavailableDates = doctorData.unavailableDates || {};
     if (unavailableDates[appointmentDate] === true) {
       console.log('🚫 Doctor is marked as unavailable on this date');
       return true;
     }
     
-    // Get max slots for this specific date (or use global maxSlots)
     const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
     const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
     const globalMaxSlots = doctorData.maxSlots || 10;
@@ -244,7 +246,6 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
     
     console.log('📊 Max slots for this date:', maxSlots);
     
-    // Get count of booked appointments (excluding cancelled)
     const appointmentsRef = collection(db, 'appointments');
     const q = query(
       appointmentsRef,
@@ -273,23 +274,20 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
   
   const appointmentDateTime = new Date(year, month - 1, day, hours, minutes);
   
-  // Add 30 minutes buffer - consider times within 30 minutes as "past"
   const bufferTime = new Date(now.getTime() + 30 * 60 * 1000);
   
-  // Return true if appointment time is less than or equal to buffer time
   const isPast = appointmentDateTime <= bufferTime;
   
   console.log(`⏰ Checking ${time} on ${date}: ${isPast ? 'PAST' : 'FUTURE'} (now: ${now.toLocaleTimeString()}, appointment: ${appointmentDateTime.toLocaleTimeString()})`);
   
   return isPast;
 };
+
 const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
   console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
   
-  // Set loading state
   setIsCheckingAvailability(true);
   
-  // ✅ FIRST: Check if doctor is fully booked based on max capacity
   const isFullyBooked = await isDoctorFullyBooked(doctor, appointmentDate);
   
   if (isFullyBooked) {
@@ -304,11 +302,9 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
   const startHour = 8;
   const endHour = 17;
   
-  // Get booked slots
   const bookedSlots = await getBookedTimeSlots(doctor, appointmentDate);
   console.log('📋 Booked slots:', bookedSlots);
   
-  // Get doctor data for unavailable time slots
   const doctorsRef = collection(db, 'doctors');
   const doctorQuery = query(doctorsRef, where('name', '==', doctor));
   const doctorSnapshot = await getDocs(doctorQuery);
@@ -400,14 +396,14 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
       console.log(`  ${timeString45}: ${isAvailable45 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked45}, unavailable: ${isUnavailable45}, past: ${isPast45})`);
     }
   }
-// Count truly available slots (not booked, not unavailable, not past)
+
 const actuallyAvailableSlots = slots.filter(slot => 
   slot.available && !slot.isBooked && !slot.isUnavailable
 );
 const anyAvailable = actuallyAvailableSlots.length > 0;
 
 setHasAvailableSlots(anyAvailable);
-setAvailableTimeSlots(slots); // ✅ Keep ALL slots in state
+setAvailableTimeSlots(slots);
 
 console.log(`✅ Generated ${slots.length} total slots`);
 console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
@@ -421,7 +417,6 @@ if (anyAvailable) {
   console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
 }
   
-  // Clear loading state
   setIsCheckingAvailability(false);
 }, [getBookedTimeSlots, isDoctorFullyBooked]);
 
@@ -444,41 +439,35 @@ useEffect(() => {
       document.body.style.overflow = 'unset';
     };
   }, [isOpen]);
-
 const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   if (file) {
-    // Check file size (10MB = 10 * 1024 * 1024 bytes)
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const maxSize = 10 * 1024 * 1024;
     
     if (file.size > maxSize) {
-      alert('File size is too large. Please upload an image smaller than 10MB.');
+      showToast('File size is too large. Please upload an image smaller than 10MB.', 'error');
       return;
     }
 
-    // Check file type
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!validTypes.includes(file.type)) {
-      alert('Please upload a valid image file (JPEG, PNG, GIF, or WebP).');
+      showToast('Please upload a valid image file (JPEG, PNG, GIF, or WebP).', 'error');
       return;
     }
 
     const reader = new FileReader();
     
     reader.onloadend = () => {
-      // Compress image if it's too large
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // Set max dimensions
         const maxWidth = 1024;
         const maxHeight = 1024;
         let width = img.width;
         let height = img.height;
         
-        // Calculate new dimensions
         if (width > height) {
           if (width > maxWidth) {
             height *= maxWidth / width;
@@ -494,9 +483,8 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         canvas.width = width;
         canvas.height = height;
         
-        // Draw and compress
         ctx?.drawImage(img, 0, 0, width, height);
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8); // 80% quality
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
         
         setFormData(prev => ({ ...prev, photo: compressedDataUrl }));
       };
@@ -515,19 +503,18 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 const handleSubmit = async () => {
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
-    alert('Please fill in all required fields');
+    showToast('Please fill in all required fields', 'warning');
     return;
   }
 
   if (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim()) {
-    alert('Please specify your medical condition');
+    showToast('Please specify your medical condition', 'warning');
     return;
   }
 
-  // Get logged-in user's email
   const userEmail = auth.currentUser?.email;
   if (!userEmail) {
-    alert('User email not found. Please log in again.');
+    showToast('User email not found. Please log in again.', 'error');
     return;
   }
 
@@ -538,92 +525,92 @@ const handleSubmit = async () => {
       ? formData.customCondition 
       : formData.medicalCondition;
 
-   const appointmentData = await runTransaction(db, async (transaction) => {
-  // ✅ Step 1: Fetch all appointments for this doctor and date WITHIN TRANSACTION
-  const appointmentsRef = collection(db, 'appointments');
-  const conflictQuery = query(
-    appointmentsRef,
-    where('doctor', '==', formData.doctor),
-    where('appointmentDate', '==', formData.appointmentDate)
-    // ✅ Removed timeSlot and status filters to avoid complex index requirements
-  );
-  
-  // ✅ Use transaction.get() instead of getDocs()
-  const conflictSnapshot = await transaction.get(conflictQuery);
-  
-  // ✅ Filter for the specific slot and non-cancelled status in memory
-  let slotTaken = false;
-  let activeBookingsCount = 0;
-  
-  conflictSnapshot.forEach((doc) => {
-    const data = doc.data();
-    if (data.status !== 'cancelled') {
-      activeBookingsCount++;
-      if (data.timeSlot === formData.timeSlot) {
-        slotTaken = true;
+    // 🔒 TRANSACTION: Atomic check and book operation
+    const appointmentData = await runTransaction(db, async (transaction) => {
+      // ✅ Step 1: Fetch all appointments for this doctor and date WITHIN TRANSACTION
+      const appointmentsRef = collection(db, 'appointments');
+      const conflictQuery = query(
+        appointmentsRef,
+        where('doctor', '==', formData.doctor),
+        where('appointmentDate', '==', formData.appointmentDate)
+      );
+      
+      // ✅ Use transaction.get() instead of getDocs()
+      const conflictSnapshot = await transaction.get(conflictQuery);
+      
+      // ✅ Filter for the specific slot and non-cancelled status in memory
+      let slotTaken = false;
+      let activeBookingsCount = 0;
+      
+      conflictSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.status !== 'cancelled') {
+          activeBookingsCount++;
+          if (data.timeSlot === formData.timeSlot) {
+            slotTaken = true;
+          }
+        }
+      });
+      
+      // If slot is already taken, abort transaction
+      if (slotTaken) {
+        throw new Error('SLOT_TAKEN');
       }
-    }
-  });
-  
-  // If slot is already taken, abort transaction
-  if (slotTaken) {
-    throw new Error('SLOT_TAKEN');
-  }
 
-  // ✅ Step 2: Check doctor capacity limits WITHIN TRANSACTION
-  const doctorsRef = collection(db, 'doctors');
-  const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
-  
-  // ✅ Use transaction.get() instead of getDocs()
-  const doctorSnapshot = await transaction.get(doctorQuery);
-  
-  if (!doctorSnapshot.empty) {
-    const doctorData = doctorSnapshot.docs[0].data();
-    
-    // Check unavailable dates
-    const unavailableDates = doctorData.unavailableDates || {};
-    if (unavailableDates[formData.appointmentDate] === true) {
-      throw new Error('DOCTOR_UNAVAILABLE');
-    }
-    
-    // Check max slots capacity
-    const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-    const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
-    const globalMaxSlots = doctorData.maxSlots || 10;
-    const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
-    
-    // ✅ Use activeBookingsCount we already calculated above
-    if (activeBookingsCount >= maxSlots) {
-      throw new Error('DOCTOR_FULLY_BOOKED');
-    }
-  }
+      // ✅ Step 2: Check doctor capacity limits WITHIN TRANSACTION
+      const doctorsRef = collection(db, 'doctors');
+      const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
+      
+      // ✅ Use transaction.get() instead of getDocs()
+      const doctorSnapshot = await transaction.get(doctorQuery);
+      
+      if (!doctorSnapshot.empty) {
+        const doctorData = doctorSnapshot.docs[0].data();
+        
+        // Check unavailable dates
+        const unavailableDates = doctorData.unavailableDates || {};
+        if (unavailableDates[formData.appointmentDate] === true) {
+          throw new Error('DOCTOR_UNAVAILABLE');
+        }
+        
+        // Check max slots capacity
+        const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+        const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
+        const globalMaxSlots = doctorData.maxSlots || 10;
+        const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+        
+        // ✅ Use activeBookingsCount we already calculated above
+        if (activeBookingsCount >= maxSlots) {
+          throw new Error('DOCTOR_FULLY_BOOKED');
+        }
+      }
 
-  // ✅ Step 3: Create the appointment WITHIN TRANSACTION
-  const appointment: Appointment = {
-    fullName: formData.fullName,
-    age: formData.age,
-    photo: formData.photo,
-    doctor: formData.doctor,
-    appointmentDate: formData.appointmentDate,
-    gender: formData.gender,
-    medicalCondition: finalMedicalCondition,
-    phone: formData.phone,
-    email: userEmail,
-    priorityLevel: formData.priorityLevel,
-    timeSlot: formData.timeSlot,
-    queueNumber: 0, // Will be recalculated
-    status: 'pending',
-    createdAt: new Date().toISOString()
-  };
+      // ✅ Step 3: Create the appointment WITHIN TRANSACTION
+      const appointment: Appointment = {
+        fullName: formData.fullName,
+        age: formData.age,
+        photo: formData.photo,
+        doctor: formData.doctor,
+        appointmentDate: formData.appointmentDate,
+        gender: formData.gender,
+        medicalCondition: finalMedicalCondition,
+        phone: formData.phone,
+        email: userEmail,
+        priorityLevel: formData.priorityLevel,
+        timeSlot: formData.timeSlot,
+        queueNumber: 0,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
 
-  // Create new document reference
-  const newAppointmentRef = doc(collection(db, 'apartments'));
-  
-  // Set the document in the transaction
-  transaction.set(newAppointmentRef, appointment);
-  
-  return { appointmentId: newAppointmentRef.id, appointment };
-});
+      // Create new document reference
+      const newAppointmentRef = doc(collection(db, 'appointments'));
+      
+      // Set the document in the transaction
+      transaction.set(newAppointmentRef, appointment);
+      
+      return { appointmentId: newAppointmentRef.id, appointment };
+    });
 
     console.log('✅ Appointment booked successfully via transaction:', appointmentData.appointmentId);
 
@@ -639,6 +626,9 @@ const handleSubmit = async () => {
     const actualQueueNumber = appointmentDoc.docs[0]?.data().queueNumber || 1;
     setQueueNumber(actualQueueNumber);
 
+    // Show success toast notification
+    showToast('🎉 Appointment booked successfully!', 'success');
+
     // Call onBookingComplete if provided
     if (onBookingComplete) {
       onBookingComplete();
@@ -651,29 +641,28 @@ const handleSubmit = async () => {
   } catch (error: any) {
     console.error('Error booking appointment:', error);
     
-    // Handle specific error cases
+    // Handle specific error cases with toast notifications
     if (error.message === 'SLOT_TAKEN') {
-      alert('⚠️ This time slot was just booked by another user. Please refresh and choose another time.');
+      showToast('⚠️ This time slot was just booked by another user. Please refresh and choose another time.', 'warning');
       // Refresh available slots
       if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
         await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
       }
     } else if (error.message === 'DOCTOR_UNAVAILABLE') {
-      alert('⚠️ This doctor is no longer available on the selected date. Please choose another date.');
+      showToast('⚠️ This doctor is no longer available on the selected date. Please choose another date.', 'warning');
     } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
-      alert('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.');
+      showToast('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.', 'warning');
       // Refresh available slots
       if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
         await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
       }
     } else {
-      alert('Failed to book appointment. Please try again.');
+      showToast('Failed to book appointment. Please try again.', 'error');
     }
   } finally {
     setIsSubmitting(false);
   }
 };
-
   const handleClose = () => {
     setFormData({
       fullName: '',
@@ -838,6 +827,7 @@ const handleSubmit = async () => {
                     aria-label="Photo upload input"
                   />
                 </div>
+
                 <div>
                   <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
                     Phone Number <span className="text-red-500" aria-label="required">*</span>
@@ -846,34 +836,32 @@ const handleSubmit = async () => {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <span className="text-gray-500">+63</span>
                     </div>
-                    <input
-                      type="tel"
-                      id="phone"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={(e) => {
-                        // Only allow numbers and limit to 11 digits total
-                        const numbersOnly = e.target.value.replace(/\D/g, '').slice(0, 11);
-                        setFormData(prev => ({ ...prev, phone: numbersOnly }));
-                      }}
-                      onBlur={(e) => {
-                        // Validate Philippine mobile number format on blur
-                        const phoneNumber = e.target.value;
-                        if (phoneNumber && phoneNumber.length === 11) {
-                          const isValidPH = phoneNumber.startsWith('09');
-                          if (!isValidPH) {
-                            alert('Please enter a valid Philippine mobile number starting with 09 (e.g., 09123456789)');
-                            setFormData(prev => ({ ...prev, phone: '' }));
-                          }
-                        }
-                      }}
-                      className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="912 345 6789"
-                      aria-required="true"
-                      maxLength={11}
-                      pattern="[0-9]{11}"
-                      title="Please enter a valid 11-digit Philippine mobile number (e.g., 09123456789)"
-                    />
+                 <input
+                type="tel"
+                id="phone"
+                name="phone"
+                value={formData.phone}
+                onChange={(e) => {
+                  const numbersOnly = e.target.value.replace(/\D/g, '').slice(0, 11);
+                  setFormData(prev => ({ ...prev, phone: numbersOnly }));
+                }}
+                onBlur={(e) => {
+                  const phoneNumber = e.target.value;
+                  if (phoneNumber && phoneNumber.length === 11) {
+                    const isValidPH = phoneNumber.startsWith('09');
+                    if (!isValidPH) {
+                      showToast('Please enter a valid Philippine mobile number starting with 09 (e.g., 09123456789)', 'error');
+                      setFormData(prev => ({ ...prev, phone: '' }));
+                    }
+                  }
+                }}
+                className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="912 345 6789"
+                aria-required="true"
+                maxLength={11}
+                pattern="[0-9]{11}"
+                title="Please enter a valid 11-digit Philippine mobile number (e.g., 09123456789)"
+              />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
                     Enter your 11-digit PH mobile number (e.g., 09123456789)
@@ -940,210 +928,198 @@ const handleSubmit = async () => {
                     aria-required="true"
                   />
                 </div>
-              <div>
-          <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
-            Select Time Slot <span className="text-red-500" aria-label="required">*</span>
-          </label>
-          {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
-            (() => {
-              // Use isCheckingAvailability state directly
-             // Use isCheckingAvailability state directly
-              const isLoading = isCheckingAvailability;
-              const availableSlotsCount = availableTimeSlots.filter(slot => 
-                slot.available && !slot.isBooked && !slot.isUnavailable
-              ).length;
-              const hasSlots = availableSlotsCount > 0;
 
-              console.log(`🎯 UI Render Check - Loading: ${isLoading}, Available slots: ${availableSlotsCount}, Total slots: ${availableTimeSlots.length}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}`);
-                            // Show loading state while checking availability
-              if (isLoading) {
-                return (
-                  <div className="text-center py-8 border-2 border-gray-200 rounded-lg bg-gray-50">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                    <h4 className="text-xl font-bold text-gray-700 mb-2">Checking availability...</h4>
-                    <p className="text-gray-600">Please wait while we load available time slots.</p>
-                  </div>
-                );
-              }
-                            
-                          // Show warning ONLY when there are truly no available slots
-              if (!hasAvailableSlots && !hasSlots) {
-                return (
-                  <div className="text-center py-8 border-2 border-orange-300 rounded-lg bg-orange-50">
-                    <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <span className="text-3xl">⚠️</span>
-                    </div>
-                    <h4 className="text-xl font-bold text-orange-800 mb-2">No available time slots.</h4>
-                    <p className="text-orange-700 mb-6 px-4">
-                      {formData.doctor} is fully booked for {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
-                        weekday: 'long', 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      })}. Please select another doctor or date, or join the waiting list.
-                    </p>
-                    
-                    {/* Reminder Text - Only shows when fields are incomplete */}
-                    {(!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
-                      !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
-                      (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())) && (
-                      <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-blue-700 text-sm font-medium">
-                          📝 Please fill all the fields to join the waiting list, and we'll let you know when a slot has opened up.
-                        </p>
-                      </div>
-                    )}
-                    
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormData(prev => ({ 
-                            ...prev, 
-                            doctor: '', 
-                            appointmentDate: '', 
-                            timeSlot: '',
-                            priorityLevel: 'normal'
-                          }));
-                          setAvailableTimeSlots([]);
-                          setHasAvailableSlots(true);
-                        }}
-                        className="px-6 py-3 bg-white text-orange-700 border-2 border-orange-300 rounded-lg font-medium hover:bg-orange-50 transition"
-                      >
-                        📅 Choose Another Doctor/Date
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            // Add to waiting list collection
-                            const waitingListRef = collection(db, 'waitingList');
-                            await addDoc(waitingListRef, {
-                              fullName: formData.fullName || '',
-                              age: formData.age || '',
-                              photo: formData.photo || '',
-                              doctor: formData.doctor,
-                              appointmentDate: formData.appointmentDate,
-                              gender: formData.gender || '',
-                              medicalCondition: formData.medicalCondition || '',
-                              phone: formData.phone || '',
-                              priorityLevel: formData.priorityLevel,
-                              preferredTimeSlot: formData.timeSlot || '',
-                              requestedDate: formData.appointmentDate,
-                              status: 'waiting',
-                              createdAt: new Date().toISOString()
-                            });
-                            
-                            alert('✅ You have been added to the waiting list! We will notify you when a slot becomes available.');
-                            handleClose();
-                          } catch (error) {
-                            console.error('Error adding to waiting list:', error);
-                            alert('Failed to join waiting list. Please try again.');
-                          }
-                        }}
-                        disabled={!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
-                                  !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
-                                  (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())}
-                        className="px-6 py-3 bg-orange-600 text-white border-2 border-orange-600 rounded-lg font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
-                      >
-                        📋 Join Waiting List
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-              // Show available slots ONLY when there are available slots
-             // Show all slots (available AND booked)
-              if (availableTimeSlots.length > 0) {
-                return (
-                  <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
-                    {availableTimeSlots.map((slot) => {
-                      // Determine slot status and styling
-                      const isAvailable = slot.available && !slot.isBooked && !slot.isUnavailable;
-                      const isBooked = slot.isBooked;
-                      const isUnavailable = slot.isUnavailable && !slot.isBooked;
-                      
-                      // Determine button styling based on status
-                      let buttonClasses = 'px-3 py-3 rounded-lg text-sm font-medium transition border-2 ';
-                      let statusLabel = '';
-                      let statusLabelClasses = '';
-                      
-                      if (isBooked) {
-                        // Booked slots - red/disabled styling
-                        buttonClasses += 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed opacity-75';
-                        statusLabel = 'Booked';
-                        statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
-                      } else if (isUnavailable) {
-                        // Unavailable slots (doctor marked as unavailable)
-                        buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
-                        statusLabel = 'Unavailable';
-                        statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
-                      } else if (isAvailable) {
-                        // Available slots - green/clickable styling
-                        buttonClasses += 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 cursor-pointer';
-                        statusLabel = 'Available';
-                        statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70';
-                      } else {
-                        // Past time slots or other unavailable
-                        buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
-                        statusLabel = 'Unavailable';
-                        statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                <div>
+                  <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Time Slot <span className="text-red-500" aria-label="required">*</span>
+                  </label>
+                  {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
+                    (() => {
+                      const isLoading = isCheckingAvailability;
+                      const availableSlotsCount = availableTimeSlots.filter(slot => 
+                        slot.available && !slot.isBooked && !slot.isUnavailable
+                      ).length;
+                      const hasSlots = availableSlotsCount > 0;
+
+                      console.log(`🎯 UI Render Check - Loading: ${isLoading}, Available slots: ${availableSlotsCount}, Total slots: ${availableTimeSlots.length}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}`);
+
+                      if (isLoading) {
+                        return (
+                          <div className="text-center py-8 border-2 border-gray-200 rounded-lg bg-gray-50">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                            <h4 className="text-xl font-bold text-gray-700 mb-2">Checking availability...</h4>
+                            <p className="text-gray-600">Please wait while we load available time slots.</p>
+                          </div>
+                        );
                       }
-                      
-                      // Add selection ring if this slot is selected
-                      if (formData.timeSlot === slot.time && isAvailable) {
-                        buttonClasses += ' ring-2 ring-blue-500 ring-offset-2';
+
+                      if (!hasAvailableSlots && !hasSlots) {
+                        return (
+                          <div className="text-center py-8 border-2 border-orange-300 rounded-lg bg-orange-50">
+                            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <span className="text-3xl">⚠️</span>
+                            </div>
+                            <h4 className="text-xl font-bold text-orange-800 mb-2">No available time slots.</h4>
+                            <p className="text-orange-700 mb-6 px-4">
+                              {formData.doctor} is fully booked for {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                              })}. Please select another doctor or date, or join the waiting list.
+                            </p>
+                            
+                            {(!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+                              !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
+                              (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())) && (
+                              <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-blue-700 text-sm font-medium">
+                                  📝 Please fill all the fields to join the waiting list, and we'll let you know when a slot has opened up.
+                                </p>
+                              </div>
+                            )}
+                            
+                            <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData(prev => ({ 
+                                    ...prev, 
+                                    doctor: '', 
+                                    appointmentDate: '', 
+                                    timeSlot: '',
+                                    priorityLevel: 'normal'
+                                  }));
+                                  setAvailableTimeSlots([]);
+                                  setHasAvailableSlots(true);
+                                }}
+                                className="px-6 py-3 bg-white text-orange-700 border-2 border-orange-300 rounded-lg font-medium hover:bg-orange-50 transition"
+                              >
+                                📅 Choose Another Doctor/Date
+                              </button>
+                              <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const waitingListRef = collection(db, 'waitingList');
+                                  await addDoc(waitingListRef, {
+                                    fullName: formData.fullName || '',
+                                    age: formData.age || '',
+                                    photo: formData.photo || '',
+                                    doctor: formData.doctor,
+                                    appointmentDate: formData.appointmentDate,
+                                    gender: formData.gender || '',
+                                    medicalCondition: formData.medicalCondition || '',
+                                    phone: formData.phone || '',
+                                    priorityLevel: formData.priorityLevel,
+                                    preferredTimeSlot: formData.timeSlot || '',
+                                    requestedDate: formData.appointmentDate,
+                                    status: 'waiting',
+                                    createdAt: new Date().toISOString()
+                                  });
+                                  
+                                  showToast('✅ You have been added to the waiting list! We will notify you when a slot becomes available.', 'success');
+                                  handleClose();
+                                } catch (error) {
+                                  console.error('Error adding to waiting list:', error);
+                                  showToast('Failed to join waiting list. Please try again.', 'error');
+                                }
+                              }}
+                              disabled={!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+                                        !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
+                                        (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())}
+                              className="px-6 py-3 bg-orange-600 text-white border-2 border-orange-600 rounded-lg font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
+                            >
+                              📋 Join Waiting List
+                            </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (availableTimeSlots.length > 0) {
+                        return (
+                          <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
+                            {availableTimeSlots.map((slot) => {
+                              const isAvailable = slot.available && !slot.isBooked && !slot.isUnavailable;
+                              const isBooked = slot.isBooked;
+                              const isUnavailable = slot.isUnavailable && !slot.isBooked;
+                              
+                              let buttonClasses = 'px-3 py-3 rounded-lg text-sm font-medium transition border-2 ';
+                              let statusLabel = '';
+                              let statusLabelClasses = '';
+                              
+                              if (isBooked) {
+                                buttonClasses += 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed opacity-75';
+                                statusLabel = 'Booked';
+                                statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
+                              } else if (isUnavailable) {
+                                buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
+                                statusLabel = 'Unavailable';
+                                statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                              } else if (isAvailable) {
+                                buttonClasses += 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 cursor-pointer';
+                                statusLabel = 'Available';
+                                statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70';
+                              } else {
+                                buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
+                                statusLabel = 'Unavailable';
+                                statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                              }
+                              
+                              if (formData.timeSlot === slot.time && isAvailable) {
+                                buttonClasses += ' ring-2 ring-blue-500 ring-offset-2';
+                              }
+                              
+                              return (
+                                <button
+                                  key={slot.time}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isAvailable) {
+                                      setFormData(prev => ({ ...prev, timeSlot: slot.time }));
+                                    }
+                                  }}
+                                  disabled={!isAvailable}
+                                  className={buttonClasses}
+                                  aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
+                                  aria-disabled={!isAvailable}
+                                >
+                                  <div className="flex flex-col items-center">
+                                    <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
+                                    <span className={statusLabelClasses}>
+                                      {statusLabel}
+                                    </span>
+                                    {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && (
+                                      <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
+                                    )}
+                                    {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && (
+                                      <span className="text-xs mt-1 text-orange-600 font-semibold">Urgent</span>
+                                    )}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
                       }
                       
                       return (
-                        <button
-                          key={slot.time}
-                          type="button"
-                          onClick={() => {
-                            if (isAvailable) {
-                              setFormData(prev => ({ ...prev, timeSlot: slot.time }));
-                            }
-                          }}
-                          disabled={!isAvailable}
-                          className={buttonClasses}
-                          aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
-                          aria-disabled={!isAvailable}
-                        >
-                          <div className="flex flex-col items-center">
-                            <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
-                            <span className={statusLabelClasses}>
-                              {statusLabel}
-                            </span>
-                            {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && (
-                              <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
-                            )}
-                            {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && (
-                              <span className="text-xs mt-1 text-orange-600 font-semibold">Urgent</span>
-                            )}
-                          </div>
-                        </button>
+                        <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
+                          <p className="text-gray-500">Unable to load time slots. Please try again.</p>
+                        </div>
                       );
-                    })}
-                  </div>
-                );
-              }
-              
-              // Fallback - should not normally reach here
-              return (
-                <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
-                  <p className="text-gray-500">Unable to load time slots. Please try again.</p>
+                    })()
+                  ) : (
+                    <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
+                      <p className="text-gray-500">Please select a doctor, date, and priority level to view available time slots.</p>
+                    </div>
+                  )}
                 </div>
-              );
-            })()
-          ) : (
-            <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
-              <p className="text-gray-500">Please select a doctor, date, and priority level to view available time slots.</p>
-            </div>
-          )}
-        </div>
-                    <div>
+
+                <div>
                   <label htmlFor="medicalCondition" className="block text-sm font-medium text-gray-700 mb-2">
                     Eye Condition <span className="text-red-500" aria-label="required">*</span>
                   </label>
@@ -1205,6 +1181,33 @@ const handleSubmit = async () => {
           </div>
         </div>
       </div>
+
+       {/* Add Toast Notification Component - PLACE IT HERE, INSIDE THE OUTER MODAL DIV */}
+      {toast && toast.show && (
+        <div className="fixed top-4 right-4 z-[200] animate-slide-in-right">
+          <div className={`
+            flex items-center gap-3 px-6 py-4 rounded-lg shadow-lg max-w-md
+            ${toast.type === 'success' ? 'bg-green-500 text-white' : ''}
+            ${toast.type === 'error' ? 'bg-red-500 text-white' : ''}
+            ${toast.type === 'warning' ? 'bg-orange-500 text-white' : ''}
+            ${toast.type === 'info' ? 'bg-blue-500 text-white' : ''}
+          `}>
+            {toast.type === 'success' && <CheckCircle className="w-6 h-6 flex-shrink-0" />}
+            {toast.type === 'error' && <AlertCircle className="w-6 h-6 flex-shrink-0" />}
+            {toast.type === 'warning' && <AlertCircle className="w-6 h-6 flex-shrink-0" />}
+            {toast.type === 'info' && <Info className="w-6 h-6 flex-shrink-0" />}
+            <p className="font-medium">{toast.message}</p>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-auto hover:opacity-80 transition"
+              aria-label="Close notification"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -79,3 +79,19 @@ input:-moz-autofill-preview {
 .animate-orbit {
   animation: orbit-bird 0.8s linear infinite;
 }
+
+/* 🎯 ADD THIS: Toast notification slide-in animation */
+@keyframes slideInRight {
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out;
+}
