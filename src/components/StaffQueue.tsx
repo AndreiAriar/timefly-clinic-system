@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle, X } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
-
 interface Appointment {
   id: string;
   fullName: string;
@@ -13,6 +12,7 @@ interface Appointment {
   gender: string;
   medicalCondition: string;
   phone: string;
+  email: string; // Add this line
   priorityLevel: string;
   timeSlot: string;
   queueNumber: number;
@@ -39,6 +39,7 @@ const StaffQueue = () => {
   const [nowServing, setNowServing] = useState<Appointment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({
     isOpen: false,
     title: '',
@@ -267,10 +268,44 @@ const StaffQueue = () => {
     );
   };
 
-  const sendNotification = (appointment: Appointment) => {
-    // In a real app, this would send a push notification or SMS
-    addNotification('info', `Notification sent to ${appointment.fullName} (${appointment.phone}) - Queue #${appointment.queueNumber}`);
-  };
+  const sendReminder = async (appointment: Appointment) => {
+  // Show confirm dialog before sending
+  showConfirmDialog(
+    'Send Reminder',
+    `Send appointment reminder to ${appointment.fullName} at ${appointment.phone}?`,
+    async () => {
+      setSendingReminder(appointment.id);
+
+      try {
+        const response = await fetch('/api/send-reminder', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            patientEmail: appointment.email, 
+            patientName: appointment.fullName,
+            appointmentTime: convertTo12Hour(appointment.timeSlot),
+            queueNumber: appointment.queueNumber
+          }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          addNotification('success', `Reminder sent to ${appointment.fullName}!`);
+        } else {
+          addNotification('error', data.error || 'Failed to send reminder');
+        }
+      } catch (error) {
+        console.error('Error sending reminder:', error);
+        addNotification('error', 'Network error. Please try again.');
+      } finally {
+        setSendingReminder(null);
+      }
+    }
+  );
+};
 
   const getUpNextAppointments = () => {
     if (!nowServing) return appointments.slice(0, 3);
@@ -457,13 +492,25 @@ const StaffQueue = () => {
                   <CheckCircle className="w-5 h-5" />
                   Mark Complete
                 </button>
-                <button
-                  onClick={() => sendNotification(nowServing)}
-                  className="flex-1 bg-white/20 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition flex items-center justify-center gap-2 border border-white/30"
-                >
-                  <Bell className="w-5 h-5" />
-                  Send Reminder
-                </button>
+               <button
+                onClick={() => sendReminder(nowServing)}
+                disabled={sendingReminder === nowServing.id}
+                className={`flex-1 bg-white/20 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition flex items-center justify-center gap-2 border border-white/30 ${
+                  sendingReminder === nowServing.id ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                {sendingReminder === nowServing.id ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Bell className="w-5 h-5" />
+                    Send Reminder
+                  </>
+                )}
+              </button>
               </div>
             </div>
           ) : (
@@ -595,12 +642,19 @@ const StaffQueue = () => {
                         )}
                         
                         <button
-                          onClick={() => sendNotification(appointment)}
-                          className="p-2 text-gray-600 hover:text-indigo-600 transition"
-                          title="Send Notification"
-                        >
-                          <Bell className="w-5 h-5" />
-                        </button>
+                      onClick={() => sendReminder(appointment)}
+                      disabled={sendingReminder === appointment.id}
+                      className={`p-2 text-gray-600 hover:text-indigo-600 transition ${
+                        sendingReminder === appointment.id ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                      title="Send Reminder"
+                    >
+                      {sendingReminder === appointment.id ? (
+                        <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Bell className="w-5 h-5" />
+                      )}
+                    </button>
                       </div>
                     </div>
                     
