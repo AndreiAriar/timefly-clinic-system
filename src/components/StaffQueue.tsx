@@ -102,53 +102,56 @@ const StaffQueue = () => {
     };
     return date.toLocaleDateString('en-US', options);
   };
-
-  const loadQueue = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const today = getTodayDatePH();
-      const appointmentsRef = collection(db, 'appointments');
-      
-      // Query all appointments for today
-      const q = query(
-        appointmentsRef,
-        where('appointmentDate', '==', today)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      // Filter appointments that should be in the queue (excluding cancelled, completed, and missed)
-      let appointmentsData = querySnapshot.docs
-        .map(doc => ({
+const loadQueue = useCallback(async () => {
+  setIsLoading(true);
+  try {
+    const today = getTodayDatePH();
+    const appointmentsRef = collection(db, 'appointments');
+    
+    // Query all appointments for today
+    const q = query(
+      appointmentsRef,
+      where('appointmentDate', '==', today)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    // Filter appointments that should be in the queue (excluding cancelled, completed, and missed)
+    let appointmentsData = querySnapshot.docs
+      .map(doc => {
+        const data = doc.data();
+        console.log('Appointment data:', data); // Debug: Check if email exists
+        return {
           id: doc.id,
-          ...doc.data()
-        })) as Appointment[];
-      
-      // Filter out cancelled, completed, and missed appointments
-      appointmentsData = appointmentsData.filter(apt => 
-        apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
-      );
-      
-      // Sort by queue number
-      appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
-      
-      setAppointments(appointmentsData);
-      
-      // Check if there's an appointment with status 'serving' or 'confirmed'
-      const currentlyServing = appointmentsData.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
-      
-      if (currentlyServing) {
-        setNowServing(currentlyServing);
-      } else {
-        setNowServing(null);
-      }
-    } catch (error) {
-      console.error('Error loading queue:', error);
-      console.error('Failed to load queue. Please try again.');
-    } finally {
-      setIsLoading(false);
+          ...data
+        };
+      }) as Appointment[];
+    
+    // Filter out cancelled, completed, and missed appointments
+    appointmentsData = appointmentsData.filter(apt => 
+      apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
+    );
+    
+    // Sort by queue number
+    appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
+    
+    setAppointments(appointmentsData);
+    
+    // Check if there's an appointment with status 'serving' or 'confirmed'
+    const currentlyServing = appointmentsData.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
+    
+    if (currentlyServing) {
+      setNowServing(currentlyServing);
+    } else {
+      setNowServing(null);
     }
-  }, []);
+  } catch (error) {
+    console.error('Error loading queue:', error);
+    addNotification('error', 'Failed to load queue. Please try again.');
+  } finally {
+    setIsLoading(false);
+  }
+}, [addNotification]);
 
   useEffect(() => {
     loadQueue();
@@ -267,17 +270,19 @@ const StaffQueue = () => {
       }
     );
   };
-const sendReminder = async (appointment: Appointment) => {
-  // Check if email exists
-  if (!appointment.email) {
-    addNotification('error', 'Patient email not available');
+  const sendReminder = async (appointment: Appointment) => {
+  // Use email if available, otherwise use phone
+  const contactInfo = appointment.email || appointment.phone;
+  
+  if (!contactInfo) {
+    addNotification('error', 'Patient contact information not available');
     return;
   }
 
   // Show confirm dialog before sending
   showConfirmDialog(
     'Send Reminder',
-    `Send appointment reminder to ${appointment.fullName} at ${appointment.email}?`,
+    `Send appointment reminder to ${appointment.fullName} at ${contactInfo}?`,
     async () => {
       setSendingReminder(appointment.id);
 
@@ -288,7 +293,7 @@ const sendReminder = async (appointment: Appointment) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            patientEmail: appointment.email,
+            patientEmail: contactInfo,
             patientName: appointment.fullName,
             appointmentTime: convertTo12Hour(appointment.timeSlot),
             queueNumber: appointment.queueNumber
@@ -298,7 +303,7 @@ const sendReminder = async (appointment: Appointment) => {
         const data = await response.json();
 
         if (response.ok) {
-          addNotification('success', `Reminder sent to ${appointment.fullName} at ${appointment.email}!`);
+          addNotification('success', `Reminder sent to ${appointment.fullName} at ${contactInfo}!`);
         } else {
           addNotification('error', data.error || 'Failed to send reminder');
         }
