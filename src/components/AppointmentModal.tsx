@@ -114,28 +114,28 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
     type: 'success' | 'error' | 'warning' | 'info';
   } | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
-    setToast({ show: true, message, type });
-    setTimeout(() => setToast(null), 5000);
-  };
+const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info') => {
+  setToast({ show: true, message, type });
+  setTimeout(() => setToast(null), 5000);
+}, []);
 
-  const loadDoctors = useCallback(async () => {
-    try {
-      const doctorsRef = collection(db, 'doctors');
-      const q = query(doctorsRef, where('isActive', '==', true));
-      const querySnapshot = await getDocs(q);
-      
-      const doctorsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Doctor[];
-      
-      setDoctors(doctorsData);
-    } catch (error) {
-      console.error('Error loading doctors:', error);
-      showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-    }
-  }, [showToast]);
+const loadDoctors = useCallback(async () => {
+  try {
+    const doctorsRef = collection(db, 'doctors');
+    const q = query(doctorsRef, where('isActive', '==', true));
+    const querySnapshot = await getDocs(q);
+    
+    const doctorsData = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Doctor[];
+    
+    setDoctors(doctorsData);
+  } catch (error) {
+    console.error('Error loading doctors:', error);
+    showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+  }
+}, [showToast]); 
 
   useEffect(() => {
     loadDoctors();
@@ -698,8 +698,7 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
             appointmentDate: formData.appointmentDate,
             timeSlot: formData.timeSlot,
             queueNumber: appointmentData.queueNumber,
-            priorityLevel: formData.priorityLevel,
-            medicalCondition: finalMedicalCondition
+            priorityLevel: formData.priorityLevel
           }),
         });
 

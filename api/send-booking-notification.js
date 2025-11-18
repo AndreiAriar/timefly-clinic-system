@@ -23,7 +23,6 @@ export default async function handler(req, res) {
     timeSlot, 
     queueNumber,
     priorityLevel,
-    medicalCondition 
   } = req.body;
 
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
@@ -74,7 +73,6 @@ export default async function handler(req, res) {
             <p><strong>Name:</strong> ${patientName}</p>
             <p><strong>Email:</strong> ${patientEmail}</p>
             <p><strong>Priority Level:</strong> <span style="text-transform: capitalize;">${priorityLevel}</span></p>
-            <p><strong>Medical Condition:</strong> ${medicalCondition}</p>
           </div>
 
           <div style="background-color: #e7f3ff; padding: 20px; border-radius: 5px; margin: 20px 0; border: 1px solid #b3d9ff;">
