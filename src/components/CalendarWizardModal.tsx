@@ -892,7 +892,6 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
           doctor: selectedDoctor?.name || '',
           appointmentDate: selectedDate || '',
           timeSlot: selectedTime || '',
-          priorityLevel: priorityLevel
         }}
         onBookingComplete={handleAppointmentBooked}
       />
