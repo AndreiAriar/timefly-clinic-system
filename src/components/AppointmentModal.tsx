@@ -119,7 +119,7 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
     setTimeout(() => setToast(null), 5000);
   };
 
-  const loadDoctors = async () => {
+  const loadDoctors = useCallback(async () => {
     try {
       const doctorsRef = collection(db, 'doctors');
       const q = query(doctorsRef, where('isActive', '==', true));
@@ -135,11 +135,11 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
       console.error('Error loading doctors:', error);
       showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     loadDoctors();
-  }, []);
+  }, [loadDoctors]);
 
   const recalculateQueueNumbers = async (appointmentDate: string) => {
     try {
@@ -684,6 +684,38 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
       // Recalculate queue numbers for all other appointments on this date
       await recalculateQueueNumbers(formData.appointmentDate);
 
+      // Send email notification to clinic
+      try {
+        const response = await fetch('/api/send-booking-notification', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            patientName: formData.fullName,
+            patientEmail: userEmail,
+            doctor: formData.doctor,
+            appointmentDate: formData.appointmentDate,
+            timeSlot: formData.timeSlot,
+            queueNumber: appointmentData.queueNumber,
+            priorityLevel: formData.priorityLevel,
+            medicalCondition: finalMedicalCondition
+          }),
+        });
+
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+          console.error('Failed to send booking notification:', data.error);
+          // Don't fail the booking if email fails
+        } else {
+          console.log('✅ Booking notification sent to clinic');
+        }
+      } catch (emailError) {
+        console.error('Error sending booking notification:', emailError);
+        // Don't fail the booking if email fails
+      }
+
       // Set the queue number for display
       setQueueNumber(appointmentData.queueNumber);
 
@@ -699,23 +731,27 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
         handleClose();
       }, 2000);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error booking appointment:', error);
       
       // Handle specific error cases with toast notifications
-      if (error.message === 'SLOT_TAKEN') {
-        showToast('⚠️ This time slot was just booked by another user. Please refresh and choose another time.', 'warning');
-        // Refresh available slots
-        if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-          await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
-        }
-      } else if (error.message === 'DOCTOR_UNAVAILABLE') {
-        showToast('⚠️ This doctor is no longer available on the selected date. Please choose another date.', 'warning');
-      } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
-        showToast('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.', 'warning');
-        // Refresh available slots
-        if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-          await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+      if (error instanceof Error) {
+        if (error.message === 'SLOT_TAKEN') {
+          showToast('⚠️ This time slot was just booked by another user. Please refresh and choose another time.', 'warning');
+          // Refresh available slots
+          if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+            await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+          }
+        } else if (error.message === 'DOCTOR_UNAVAILABLE') {
+          showToast('⚠️ This doctor is no longer available on the selected date. Please choose another date.', 'warning');
+        } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
+          showToast('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.', 'warning');
+          // Refresh available slots
+          if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+            await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+          }
+        } else {
+          showToast('Failed to book appointment. Please try again.', 'error');
         }
       } else {
         showToast('Failed to book appointment. Please try again.', 'error');
@@ -1018,8 +1054,12 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
                         slot.available && !slot.isBooked && !slot.isUnavailable
                       ).length;
                       const hasSlots = availableSlotsCount > 0;
+                      
+                      // Check if doctor is marked as unavailable
+                      const isDoctorUnavailable = availableTimeSlots.some(slot => slot.isUnavailable && !slot.isBooked) && 
+                                                availableSlotsCount === 0;
 
-                      console.log(`🎯 UI Render Check - Loading: ${isLoading}, Available slots: ${availableSlotsCount}, Total slots: ${availableTimeSlots.length}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}`);
+                      console.log(`🎯 UI Render Check - Loading: ${isLoading}, Available slots: ${availableSlotsCount}, Total slots: ${availableTimeSlots.length}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}, Doctor Unavailable: ${isDoctorUnavailable}`);
 
                       if (isLoading) {
                         return (
@@ -1029,6 +1069,54 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
                             </div>
                             <h4 className="text-xl font-bold text-gray-700 mb-2">Checking availability...</h4>
                             <p className="text-gray-600">Please wait while we load available time slots.</p>
+                          </div>
+                        );
+                      }
+
+                      // Add reminder box for unavailable doctors
+                      if (isDoctorUnavailable) {
+                        return (
+                          <div className="text-center py-8 border-2 border-red-300 rounded-lg bg-red-50">
+                            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <span className="text-3xl">⏸️</span>
+                            </div>
+                            <h4 className="text-xl font-bold text-red-800 mb-2">Doctor Unavailable</h4>
+                            <p className="text-red-700 mb-4 px-4">
+                              Dr. {formData.doctor} is marked as unavailable on {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                              })}.
+                            </p>
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mx-4 mb-4">
+                              <div className="flex items-start gap-3">
+                                <Info className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                                <div className="text-left">
+                                  <p className="text-yellow-800 font-medium mb-1">Reminder:</p>
+                                  <p className="text-yellow-700 text-sm">
+                                    This doctor has been marked as unavailable by staff. Please select another doctor or date for your appointment.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData(prev => ({ 
+                                  ...prev, 
+                                  doctor: '', 
+                                  appointmentDate: '', 
+                                  timeSlot: '',
+                                  priorityLevel: 'normal'
+                                }));
+                                setAvailableTimeSlots([]);
+                                setHasAvailableSlots(true);
+                              }}
+                              className="px-6 py-3 bg-white text-red-700 border-2 border-red-300 rounded-lg font-medium hover:bg-red-50 transition"
+                            >
+                              📅 Choose Another Doctor/Date
+                            </button>
                           </div>
                         );
                       }
@@ -1116,6 +1204,7 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
                           </div>
                         );
                       }
+  
 
                       if (availableTimeSlots.length > 0) {
                         return (
@@ -1288,6 +1377,17 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
         </div>
       )}
 
+      {/* Fix autofill white background issue */}
+      <style>{`
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus,
+        input:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0 30px white inset !important;
+          -webkit-text-fill-color: #374151 !important;
+          transition: background-color 5000s ease-in-out 0s;
+        }
+      `}</style>
     </div>
   );
 };
