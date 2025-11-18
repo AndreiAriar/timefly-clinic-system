@@ -17,7 +17,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type PageType = 'home' | 'appointments' | 'queue' | 'about' | 'doctors' | 'faq' | 'faq2' | 'feedback' | 'contact' | 'privacy';
+type PageType = 'home' | 'appointments' | 'queue' | 'about' | 'doctors' | 'faq' | 'faq2' | 'feedback' | 'contact';
 
 
 
@@ -31,6 +31,7 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
   const desktopDropdownRef = useRef<HTMLDivElement>(null);
   const mobileDropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const hamburgerButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (userPhoto) {
@@ -70,14 +71,19 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (desktopDropdownRef.current && !desktopDropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      
+      if (desktopDropdownRef.current && !desktopDropdownRef.current.contains(target)) {
         setIsDesktopDropdownOpen(false);
       }
-      if (mobileDropdownRef.current && !mobileDropdownRef.current.contains(event.target as Node)) {
+      if (mobileDropdownRef.current && !mobileDropdownRef.current.contains(target)) {
         setIsMobileDropdownOpen(false);
       }
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
-        setIsMobileMenuOpen(false);
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(target)) {
+        // Check if the click is on the hamburger button itself
+        if (hamburgerButtonRef.current && !hamburgerButtonRef.current.contains(target)) {
+          setIsMobileMenuOpen(false);
+        }
       }
     };
 
@@ -89,7 +95,7 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isDesktopDropdownOpen, isMobileDropdownOpen, isMobileMenuOpen]);
-
+  
   const handleNavClick = (page: PageType) => {
     setCurrentPage(page);
     setIsMobileMenuOpen(false);
@@ -121,8 +127,6 @@ const renderPage = () => {
       return <PatientFeedback />;
     case 'contact':
       return <ContactUs />;
-    case 'privacy':
-      return <PrivacyPolicy />;
     default:
       return <Home />;
   }
@@ -144,7 +148,7 @@ const renderPage = () => {
                 alt="TimeFly Logo" 
                 className="h-12 w-auto"
               />
-              <span className="text-2xl font-bold text-gray-900">TimeFly</span>
+              <span className="text-2xl font-bold text-blue-500">TimeFly</span>
             </button>
 
             {/* Desktop Navigation */}
@@ -297,94 +301,120 @@ const renderPage = () => {
                 )}
               </div>
             </div>
-
-            {/* Mobile Profile and Menu */}
-            <div className="md:hidden flex items-center space-x-3">
-              <div className="relative" ref={mobileDropdownRef}>
-                <button
-                  onClick={() => setIsMobileDropdownOpen(!isMobileDropdownOpen)}
-                  className="flex items-center focus:outline-none"
-                >
-                  {profilePhoto ? (
-                    <img 
-                      src={profilePhoto} 
-                      alt="Profile" 
-                      className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600"
-                    />
-                  ) : (
-                    <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold border-2 border-indigo-600">
-                      {getInitials(userEmail, userName)}
-                    </div>
-                  )}
-                </button>
-
-                {isMobileDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl overflow-hidden z-50">
-                    <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
-                      <div className="flex items-center space-x-3">
-                        {profilePhoto ? (
-                          <img 
-                            src={profilePhoto} 
-                            alt="Profile" 
-                            className="h-16 w-16 rounded-full object-cover border-2 border-white"
-                          />
-                        ) : (
-                          <div className="h-16 w-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold border-2 border-white">
-                            {getInitials(userEmail, userName)}
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <p className="font-semibold text-lg">{displayName}</p>
-                          <p className="text-sm text-white/90 truncate">{userEmail}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="py-2">
-                      <button
-                        onClick={handleChangePhotoClick}
-                        className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-100 flex items-center space-x-3 transition"
-                      >
-                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span>Change Photo</span>
-                      </button>
-
-                      <div className="border-t border-gray-200 my-2"></div>
-
-                      <button
-                        onClick={handleLogout}
-                        className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 flex items-center space-x-3 transition"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        <span>Logout</span>
-                      </button>
-                    </div>
+          {/* Mobile Profile and Menu */}
+          <div className="md:hidden flex items-center space-x-3">
+            <div className="relative" ref={mobileDropdownRef}>
+              <button
+                onClick={() => {
+                  setIsMobileDropdownOpen(!isMobileDropdownOpen);
+                  // Close mobile menu when profile dropdown is opened
+                  if (isMobileMenuOpen) {
+                    setIsMobileMenuOpen(false);
+                  }
+                }}
+                className="flex items-center focus:outline-none"
+              >
+                {profilePhoto ? (
+                  <img 
+                    src={profilePhoto} 
+                    alt="Profile" 
+                    className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600"
+                  />
+                ) : (
+                  <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold border-2 border-indigo-600">
+                    {getInitials(userEmail, userName)}
                   </div>
                 )}
-              </div>
+              </button>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoChange}
-                className="hidden"
-              />
+              {isMobileDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl overflow-hidden z-50">
+                  <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+                    <div className="flex items-center space-x-3">
+                      {profilePhoto ? (
+                        <img 
+                          src={profilePhoto} 
+                          alt="Profile" 
+                          className="h-16 w-16 rounded-full object-cover border-2 border-white"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold border-2 border-white">
+                          {getInitials(userEmail, userName)}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <p className="font-semibold text-lg">{displayName}</p>
+                        <p className="text-sm text-white/90 truncate">{userEmail}</p>
+                      </div>
+                    </div>
+                  </div>
 
+                  <div className="py-2">
+                    <button
+                      onClick={handleChangePhotoClick}
+                      className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-100 flex items-center space-x-3 transition"
+                    >
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span>Change Photo</span>
+                    </button>
+
+                    <div className="border-t border-gray-200 my-2"></div>
+
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 flex items-center space-x-3 transition"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      <span>Logout</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+              className="hidden"
+            />
+
+            <div ref={hamburgerButtonRef}>
               <button 
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="p-2 rounded-lg hover:bg-gray-100"
+                onClick={() => {
+                  setIsMobileMenuOpen(prev => !prev);
+                  setIsMobileDropdownOpen(false);
+                }}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200"
               >
-                <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
+                {isMobileMenuOpen ? (
+                  <svg 
+                    className="w-6 h-6 text-gray-700" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg 
+                    className="w-6 h-6 text-gray-700" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                )}
               </button>
             </div>
+          </div>
           </div>
 
           {/* Mobile Menu */}
@@ -486,11 +516,10 @@ const renderPage = () => {
             </div>
 
             <div>
-              <h3 className="font-semibold text-lg mb-4">Support & Policy</h3>
+              <h3 className="font-semibold text-lg mb-4">Help & Feedback</h3>
               <ul className="space-y-2">
                 <li><button onClick={() => setCurrentPage('feedback')} className="text-gray-400 hover:text-white transition">Give Feedback</button></li>
-                  <li><button onClick={() => setCurrentPage('contact')} className="text-gray-400 hover:text-white transition">Help Center</button></li>
-                  <li><button onClick={() => setCurrentPage('privacy')} className="text-gray-400 hover:text-white transition">Privacy Policy</button></li>
+                  <li><button onClick={() => setCurrentPage('contact')} className="text-gray-400 hover:text-white transition">Contact Support</button></li>
               </ul>
             </div>
 
@@ -521,7 +550,7 @@ const renderPage = () => {
             </div>
             
             <p className="text-gray-400 text-sm">
-              © 2024 TimeFly. All rights reserved.
+              © 2025 TimeFly. All rights reserved.
             </p>
           </div>
         </div>

@@ -72,15 +72,15 @@ const PrivacyPolicy = () => {
               <li>Your name and contact information</li>
               <li>Your medical history and health records</li>
               <li>Your appointment information</li>
-              <li>Your insurance details</li>
             </ul>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">How We Protect Your Information</h2>
             <ul className="list-disc list-inside text-gray-700 mb-6 space-y-2">
-              <li>We use secure computer systems</li>
-              <li>Only doctors and nurses can see your information</li>
-              <li>We regularly check our security</li>
-              <li>Our staff are trained to protect your privacy</li>
+              <li>We use Firebase’s secure infrastructure and encrypted connections to keep your data safe.</li>
+              <li>Your information is stored in Firestore database collections and documents with strict access controls.</li>
+              <li>Only authorized clinic staff can view your information when needed for care.</li>
+              <li>We regularly review and update our security measures.</li>
+              <li>Our team is trained to handle your data responsibly and maintain your privacy.</li>
             </ul>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">Your Rights</h2>

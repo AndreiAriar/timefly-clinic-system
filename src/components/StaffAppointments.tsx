@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown, Mail } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, orderBy, deleteDoc, where } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import StaffViewAppointments from './StaffViewAppointments';
@@ -25,9 +25,10 @@ interface Appointment {
   cancelReason?: string;
   deletedByStaff?: boolean;
   deletedByPatient?: boolean;
+  email: string;
 }
 
-type SortField = 'appointmentDate' | 'timeSlot' | 'fullName' | 'doctor' | 'status' | 'queueNumber';
+type SortField = 'appointmentDate' | 'timeSlot' | 'fullName' | 'doctor' | 'status' | 'queueNumber' | 'email';
 type SortDirection = 'asc' | 'desc';
 
 const StaffAppointments = () => {
@@ -139,7 +140,8 @@ const StaffAppointments = () => {
         apt.doctor.toLowerCase().includes(query) ||
         apt.queueNumber.toString().includes(query) ||
         apt.phone.includes(query) ||
-        apt.medicalCondition.toLowerCase().includes(query)
+        apt.medicalCondition.toLowerCase().includes(query) ||
+        apt.email.toLowerCase().includes(query)
       );
     }
 
@@ -335,7 +337,7 @@ const StaffAppointments = () => {
                 <input
                   type="text"
                   id="search"
-                  placeholder="Search by name, doctor, queue number, phone, or condition..."
+                  placeholder="Search by name, doctor, queue number, phone, email, or condition..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
@@ -469,6 +471,9 @@ const StaffAppointments = () => {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Contact
                   </th>
+                  <SortableHeader field="email">
+                    Email
+                  </SortableHeader>
                   <SortableHeader field="status">
                     Status
                   </SortableHeader>
@@ -513,6 +518,12 @@ const StaffAppointments = () => {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{appointment.phone}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1 text-sm text-gray-900">
+                        <Mail className="w-4 h-4 text-gray-400" />
+                        {appointment.email}
+                      </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
@@ -632,6 +643,14 @@ const StaffAppointments = () => {
                         <Phone className="w-4 h-4" />
                         <span>{appointment.phone}</span>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Email */}
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Mail className="w-4 h-4 text-gray-400" />
+                      <span className="truncate">{appointment.email}</span>
                     </div>
                   </div>
 

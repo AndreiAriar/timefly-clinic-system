@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle, X } from 'lucide-react';
+import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle, X, Mail, Stethoscope } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 interface Appointment {
@@ -153,16 +153,10 @@ const loadQueue = useCallback(async () => {
   }
 }, [addNotification]);
 
-  useEffect(() => {
-    loadQueue();
-    
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadQueue();
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [loadQueue]);
+useEffect(() => {
+  loadQueue();
+  // Removed auto-refresh interval to prevent unwanted reloads
+}, [loadQueue]);
 
   const handleStartServing = async (appointment: Appointment) => {
     showConfirmDialog(
@@ -484,12 +478,32 @@ const loadQueue = useCallback(async () => {
                     <p className="text-sm opacity-90">Currently Serving</p>
                     <h3 className="text-3xl font-bold">{nowServing.fullName}</h3>
                     <p className="text-lg opacity-90">Queue #{nowServing.queueNumber}</p>
+                    {/* Email in Now Serving Section */}
+                    <div className="flex items-center gap-1 mt-1 opacity-90">
+                      <Mail className="w-4 h-4" />
+                      <span className="text-sm">{nowServing.email}</span>
+                    </div>
+                    {/* Phone number below email */}
+                    <div className="flex items-center gap-1 mt-1 opacity-90">
+                      <Phone className="w-4 h-4" />
+                      <span className="text-sm">{nowServing.phone}</span>
+                    </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm opacity-90">Doctor</p>
-                  <p className="text-xl font-semibold">{nowServing.doctor}</p>
-                  <p className="text-sm opacity-90 mt-1">{convertTo12Hour(nowServing.timeSlot)}</p>
+                  <p className="text-sm opacity-90">Time</p>
+                  <p className="text-sm opacity-90 mb-2">{convertTo12Hour(nowServing.timeSlot)}</p>
+                  {/* Doctor with stethoscope icon */}
+                  <div className="flex items-center gap-1 justify-end mb-2">
+                    <Stethoscope className="w-4 h-4 opacity-90" />
+                    <p className="text-sm opacity-90">Doctor</p>
+                  </div>
+                  <p className="text-xl font-semibold mb-2">{nowServing.doctor}</p>
+                  {/* Medical condition aligned with other data */}
+                  <div className="flex items-center gap-1 mt-2 opacity-90">
+                    <AlertCircle className="w-4 h-4" />
+                    <span className="text-sm">{nowServing.medicalCondition}</span>
+                  </div>
                 </div>
               </div>
               
@@ -544,17 +558,45 @@ const loadQueue = useCallback(async () => {
                   </span>
                 </div>
                 <h4 className="font-semibold text-gray-900 mb-1">{appointment.fullName}</h4>
-                <p className="text-sm text-gray-600 mb-2">{appointment.doctor}</p>
-                <p className="text-sm text-gray-500">{convertTo12Hour(appointment.timeSlot)}</p>
+                <p className="text-sm text-gray-500 mb-2">{convertTo12Hour(appointment.timeSlot)}</p>
                 
-                {/* Waiting Time */}
-                <div className="mt-2 flex items-center gap-2 text-orange-600">
-                  <Clock className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Waiting: {calculateWaitingTime(appointment.timeSlot)}</span>
+                {/* Doctor with stethoscope icon */}
+                <div className="flex items-center gap-1 text-sm text-gray-600 mb-2">
+                  <Stethoscope className="w-3 h-3" />
+                  <span>{appointment.doctor}</span>
+                </div>
+                
+                {/* Email in Up Next Section */}
+                <div className="flex items-center gap-1 text-sm text-gray-500 mb-1">
+                  <Mail className="w-3 h-3" />
+                  <span className="truncate">{appointment.email}</span>
+                </div>
+                
+                {/* Phone number below email */}
+                <div className="flex items-center gap-1 text-sm text-gray-500 mb-1">
+                  <Phone className="w-3 h-3" />
+                  <span>{appointment.phone}</span>
+                </div>
+                
+                {/* Medical condition aligned with other data */}
+                <div className="flex items-center gap-1 text-sm text-gray-500 mb-3">
+                  <AlertCircle className="w-3 h-3" />
+                  <span className="truncate">{appointment.medicalCondition}</span>
+                </div>
+                
+                {/* Status and Waiting Time below medical condition */}
+                <div className="flex items-center justify-between mb-4">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
+                    {appointment.status}
+                  </span>
+                  <div className="flex items-center gap-1 text-orange-600">
+                    <Clock className="w-3 h-3" />
+                    <span className="text-xs font-semibold">{calculateWaitingTime(appointment.timeSlot)}</span>
+                  </div>
                 </div>
                 
                 {/* Action Buttons */}
-                <div className="flex gap-2 mt-3">
+                <div className="flex gap-2">
                   <button
                     onClick={() => handleStartServing(appointment)}
                     className="flex-1 bg-yellow-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-yellow-600 transition flex items-center justify-center gap-2"
@@ -594,93 +636,110 @@ const loadQueue = useCallback(async () => {
               <div className="divide-y divide-gray-200">
                 {getQueueList().map((appointment) => (
                   <div key={appointment.id} className="p-4 hover:bg-gray-50 transition">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      {/* Left Section - Patient Info */}
+                      <div className="flex items-start space-x-4 flex-1">
                         <div className="flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-full">
                           <span className="text-lg font-bold text-indigo-600">#{appointment.queueNumber}</span>
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <h4 className="font-semibold text-gray-900">{appointment.fullName}</h4>
                           <p className="text-sm text-gray-600">
-                            {appointment.age} years • {appointment.gender} • {appointment.doctor}
+                            {appointment.age} years • {appointment.gender}
                           </p>
-                          <p className="text-sm text-gray-500">{convertTo12Hour(appointment.timeSlot)}</p>
+                          <p className="text-sm text-gray-500 mb-2">{convertTo12Hour(appointment.timeSlot)}</p>
                           
-                          {/* Status and Waiting Time */}
-                          <div className="flex items-center gap-2 mt-1">
+                          {/* Doctor with stethoscope icon */}
+                          <div className="flex items-center gap-1 text-sm text-gray-600 mb-2">
+                            <Stethoscope className="w-3 h-3" />
+                            <span>{appointment.doctor}</span>
+                          </div>
+                          
+                          {/* Email */}
+                          <div className="flex items-center gap-1 text-sm text-gray-500 mb-1">
+                            <Mail className="w-3 h-3" />
+                            <span>{appointment.email}</span>
+                          </div>
+                          
+                          {/* Phone number below email */}
+                          <div className="flex items-center gap-1 text-sm text-gray-500 mb-1">
+                            <Phone className="w-3 h-3" />
+                            <span>{appointment.phone}</span>
+                          </div>
+                          
+                          {/* Medical condition aligned with other data */}
+                          <div className="flex items-center gap-1 text-sm text-gray-500 mb-1">
+                            <AlertCircle className="w-3 h-3" />
+                            <span>{appointment.medicalCondition}</span>
+                          </div>
+                          
+                          {/* Status and Waiting Time below medical condition */}
+                          <div className="flex items-center gap-4 mt-2">
                             <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
                               {appointment.status}
                             </span>
-                            <span className="text-xs text-gray-300">•</span>
                             <div className="flex items-center gap-1 text-orange-600">
                               <Clock className="w-3 h-3" />
-                              <span className="text-xs font-semibold">Waiting: {calculateWaitingTime(appointment.timeSlot)}</span>
+                              <span className="text-xs font-semibold">{calculateWaitingTime(appointment.timeSlot)}</span>
                             </div>
                           </div>
                         </div>
                       </div>
                       
-                      <div className="flex items-center space-x-3">
-                        <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${getPriorityColor(appointment.priorityLevel)}`}>
+                      {/* Right Section - Priority and Actions */}
+                      <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-center justify-center gap-3 w-full lg:w-auto">
+                        <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${getPriorityColor(appointment.priorityLevel)} whitespace-nowrap`}>
                           {appointment.priorityLevel}
                         </span>
                         
-                        {(nowServing?.id !== appointment.id) && (
-                          <>
-                            <button
-                              onClick={() => handleStartServing(appointment)}
-                              className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition flex items-center gap-2"
-                            >
-                              <Play className="w-4 h-4" />
-                              Serve
-                            </button>
-                            <button
-                              onClick={() => handleMiss(appointment)}
-                              className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition"
-                              title="Mark as Missed"
-                            >
-                              Miss
-                            </button>
-                          </>
-                        )}
-                        
-                        {(nowServing?.id === appointment.id) && (
-                          <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
-                            Now Serving
-                          </span>
-                        )}
-                        
-                        <button
-                      onClick={() => sendReminder(appointment)}
-                      disabled={sendingReminder === appointment.id}
-                      className={`p-2 text-gray-600 hover:text-indigo-600 transition ${
-                        sendingReminder === appointment.id ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      title="Send Reminder"
-                    >
-                      {sendingReminder === appointment.id ? (
-                        <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Bell className="w-5 h-5" />
-                      )}
-                    </button>
+                        <div className="flex items-center gap-2 justify-center">
+                          {(nowServing?.id !== appointment.id) && (
+                            <>
+                              <button
+                                onClick={() => handleStartServing(appointment)}
+                                className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition flex items-center gap-2 min-w-[80px] justify-center"
+                              >
+                                <Play className="w-4 h-4" />
+                                <span className="hidden sm:inline">Serve</span>
+                              </button>
+                              <button
+                                onClick={() => handleMiss(appointment)}
+                                className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition min-w-[70px] justify-center"
+                                title="Mark as Missed"
+                              >
+                                <span className="hidden sm:inline">Miss</span>
+                                <span className="sm:hidden">Miss</span>
+                              </button>
+                            </>
+                          )}
+                          
+                          {(nowServing?.id === appointment.id) && (
+                            <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap">
+                              Now Serving
+                            </span>
+                          )}
+                          
+                          <button
+                            onClick={() => sendReminder(appointment)}
+                            disabled={sendingReminder === appointment.id}
+                            className={`p-2 text-gray-600 hover:text-indigo-600 transition ${
+                              sendingReminder === appointment.id ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                            title="Send Reminder"
+                          >
+                            {sendingReminder === appointment.id ? (
+                              <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Bell className="w-5 h-5" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                     
-                    {/* Additional Information */}
-                    <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
-                      <div className="flex items-center gap-4">
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-4 h-4" />
-                          {appointment.phone}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <AlertCircle className="w-4 h-4" />
-                          {appointment.medicalCondition}
-                        </span>
-                      </div>
-                      
-                      {(nowServing?.id === appointment.id) && (
+                    {/* Action buttons for currently serving patient */}
+                    {(nowServing?.id === appointment.id) && (
+                      <div className="mt-3 flex justify-center lg:justify-end">
                         <button
                           onClick={() => handleComplete(appointment)}
                           className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition flex items-center gap-2"
@@ -688,8 +747,8 @@ const loadQueue = useCallback(async () => {
                           <CheckCircle className="w-4 h-4" />
                           Complete
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
