@@ -139,7 +139,7 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section with Solid Blue Background */}
-      <section className="py-20 bg-indigo-500">
+      <section className="py-20 bg-blue-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           {/* Dynamic Greeting with Improved Icon Visibility */}
           <div className="flex flex-col items-center justify-center mb-8">
@@ -168,7 +168,7 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
             </button>
             <button 
               onClick={() => onNavigate('queue')}
-              className="bg-indigo-500 hover:bg-indigo-400 text-white font-semibold px-8 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200 border border-white/20"
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200 border border-white/20"
             >
               Manage Queue
             </button>
