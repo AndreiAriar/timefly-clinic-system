@@ -4,6 +4,8 @@ import type { User } from 'firebase/auth';
 import { onAuthStateChange, logoutUser } from './services/authService';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase/config';
+import TermsOfUse from './components/TermsOfUse';
+import PrivacyPolicy from './components/PrivacyPolicy';
 
 // Lazy load components for better performance
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -348,7 +350,7 @@ function AppContent() {
         />
       </Suspense>
       
-      <Routes>
+       <Routes>
         {/* Public routes */}
         <Route 
           path="/login" 
@@ -377,6 +379,25 @@ function AppContent() {
             ) : (
               <Navigate to={getRedirectPath()} replace />
             )
+          } 
+        />
+        
+        {/* Terms and Privacy routes - ADDED */}
+        <Route 
+          path="/terms-of-use" 
+          element={
+            <Suspense fallback={<MinimalLoader />}>
+              <TermsOfUse />
+            </Suspense>
+          } 
+        />
+        
+        <Route 
+          path="/privacy-policy" 
+          element={
+            <Suspense fallback={<MinimalLoader />}>
+              <PrivacyPolicy />
+            </Suspense>
           } 
         />
         

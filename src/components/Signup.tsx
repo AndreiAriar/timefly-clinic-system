@@ -3,12 +3,37 @@ import { registerUser, loginWithGoogle, logoutUser } from '../services/authServi
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { Eye, EyeOff } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface SignupProps {
   onSignup: () => void;
   onSwitchToLogin: () => void;
   onSignupStart: () => void; 
 }
+
+const TermsOfUse = () => {
+  return (
+    <div className="mt-6 text-center">
+      <p className="text-sm text-white/90 drop-shadow-md">
+        By signing up, you consent to TimeFly's{' '}
+        <Link 
+          to="/terms-of-use" 
+          className="text-white underline hover:text-white/80 transition-colors duration-200 font-medium"
+        >
+          Terms of Use
+        </Link>{' '}
+        and{' '}
+        <Link 
+          to="/privacy-policy" 
+          className="text-white underline hover:text-white/80 transition-colors duration-200 font-medium"
+        >
+          Privacy Policy
+        </Link>
+        .
+      </p>
+    </div>
+  );
+};
 
 const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
   const [name, setName] = useState('');
@@ -27,49 +52,49 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
 
   // Send verification code
   const sendVerificationCode = async () => {
-  if (!email || !/\S+@\S+\.\S+/.test(email)) {
-    setError('Please enter a valid email address');
-    return;
-  }
-
-  setLoading(true);
-  setError('');
-
-  try {
-    const response = await fetch('/api/send-verification-code', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      setVerificationSent(true);
-      setSentCode(data.code); // Store the code from API response
-      setCountdown(60);
-      
-      const timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-    } else {
-      setError(data.error || 'Failed to send verification code');
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      setError('Please enter a valid email address');
+      return;
     }
-  } catch {
-    setError('Network error. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/send-verification-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setVerificationSent(true);
+        setSentCode(data.code); // Store the code from API response
+        setCountdown(60);
+        
+        const timer = setInterval(() => {
+          setCountdown((prev) => {
+            if (prev <= 1) {
+              clearInterval(timer);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        
+      } else {
+        setError(data.error || 'Failed to send verification code');
+      }
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,13 +130,12 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
     onSignupStart();
 
     try {
-   
       // Verify the code locally
-        if (verificationCode !== sentCode) {
-          setError('Invalid verification code');
-          setLoading(false);
-          return;
-        }
+      if (verificationCode !== sentCode) {
+        setError('Invalid verification code');
+        setLoading(false);
+        return;
+      }
 
       // Step 1: Create the user account
       const result = await registerUser(email, password);
@@ -277,18 +301,18 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                 Full Name
               </label>
               <input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition"
-              placeholder="Tyler Durden"
-              disabled={success || loading}
-              style={{
-                WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
-                WebkitTextFillColor: 'white',
-              }}
-            />
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/40 rounded-lg text-white placeholder-white/70 focus:ring-2 focus:ring-white/50 focus:border-white/50 outline-none transition"
+                placeholder="Tyler Durden"
+                disabled={success || loading}
+                style={{
+                  WebkitBoxShadow: '0 0 0 1000px rgba(255, 255, 255, 0.1) inset',
+                  WebkitTextFillColor: 'white',
+                }}
+              />
             </div>
 
             <div>
@@ -330,7 +354,7 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
                 <label htmlFor="verificationCode" className="block text-sm font-medium text-white drop-shadow-md mb-1">
                   Verification Code
                 </label>
-               <input
+                <input
                   id="verificationCode"
                   type="text"
                   value={verificationCode}
@@ -423,6 +447,9 @@ const Signup = ({ onSignup, onSwitchToLogin, onSignupStart }: SignupProps) => {
             {success ? 'Account Created!' : loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
+
+        {/* Terms of Use */}
+        <TermsOfUse />
 
         {/* Divider */}
         <div className="relative flex items-center py-4">

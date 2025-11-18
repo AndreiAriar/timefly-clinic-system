@@ -1,7 +1,52 @@
+import { useNavigate } from 'react-router-dom';
+
 const PrivacyPolicy = () => {
+  const navigate = useNavigate();
+
+  const handleBack = () => {
+    navigate(-1); // Go back to previous page
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header with Back Button and Logo */}
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={handleBack}
+            className="flex items-center text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
+          >
+            <svg 
+              className="w-5 h-5 mr-2" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M10 19l-7-7m0 0l7-7m-7 7h18" 
+              />
+            </svg>
+            Back
+          </button>
+          
+          <div className="flex items-center justify-center flex-1">
+            <div className="flex items-center space-x-3">
+              <img 
+                src="/timefly_logo.png" 
+                alt="TimeFly Logo" 
+                className="h-10 w-10"
+              />
+              <h1 className="text-3xl font-bold text-blue-600">TimeFly</h1>
+            </div>
+          </div>
+          
+          {/* Spacer to balance the header */}
+          <div className="w-20"></div>
+        </div>
+
         <div className="bg-white rounded-lg shadow-lg p-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-6 text-center">Privacy Policy</h1>
           
