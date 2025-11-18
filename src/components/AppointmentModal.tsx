@@ -1262,14 +1262,14 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
         </div>
       </div>
 
-      {/* Add Toast Notification Component - PLACE IT HERE, INSIDE THE OUTER MODAL DIV */}
-      {toast && toast.show && (
-        <div className="fixed top-4 right-4 z-[200] animate-slide-in-right">
+      {/* Toast Notification for race condition to avoid double booking */}
+        {toast && toast.show && (
+        <div className="fixed inset-0 flex items-center justify-center z-[200] p-4">
           <div className={`
-            flex items-center gap-3 px-6 py-4 rounded-lg shadow-lg max-w-md
+            flex items-center gap-3 px-6 py-4 rounded-lg shadow-lg max-w-md mx-auto
             ${toast.type === 'success' ? 'bg-green-500 text-white' : ''}
             ${toast.type === 'error' ? 'bg-red-500 text-white' : ''}
-            ${toast.type === 'warning' ? 'bg-orange-500 text-white' : ''}
+            ${toast.type === 'warning' ? 'bg-red-600 text-white' : ''}
             ${toast.type === 'info' ? 'bg-blue-500 text-white' : ''}
           `}>
             {toast.type === 'success' && <CheckCircle className="w-6 h-6 flex-shrink-0" />}
