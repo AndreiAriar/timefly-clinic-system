@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Clock, User, Eye } from 'lucide-react';
+import { Search, Filter, Clock, User } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
@@ -110,12 +110,6 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
     const period = hours >= 12 ? 'PM' : 'AM';
     const hours12 = hours % 12 || 12;
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
-
-  const handleViewAppointment = (appointmentId: string) => {
-    // TODO: Implement view appointment details functionality
-    console.log('View appointment:', appointmentId);
-    // You can navigate to a detail page or open a modal here
   };
 
   if (isLoading) {
@@ -260,17 +254,6 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
                         <span>{convertTo12Hour(appointment.timeSlot)}</span>
                       </div>
                     </div>
-
-                    {/* View Button Row */}
-                    <div className="pt-2">
-                      <button
-                        onClick={() => handleViewAppointment(appointment.id)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Eye className="w-4 h-4" />
-                        View Details
-                      </button>
-                    </div>
                   </div>
 
                   {/* Desktop Layout (horizontal) */}
@@ -324,15 +307,6 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
                           </span>
                         </div>
                       </div>
-
-                      {/* View Button */}
-                      <button
-                        onClick={() => handleViewAppointment(appointment.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-                      >
-                        <Eye className="w-4 h-4" />
-                        View
-                      </button>
                     </div>
                   </div>
                 </div>

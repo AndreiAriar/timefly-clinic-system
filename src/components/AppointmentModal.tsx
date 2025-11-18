@@ -75,7 +75,6 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
 
-
   const eyeConditions = [
     'Blurred Vision',
     'Eye Pain',
@@ -108,79 +107,77 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
     }
   }, [isOpen, preFilledData]);
 
+  // Add Toast state
+  const [toast, setToast] = useState<{
+    show: boolean;
+    message: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+  } | null>(null);
 
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(null), 5000);
+  };
 
-// Add Toast state
-const [toast, setToast] = useState<{
-  show: boolean;
-  message: string;
-  type: 'success' | 'error' | 'warning' | 'info';
-} | null>(null);
+  const loadDoctors = async () => {
+    try {
+      const doctorsRef = collection(db, 'doctors');
+      const q = query(doctorsRef, where('isActive', '==', true));
+      const querySnapshot = await getDocs(q);
+      
+      const doctorsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Doctor[];
+      
+      setDoctors(doctorsData);
+    } catch (error) {
+      console.error('Error loading doctors:', error);
+      showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+    }
+  };
 
-const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
-  setToast({ show: true, message, type });
-  setTimeout(() => setToast(null), 5000);
-};
+  useEffect(() => {
+    loadDoctors();
+  }, []);
 
-const loadDoctors = async () => {
-  try {
-    const doctorsRef = collection(db, 'doctors');
-    const q = query(doctorsRef, where('isActive', '==', true));
-    const querySnapshot = await getDocs(q);
-    
-    const doctorsData = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Doctor[];
-    
-    setDoctors(doctorsData);
-  } catch (error) {
-    console.error('Error loading doctors:', error);
-    showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-  }
-};
-
-useEffect(() => {
-  loadDoctors();
-}, []);
-
-const recalculateQueueNumbers = async (appointmentDate: string) => {
-  try {
-    const appointmentsRef = collection(db, 'appointments');
-    const q = query(
-      appointmentsRef,
-      where('appointmentDate', '==', appointmentDate)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    
-    if (querySnapshot.empty) return;
-    
-    const appointments = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      timeSlot: doc.data().timeSlot as string
-    }));
-    
-    appointments.sort((a, b) => {
-      const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
-      const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
-      const timeA = hoursA * 60 + minutesA;
-      const timeB = hoursB * 60 + minutesB;
-      return timeA - timeB;
-    });
-    
-    const updatePromises = appointments.map((apt, index) => {
-      const appointmentRef = doc(db, 'appointments', apt.id);
-      return updateDoc(appointmentRef, {
-        queueNumber: index + 1
+  const recalculateQueueNumbers = async (appointmentDate: string) => {
+    try {
+      const appointmentsRef = collection(db, 'appointments');
+      const q = query(
+        appointmentsRef,
+        where('appointmentDate', '==', appointmentDate)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) return;
+      
+      const appointments = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        timeSlot: doc.data().timeSlot as string
+      }));
+      
+      appointments.sort((a, b) => {
+        const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
+        const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
+        const timeA = hoursA * 60 + minutesA;
+        const timeB = hoursB * 60 + minutesB;
+        return timeA - timeB;
       });
-    });
-    
-    await Promise.all(updatePromises);
-  } catch (error) {
-    console.error('Error recalculating queue numbers:', error);
-  }
-};
+      
+      const updatePromises = appointments.map((apt, index) => {
+        const appointmentRef = doc(db, 'appointments', apt.id);
+        return updateDoc(appointmentRef, {
+          queueNumber: index + 1
+        });
+      });
+      
+      await Promise.all(updatePromises);
+    } catch (error) {
+      console.error('Error recalculating queue numbers:', error);
+    }
+  };
 
   const convertTo12Hour = (time24: string): string => {
     const [hours, minutes] = time24.split(':').map(Number);
@@ -189,238 +186,238 @@ const recalculateQueueNumbers = async (appointmentDate: string) => {
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
 
- const getBookedTimeSlots = useCallback(async (doctor: string, appointmentDate: string): Promise<string[]> => {
-  if (!doctor || !appointmentDate) return [];
-  
-  try {
-    const appointmentsRef = collection(db, 'appointments');
-    const q = query(
-      appointmentsRef,
-      where('doctor', '==', doctor),
-      where('appointmentDate', '==', appointmentDate),
-      where('status', '!=', 'cancelled')
-    );
+  const getBookedTimeSlots = useCallback(async (doctor: string, appointmentDate: string): Promise<string[]> => {
+    if (!doctor || !appointmentDate) return [];
     
-    const querySnapshot = await getDocs(q);
-    const bookedSlots = querySnapshot.docs.map(doc => {
-      const data = doc.data();
-      console.log('📌 Booked appointment found:', {
-        doctor: data.doctor,
-        date: data.appointmentDate,
-        timeSlot: data.timeSlot,
-        status: data.status
+    try {
+      const appointmentsRef = collection(db, 'appointments');
+      const q = query(
+        appointmentsRef,
+        where('doctor', '==', doctor),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const bookedSlots = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        console.log('📌 Booked appointment found:', {
+          doctor: data.doctor,
+          date: data.appointmentDate,
+          timeSlot: data.timeSlot,
+          status: data.status
+        });
+        return data.timeSlot as string;
       });
-      return data.timeSlot as string;
-    });
-    
-    console.log('📋 Total booked slots for', doctor, 'on', appointmentDate, ':', bookedSlots);
-    return bookedSlots;
-  } catch (error) {
-    console.error('Error fetching booked slots:', error);
-    return [];
-  }
-}, []);
+      
+      console.log('📋 Total booked slots for', doctor, 'on', appointmentDate, ':', bookedSlots);
+      return bookedSlots;
+    } catch (error) {
+      console.error('Error fetching booked slots:', error);
+      return [];
+    }
+  }, []);
 
-const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: string): Promise<boolean> => {
-  if (!doctor || !appointmentDate) return false;
-  
-  try {
+  const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: string): Promise<boolean> => {
+    if (!doctor || !appointmentDate) return false;
+    
+    try {
+      const doctorsRef = collection(db, 'doctors');
+      const doctorQuery = query(doctorsRef, where('name', '==', doctor));
+      const doctorSnapshot = await getDocs(doctorQuery);
+      
+      if (doctorSnapshot.empty) return false;
+      
+      const doctorData = doctorSnapshot.docs[0].data();
+      
+      const unavailableDates = doctorData.unavailableDates || {};
+      if (unavailableDates[appointmentDate] === true) {
+        console.log('🚫 Doctor is marked as unavailable on this date');
+        return true;
+      }
+      
+      const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+      const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
+      const globalMaxSlots = doctorData.maxSlots || 10;
+      const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+      
+      console.log('📊 Max slots for this date:', maxSlots);
+      
+      const appointmentsRef = collection(db, 'appointments');
+      const q = query(
+        appointmentsRef,
+        where('doctor', '==', doctor),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const bookedCount = querySnapshot.size;
+      
+      console.log('📋 Current booked appointments:', bookedCount);
+      console.log('🔍 Is fully booked?', bookedCount >= maxSlots);
+      
+      return bookedCount >= maxSlots;
+    } catch (error) {
+      console.error('Error checking if doctor is fully booked:', error);
+      return false;
+    }
+  }, []);
+
+  const isPastTime = (date: string, time: string): boolean => {
+    const now = new Date();
+    const [year, month, day] = date.split('-').map(Number);
+    const [hours, minutes] = time.split(':').map(Number);
+    
+    const appointmentDateTime = new Date(year, month - 1, day, hours, minutes);
+    
+    const bufferTime = new Date(now.getTime() + 30 * 60 * 1000);
+    
+    const isPast = appointmentDateTime <= bufferTime;
+    
+    console.log(`⏰ Checking ${time} on ${date}: ${isPast ? 'PAST' : 'FUTURE'} (now: ${now.toLocaleTimeString()}, appointment: ${appointmentDateTime.toLocaleTimeString()})`);
+    
+    return isPast;
+  };
+
+  const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
+    console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
+    
+    setIsCheckingAvailability(true);
+    
+    const isFullyBooked = await isDoctorFullyBooked(doctor, appointmentDate);
+    
+    if (isFullyBooked) {
+      console.log('🚫 DOCTOR IS FULLY BOOKED - No slots available');
+      setAvailableTimeSlots([]);
+      setHasAvailableSlots(false);
+      setIsCheckingAvailability(false);
+      return;
+    }
+    
+    const slots: TimeSlot[] = [];
+    const startHour = 8;
+    const endHour = 17;
+    
+    const bookedSlots = await getBookedTimeSlots(doctor, appointmentDate);
+    console.log('📋 Booked slots:', bookedSlots);
+    
     const doctorsRef = collection(db, 'doctors');
     const doctorQuery = query(doctorsRef, where('name', '==', doctor));
     const doctorSnapshot = await getDocs(doctorQuery);
     
-    if (doctorSnapshot.empty) return false;
+    let unavailableTimeSlots: string[] = [];
     
-    const doctorData = doctorSnapshot.docs[0].data();
-    
-    const unavailableDates = doctorData.unavailableDates || {};
-    if (unavailableDates[appointmentDate] === true) {
-      console.log('🚫 Doctor is marked as unavailable on this date');
-      return true;
+    if (!doctorSnapshot.empty) {
+      const doctorData = doctorSnapshot.docs[0].data();
+      unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
+      console.log('⛔ Unavailable time slots:', unavailableTimeSlots);
     }
-    
-    const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-    const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
-    const globalMaxSlots = doctorData.maxSlots || 10;
-    const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
-    
-    console.log('📊 Max slots for this date:', maxSlots);
-    
-    const appointmentsRef = collection(db, 'appointments');
-    const q = query(
-      appointmentsRef,
-      where('doctor', '==', doctor),
-      where('appointmentDate', '==', appointmentDate),
-      where('status', '!=', 'cancelled')
+
+    if (priorityLevel === 'normal') {
+      for (let hour = startHour; hour < endHour; hour++) {
+        if (hour === 12) continue;
+        
+        const timeString = `${hour.toString().padStart(2, '0')}:00`;
+        const isBooked = bookedSlots.includes(timeString);
+        const isPast = isPastTime(appointmentDate, timeString);
+        const isUnavailable = unavailableTimeSlots.includes(timeString);
+        const isAvailable = !isBooked && !isUnavailable && !isPast;
+        
+        slots.push({
+          time: timeString,
+          available: isAvailable,
+          isBooked,
+          isUnavailable
+        });
+        
+        console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
+      }
+    } else if (priorityLevel === 'urgent') {
+      for (let hour = startHour; hour < endHour; hour++) {
+        if (hour === 12) continue;
+        
+        const timeString = `${hour.toString().padStart(2, '0')}:30`;
+        const isBooked = bookedSlots.includes(timeString);
+        const isPast = isPastTime(appointmentDate, timeString);
+        const isUnavailable = unavailableTimeSlots.includes(timeString);
+        const isAvailable = !isBooked && !isUnavailable && !isPast;
+        
+        slots.push({
+          time: timeString,
+          available: isAvailable,
+          isBooked,
+          isUnavailable,
+          isBuffer: true,
+          bufferType: 'urgent'
+        });
+        
+        console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
+      }
+    } else if (priorityLevel === 'emergency') {
+      for (let hour = startHour; hour < endHour; hour++) {
+        if (hour === 12) continue;
+        
+        const timeString15 = `${hour.toString().padStart(2, '0')}:15`;
+        const isBooked15 = bookedSlots.includes(timeString15);
+        const isPast15 = isPastTime(appointmentDate, timeString15);
+        const isUnavailable15 = unavailableTimeSlots.includes(timeString15);
+        const isAvailable15 = !isBooked15 && !isUnavailable15 && !isPast15;
+        
+        slots.push({
+          time: timeString15,
+          available: isAvailable15,
+          isBooked: isBooked15,
+          isUnavailable: isUnavailable15,
+          isBuffer: true,
+          bufferType: 'emergency'
+        });
+        
+        console.log(`  ${timeString15}: ${isAvailable15 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked15}, unavailable: ${isUnavailable15}, past: ${isPast15})`);
+        
+        const timeString45 = `${hour.toString().padStart(2, '0')}:45`;
+        const isBooked45 = bookedSlots.includes(timeString45);
+        const isPast45 = isPastTime(appointmentDate, timeString45);
+        const isUnavailable45 = unavailableTimeSlots.includes(timeString45);
+        const isAvailable45 = !isBooked45 && !isUnavailable45 && !isPast45;
+        
+        slots.push({
+          time: timeString45,
+          available: isAvailable45,
+          isBooked: isBooked45,
+          isUnavailable: isUnavailable45,
+          isBuffer: true,
+          bufferType: 'emergency'
+        });
+        
+        console.log(`  ${timeString45}: ${isAvailable45 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked45}, unavailable: ${isUnavailable45}, past: ${isPast45})`);
+      }
+    }
+
+    const actuallyAvailableSlots = slots.filter(slot => 
+      slot.available && !slot.isBooked && !slot.isUnavailable
     );
-    
-    const querySnapshot = await getDocs(q);
-    const bookedCount = querySnapshot.size;
-    
-    console.log('📋 Current booked appointments:', bookedCount);
-    console.log('🔍 Is fully booked?', bookedCount >= maxSlots);
-    
-    return bookedCount >= maxSlots;
-  } catch (error) {
-    console.error('Error checking if doctor is fully booked:', error);
-    return false;
-  }
-}, []);
+    const anyAvailable = actuallyAvailableSlots.length > 0;
 
- const isPastTime = (date: string, time: string): boolean => {
-  const now = new Date();
-  const [year, month, day] = date.split('-').map(Number);
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  const appointmentDateTime = new Date(year, month - 1, day, hours, minutes);
-  
-  const bufferTime = new Date(now.getTime() + 30 * 60 * 1000);
-  
-  const isPast = appointmentDateTime <= bufferTime;
-  
-  console.log(`⏰ Checking ${time} on ${date}: ${isPast ? 'PAST' : 'FUTURE'} (now: ${now.toLocaleTimeString()}, appointment: ${appointmentDateTime.toLocaleTimeString()})`);
-  
-  return isPast;
-};
+    setHasAvailableSlots(anyAvailable);
+    setAvailableTimeSlots(slots);
 
-const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
-  console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
-  
-  setIsCheckingAvailability(true);
-  
-  const isFullyBooked = await isDoctorFullyBooked(doctor, appointmentDate);
-  
-  if (isFullyBooked) {
-    console.log('🚫 DOCTOR IS FULLY BOOKED - No slots available');
-    setAvailableTimeSlots([]);
-    setHasAvailableSlots(false);
+    console.log(`✅ Generated ${slots.length} total slots`);
+    console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
+    console.log(`✅ Booked slots: ${slots.filter(s => s.isBooked).length}`);
+    console.log(`✅ Unavailable slots: ${slots.filter(s => s.isUnavailable).length}`);
+    console.log(`✅ hasAvailableSlots set to: ${anyAvailable}`);
+
+    if (anyAvailable) {
+      console.log('Available times:', actuallyAvailableSlots.map(s => s.time).join(', '));
+    } else {
+      console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
+    }
+    
     setIsCheckingAvailability(false);
-    return;
-  }
-  
-  const slots: TimeSlot[] = [];
-  const startHour = 8;
-  const endHour = 17;
-  
-  const bookedSlots = await getBookedTimeSlots(doctor, appointmentDate);
-  console.log('📋 Booked slots:', bookedSlots);
-  
-  const doctorsRef = collection(db, 'doctors');
-  const doctorQuery = query(doctorsRef, where('name', '==', doctor));
-  const doctorSnapshot = await getDocs(doctorQuery);
-  
-  let unavailableTimeSlots: string[] = [];
-  
-  if (!doctorSnapshot.empty) {
-    const doctorData = doctorSnapshot.docs[0].data();
-    unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
-    console.log('⛔ Unavailable time slots:', unavailableTimeSlots);
-  }
+  }, [getBookedTimeSlots, isDoctorFullyBooked]);
 
-  if (priorityLevel === 'normal') {
-    for (let hour = startHour; hour < endHour; hour++) {
-      if (hour === 12) continue;
-      
-      const timeString = `${hour.toString().padStart(2, '0')}:00`;
-      const isBooked = bookedSlots.includes(timeString);
-      const isPast = isPastTime(appointmentDate, timeString);
-      const isUnavailable = unavailableTimeSlots.includes(timeString);
-      const isAvailable = !isBooked && !isUnavailable && !isPast;
-      
-      slots.push({
-        time: timeString,
-        available: isAvailable,
-        isBooked,
-        isUnavailable
-      });
-      
-      console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
-    }
-  } else if (priorityLevel === 'urgent') {
-    for (let hour = startHour; hour < endHour; hour++) {
-      if (hour === 12) continue;
-      
-      const timeString = `${hour.toString().padStart(2, '0')}:30`;
-      const isBooked = bookedSlots.includes(timeString);
-      const isPast = isPastTime(appointmentDate, timeString);
-      const isUnavailable = unavailableTimeSlots.includes(timeString);
-      const isAvailable = !isBooked && !isUnavailable && !isPast;
-      
-      slots.push({
-        time: timeString,
-        available: isAvailable,
-        isBooked,
-        isUnavailable,
-        isBuffer: true,
-        bufferType: 'urgent'
-      });
-      
-      console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
-    }
-  } else if (priorityLevel === 'emergency') {
-    for (let hour = startHour; hour < endHour; hour++) {
-      if (hour === 12) continue;
-      
-      const timeString15 = `${hour.toString().padStart(2, '0')}:15`;
-      const isBooked15 = bookedSlots.includes(timeString15);
-      const isPast15 = isPastTime(appointmentDate, timeString15);
-      const isUnavailable15 = unavailableTimeSlots.includes(timeString15);
-      const isAvailable15 = !isBooked15 && !isUnavailable15 && !isPast15;
-      
-      slots.push({
-        time: timeString15,
-        available: isAvailable15,
-        isBooked: isBooked15,
-        isUnavailable: isUnavailable15,
-        isBuffer: true,
-        bufferType: 'emergency'
-      });
-      
-      console.log(`  ${timeString15}: ${isAvailable15 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked15}, unavailable: ${isUnavailable15}, past: ${isPast15})`);
-      
-      const timeString45 = `${hour.toString().padStart(2, '0')}:45`;
-      const isBooked45 = bookedSlots.includes(timeString45);
-      const isPast45 = isPastTime(appointmentDate, timeString45);
-      const isUnavailable45 = unavailableTimeSlots.includes(timeString45);
-      const isAvailable45 = !isBooked45 && !isUnavailable45 && !isPast45;
-      
-      slots.push({
-        time: timeString45,
-        available: isAvailable45,
-        isBooked: isBooked45,
-        isUnavailable: isUnavailable45,
-        isBuffer: true,
-        bufferType: 'emergency'
-      });
-      
-      console.log(`  ${timeString45}: ${isAvailable45 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked45}, unavailable: ${isUnavailable45}, past: ${isPast45})`);
-    }
-  }
-
-const actuallyAvailableSlots = slots.filter(slot => 
-  slot.available && !slot.isBooked && !slot.isUnavailable
-);
-const anyAvailable = actuallyAvailableSlots.length > 0;
-
-setHasAvailableSlots(anyAvailable);
-setAvailableTimeSlots(slots);
-
-console.log(`✅ Generated ${slots.length} total slots`);
-console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
-console.log(`✅ Booked slots: ${slots.filter(s => s.isBooked).length}`);
-console.log(`✅ Unavailable slots: ${slots.filter(s => s.isUnavailable).length}`);
-console.log(`✅ hasAvailableSlots set to: ${anyAvailable}`);
-
-if (anyAvailable) {
-  console.log('Available times:', actuallyAvailableSlots.map(s => s.time).join(', '));
-} else {
-  console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
-}
-  
-  setIsCheckingAvailability(false);
-}, [getBookedTimeSlots, isDoctorFullyBooked]);
-
-useEffect(() => {
+  useEffect(() => {
     if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
       generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
     } else {
@@ -440,292 +437,293 @@ useEffect(() => {
     };
   }, [isOpen]);
 
-const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    // ✅ INCREASED UPLOAD SIZE LIMIT: From 10MB to 25MB
-    const maxSize = 25 * 1024 * 1024;
-    
-    if (file.size > maxSize) {
-      showToast('File size is too large. Please upload an image smaller than 25MB.', 'error');
-      return;
-    }
-
-    // ✅ ADDED MORE IMAGE FORMATS for better compatibility
-    const validTypes = [
-      'image/jpeg', 
-      'image/jpg', 
-      'image/png', 
-      'image/gif', 
-      'image/webp',
-      'image/bmp',
-      'image/tiff',
-      'image/svg+xml'
-    ];
-    
-    if (!validTypes.includes(file.type)) {
-      showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
-      return;
-    }
-
-    const reader = new FileReader();
-    
-    reader.onloadend = () => {
-      const img = new Image();
-      img.onload = () => {
-        // ✅ INCREASED MAX DIMENSIONS for higher quality
-        const maxWidth = 2048; // Increased from 1024
-        const maxHeight = 2048; // Increased from 1024
-        
-        let width = img.width;
-        let height = img.height;
-
-        // ✅ IMPROVED SCALING ALGORITHM - Only scale if necessary
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height);
-          width = Math.floor(width * ratio);
-          height = Math.floor(height * ratio);
-        }
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // ✅ SET HIGH-QUALITY RENDERING
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        ctx?.drawImage(img, 0, 0, width, height);
-        
-        // ✅ IMPROVED QUALITY SETTINGS:
-        // - Use original format when possible
-        // - Higher quality compression (0.95 instead of 0.8)
-        // - Preserve transparency for PNG
-        let compressedDataUrl;
-        if (file.type === 'image/png' || file.type === 'image/gif') {
-          // Preserve transparency for PNG/GIF
-          compressedDataUrl = canvas.toDataURL('image/png');
-        } else if (file.type === 'image/webp') {
-          // Use WebP for better compression
-          compressedDataUrl = canvas.toDataURL('image/webp', 0.95);
-        } else {
-          // High quality JPEG for other formats
-          compressedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-        }
-        
-        setFormData(prev => ({ ...prev, photo: compressedDataUrl }));
-        
-        // ✅ LOG IMAGE QUALITY INFO (for debugging)
-        console.log('🖼️ Image processed:', {
-          originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-          originalDimensions: `${img.width}x${img.height}`,
-          processedDimensions: `${width}x${height}`,
-          format: file.type,
-          quality: 'high'
-        });
-      };
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // ✅ INCREASED UPLOAD SIZE LIMIT: From 10MB to 25MB
+      const maxSize = 25 * 1024 * 1024;
       
-      img.src = reader.result as string;
-    };
-    
-    reader.onerror = () => {
-      showToast('Error reading file. Please try again.', 'error');
-    };
-    
-    reader.readAsDataURL(file);
-  }
-};
-const handleSubmit = async () => {
-  if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
-      !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
-    showToast('Please fill in all required fields', 'warning');
-    return;
-  }
-
-  if (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim()) {
-    showToast('Please specify your medical condition', 'warning');
-    return;
-  }
-
-  const userEmail = auth.currentUser?.email;
-  if (!userEmail) {
-    showToast('User email not found. Please log in again.', 'error');
-    return;
-  }
-
-  setIsSubmitting(true);
-  
-  try {
-    const finalMedicalCondition = formData.medicalCondition === 'Other (Please Specify)' 
-      ? formData.customCondition 
-      : formData.medicalCondition;
-
-    // 🔒 TRANSACTION: Atomic check and book operation with queue number generation
-    const appointmentData = await runTransaction(db, async (transaction) => {
-      // ✅ Step 1: Create unique slot document reference for atomic locking
-      const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
-      
-      // Try to read the slot lock - this will fail if slot is taken
-      const slotLockDoc = await transaction.get(slotLockRef);
-      
-      if (slotLockDoc.exists()) {
-        throw new Error('SLOT_TAKEN');
+      if (file.size > maxSize) {
+        showToast('File size is too large. Please upload an image smaller than 25MB.', 'error');
+        return;
       }
+
+      // ✅ ADDED MORE IMAGE FORMATS for better compatibility
+      const validTypes = [
+        'image/jpeg', 
+        'image/jpg', 
+        'image/png', 
+        'image/gif', 
+        'image/webp',
+        'image/bmp',
+        'image/tiff',
+        'image/svg+xml'
+      ];
       
-      // ✅ Step 2: Check doctor availability and capacity
-      const doctorsRef = collection(db, 'doctors');
-      const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
-      const doctorSnapshot = await getDocs(doctorQuery);
+      if (!validTypes.includes(file.type)) {
+        showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
+        return;
+      }
+
+      const reader = new FileReader();
       
-      let maxSlots = 10;
-      
-      if (!doctorSnapshot.empty) {
-        const doctorDocRef = doc(db, 'doctors', doctorSnapshot.docs[0].id);
-        const doctorDoc = await transaction.get(doctorDocRef);
-        const doctorData = doctorDoc.data();
-        
-        if (doctorData) {
-          // Check unavailable dates
-          const unavailableDates = doctorData.unavailableDates || {};
-          if (unavailableDates[formData.appointmentDate] === true) {
-            throw new Error('DOCTOR_UNAVAILABLE');
+      reader.onloadend = () => {
+        const img = new Image();
+        img.onload = () => {
+          // ✅ INCREASED MAX DIMENSIONS for higher quality
+          const maxWidth = 2048; // Increased from 1024
+          const maxHeight = 2048; // Increased from 1024
+          
+          let width = img.width;
+          let height = img.height;
+
+          // ✅ IMPROVED SCALING ALGORITHM - Only scale if necessary
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.floor(width * ratio);
+            height = Math.floor(height * ratio);
+          }
+
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // ✅ SET HIGH-QUALITY RENDERING
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
           }
           
-          // Get max slots
-          const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-          const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
-          const globalMaxSlots = doctorData.maxSlots || 10;
-          maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
-        }
-      }
-      
-      // ✅ Step 3: Get all appointments for queue number calculation (read within transaction)
-      const appointmentsRef = collection(db, 'appointments');
-      const appointmentsQuery = query(
-        appointmentsRef,
-        where('doctor', '==', formData.doctor),
-        where('appointmentDate', '==', formData.appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const appointmentsSnapshot = await getDocs(appointmentsQuery);
-      const activeBookingsCount = appointmentsSnapshot.size;
-      
-      // Check if doctor is fully booked
-      if (activeBookingsCount >= maxSlots) {
-        throw new Error('DOCTOR_FULLY_BOOKED');
-      }
-      
-      // ✅ Step 4: Calculate queue number based on time slot order
-      const existingAppointments = appointmentsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        timeSlot: doc.data().timeSlot as string
-      }));
-      
-      // Add current time slot to the list for proper sorting
-      existingAppointments.push({
-        id: 'current',
-        timeSlot: formData.timeSlot
-      });
-      
-      // Sort by time slot
-      existingAppointments.sort((a, b) => {
-        const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
-        const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
-        const timeA = hoursA * 60 + minutesA;
-        const timeB = hoursB * 60 + minutesB;
-        return timeA - timeB;
-      });
-      
-      // Find the queue number for current appointment
-      const queueNumber = existingAppointments.findIndex(apt => apt.id === 'current') + 1;
-      
-      // ✅ Step 5: Create the appointment with correct queue number
-      const appointment: Appointment = {
-        fullName: formData.fullName,
-        age: formData.age,
-        photo: formData.photo,
-        doctor: formData.doctor,
-        appointmentDate: formData.appointmentDate,
-        gender: formData.gender,
-        medicalCondition: finalMedicalCondition,
-        phone: formData.phone,
-        email: userEmail,
-        priorityLevel: formData.priorityLevel,
-        timeSlot: formData.timeSlot,
-        queueNumber: queueNumber,
-        status: 'pending',
-        createdAt: new Date().toISOString()
+          canvas.width = width;
+          canvas.height = height;
+          
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // ✅ IMPROVED QUALITY SETTINGS:
+          // - Use original format when possible
+          // - Higher quality compression (0.95 instead of 0.8)
+          // - Preserve transparency for PNG
+          let compressedDataUrl;
+          if (file.type === 'image/png' || file.type === 'image/gif') {
+            // Preserve transparency for PNG/GIF
+            compressedDataUrl = canvas.toDataURL('image/png');
+          } else if (file.type === 'image/webp') {
+            // Use WebP for better compression
+            compressedDataUrl = canvas.toDataURL('image/webp', 0.95);
+          } else {
+            // High quality JPEG for other formats
+            compressedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+          }
+          
+          setFormData(prev => ({ ...prev, photo: compressedDataUrl }));
+          
+          // ✅ LOG IMAGE QUALITY INFO (for debugging)
+          console.log('🖼️ Image processed:', {
+            originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+            originalDimensions: `${img.width}x${img.height}`,
+            processedDimensions: `${width}x${height}`,
+            format: file.type,
+            quality: 'high'
+          });
+        };
+        
+        img.src = reader.result as string;
       };
+      
+      reader.onerror = () => {
+        showToast('Error reading file. Please try again.', 'error');
+      };
+      
+      reader.readAsDataURL(file);
+    }
+  };
 
-      // Create new document reference
-      const newAppointmentRef = doc(collection(db, 'appointments'));
-      
-      // Set the appointment document in the transaction
-      transaction.set(newAppointmentRef, appointment);
-      
-      // Set the slot lock in the transaction to prevent concurrent bookings
-      transaction.set(slotLockRef, {
-        doctor: formData.doctor,
-        appointmentDate: formData.appointmentDate,
-        timeSlot: formData.timeSlot,
-        appointmentId: newAppointmentRef.id,
-        bookedAt: new Date().toISOString()
+  const handleSubmit = async () => {
+    if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+        !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
+      showToast('Please fill in all required fields', 'warning');
+      return;
+    }
+
+    if (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim()) {
+      showToast('Please specify your medical condition', 'warning');
+      return;
+    }
+
+    const userEmail = auth.currentUser?.email;
+    if (!userEmail) {
+      showToast('User email not found. Please log in again.', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    try {
+      const finalMedicalCondition = formData.medicalCondition === 'Other (Please Specify)' 
+        ? formData.customCondition 
+        : formData.medicalCondition;
+
+      // 🔒 TRANSACTION: Atomic check and book operation with queue number generation
+      const appointmentData = await runTransaction(db, async (transaction) => {
+        // ✅ Step 1: Create unique slot document reference for atomic locking
+        const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
+        
+        // Try to read the slot lock - this will fail if slot is taken
+        const slotLockDoc = await transaction.get(slotLockRef);
+        
+        if (slotLockDoc.exists()) {
+          throw new Error('SLOT_TAKEN');
+        }
+        
+        // ✅ Step 2: Check doctor availability and capacity
+        const doctorsRef = collection(db, 'doctors');
+        const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
+        const doctorSnapshot = await getDocs(doctorQuery);
+        
+        let maxSlots = 10;
+        
+        if (!doctorSnapshot.empty) {
+          const doctorDocRef = doc(db, 'doctors', doctorSnapshot.docs[0].id);
+          const doctorDoc = await transaction.get(doctorDocRef);
+          const doctorData = doctorDoc.data();
+          
+          if (doctorData) {
+            // Check unavailable dates
+            const unavailableDates = doctorData.unavailableDates || {};
+            if (unavailableDates[formData.appointmentDate] === true) {
+              throw new Error('DOCTOR_UNAVAILABLE');
+            }
+            
+            // Get max slots
+            const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+            const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
+            const globalMaxSlots = doctorData.maxSlots || 10;
+            maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+          }
+        }
+        
+        // ✅ Step 3: Get all appointments for queue number calculation (read within transaction)
+        const appointmentsRef = collection(db, 'appointments');
+        const appointmentsQuery = query(
+          appointmentsRef,
+          where('doctor', '==', formData.doctor),
+          where('appointmentDate', '==', formData.appointmentDate),
+          where('status', '!=', 'cancelled')
+        );
+        
+        const appointmentsSnapshot = await getDocs(appointmentsQuery);
+        const activeBookingsCount = appointmentsSnapshot.size;
+        
+        // Check if doctor is fully booked
+        if (activeBookingsCount >= maxSlots) {
+          throw new Error('DOCTOR_FULLY_BOOKED');
+        }
+        
+        // ✅ Step 4: Calculate queue number based on time slot order
+        const existingAppointments = appointmentsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          timeSlot: doc.data().timeSlot as string
+        }));
+        
+        // Add current time slot to the list for proper sorting
+        existingAppointments.push({
+          id: 'current',
+          timeSlot: formData.timeSlot
+        });
+        
+        // Sort by time slot
+        existingAppointments.sort((a, b) => {
+          const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
+          const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
+          const timeA = hoursA * 60 + minutesA;
+          const timeB = hoursB * 60 + minutesB;
+          return timeA - timeB;
+        });
+        
+        // Find the queue number for current appointment
+        const queueNumber = existingAppointments.findIndex(apt => apt.id === 'current') + 1;
+        
+        // ✅ Step 5: Create the appointment with correct queue number
+        const appointment: Appointment = {
+          fullName: formData.fullName,
+          age: formData.age,
+          photo: formData.photo,
+          doctor: formData.doctor,
+          appointmentDate: formData.appointmentDate,
+          gender: formData.gender,
+          medicalCondition: finalMedicalCondition,
+          phone: formData.phone,
+          email: userEmail,
+          priorityLevel: formData.priorityLevel,
+          timeSlot: formData.timeSlot,
+          queueNumber: queueNumber,
+          status: 'pending',
+          createdAt: new Date().toISOString()
+        };
+
+        // Create new document reference
+        const newAppointmentRef = doc(collection(db, 'appointments'));
+        
+        // Set the appointment document in the transaction
+        transaction.set(newAppointmentRef, appointment);
+        
+        // Set the slot lock in the transaction to prevent concurrent bookings
+        transaction.set(slotLockRef, {
+          doctor: formData.doctor,
+          appointmentDate: formData.appointmentDate,
+          timeSlot: formData.timeSlot,
+          appointmentId: newAppointmentRef.id,
+          bookedAt: new Date().toISOString()
+        });
+        
+        return { appointmentId: newAppointmentRef.id, appointment, queueNumber };
       });
+
+      console.log('✅ Appointment booked successfully via transaction:', appointmentData.appointmentId);
+      console.log('✅ Queue number assigned:', appointmentData.queueNumber);
+
+      // Recalculate queue numbers for all other appointments on this date
+      await recalculateQueueNumbers(formData.appointmentDate);
+
+      // Set the queue number for display
+      setQueueNumber(appointmentData.queueNumber);
+
+      // Show success toast notification
+      showToast('🎉 Appointment booked successfully!', 'success');
+
+      // Call onBookingComplete if provided
+      if (onBookingComplete) {
+        onBookingComplete();
+      }
+
+      setTimeout(() => {
+        handleClose();
+      }, 2000);
       
-      return { appointmentId: newAppointmentRef.id, appointment, queueNumber };
-    });
-
-    console.log('✅ Appointment booked successfully via transaction:', appointmentData.appointmentId);
-    console.log('✅ Queue number assigned:', appointmentData.queueNumber);
-
-    // Recalculate queue numbers for all other appointments on this date
-    await recalculateQueueNumbers(formData.appointmentDate);
-
-    // Set the queue number for display
-    setQueueNumber(appointmentData.queueNumber);
-
-    // Show success toast notification
-    showToast('🎉 Appointment booked successfully!', 'success');
-
-    // Call onBookingComplete if provided
-    if (onBookingComplete) {
-      onBookingComplete();
-    }
-
-    setTimeout(() => {
-      handleClose();
-    }, 2000);
-    
-  } catch (error: any) {
-    console.error('Error booking appointment:', error);
-    
-    // Handle specific error cases with toast notifications
-    if (error.message === 'SLOT_TAKEN') {
-      showToast('⚠️ This time slot was just booked by another user. Please refresh and choose another time.', 'warning');
-      // Refresh available slots
-      if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-        await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+    } catch (error: any) {
+      console.error('Error booking appointment:', error);
+      
+      // Handle specific error cases with toast notifications
+      if (error.message === 'SLOT_TAKEN') {
+        showToast('⚠️ This time slot was just booked by another user. Please refresh and choose another time.', 'warning');
+        // Refresh available slots
+        if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+          await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+        }
+      } else if (error.message === 'DOCTOR_UNAVAILABLE') {
+        showToast('⚠️ This doctor is no longer available on the selected date. Please choose another date.', 'warning');
+      } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
+        showToast('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.', 'warning');
+        // Refresh available slots
+        if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+          await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+        }
+      } else {
+        showToast('Failed to book appointment. Please try again.', 'error');
       }
-    } else if (error.message === 'DOCTOR_UNAVAILABLE') {
-      showToast('⚠️ This doctor is no longer available on the selected date. Please choose another date.', 'warning');
-    } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
-      showToast('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.', 'warning');
-      // Refresh available slots
-      if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-        await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
-      }
-    } else {
-      showToast('Failed to book appointment. Please try again.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   const handleClose = () => {
     setFormData({
@@ -807,6 +805,7 @@ const handleSubmit = async () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your full name"
                     aria-required="true"
+                    autoComplete="name"
                   />
                 </div>
 
@@ -826,6 +825,7 @@ const handleSubmit = async () => {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Age"
                       aria-required="true"
+                      autoComplete="age"
                     />
                   </div>
                   <div>
@@ -839,6 +839,7 @@ const handleSubmit = async () => {
                       onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       aria-required="true"
+                      autoComplete="sex"
                     >
                       <option value="">Select Gender</option>
                       <option value="male">Male</option>
@@ -860,6 +861,15 @@ const handleSubmit = async () => {
                           alt="Profile preview"
                           className="w-32 h-32 rounded-lg object-cover border-2 border-blue-600"
                         />
+                        {/* X Remove Button */}
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, photo: '' }))}
+                          className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow-md hover:bg-gray-100 transition border border-gray-200"
+                          aria-label="Remove photo"
+                        >
+                          <X className="w-4 h-4 text-gray-600 hover:text-gray-800" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
@@ -900,32 +910,33 @@ const handleSubmit = async () => {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <span className="text-gray-500">+63</span>
                     </div>
-                 <input
-                type="tel"
-                id="phone"
-                name="phone"
-                value={formData.phone}
-                onChange={(e) => {
-                  const numbersOnly = e.target.value.replace(/\D/g, '').slice(0, 11);
-                  setFormData(prev => ({ ...prev, phone: numbersOnly }));
-                }}
-                onBlur={(e) => {
-                  const phoneNumber = e.target.value;
-                  if (phoneNumber && phoneNumber.length === 11) {
-                    const isValidPH = phoneNumber.startsWith('09');
-                    if (!isValidPH) {
-                      showToast('Please enter a valid Philippine mobile number starting with 09 (e.g., 09123456789)', 'error');
-                      setFormData(prev => ({ ...prev, phone: '' }));
-                    }
-                  }
-                }}
-                className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="912 345 6789"
-                aria-required="true"
-                maxLength={11}
-                pattern="[0-9]{11}"
-                title="Please enter a valid 11-digit Philippine mobile number (e.g., 09123456789)"
-              />
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={(e) => {
+                        const numbersOnly = e.target.value.replace(/\D/g, '').slice(0, 11);
+                        setFormData(prev => ({ ...prev, phone: numbersOnly }));
+                      }}
+                      onBlur={(e) => {
+                        const phoneNumber = e.target.value;
+                        if (phoneNumber && phoneNumber.length === 11) {
+                          const isValidPH = phoneNumber.startsWith('09');
+                          if (!isValidPH) {
+                            showToast('Please enter a valid Philippine mobile number starting with 09 (e.g., 09123456789)', 'error');
+                            setFormData(prev => ({ ...prev, phone: '' }));
+                          }
+                        }
+                      }}
+                      className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="912 345 6789"
+                      aria-required="true"
+                      maxLength={11}
+                      pattern="[0-9]{11}"
+                      title="Please enter a valid 11-digit Philippine mobile number (e.g., 09123456789)"
+                      autoComplete="tel"
+                    />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
                     Enter your 11-digit PH mobile number (e.g., 09123456789)
@@ -948,6 +959,7 @@ const handleSubmit = async () => {
                     onChange={(e) => setFormData(prev => ({ ...prev, priorityLevel: e.target.value, timeSlot: '' }))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     aria-required="true"
+                    autoComplete="off"
                   >
                     <option value="normal">Normal (1 hour slots)</option>
                     <option value="urgent">Urgent (30 minute buffer slots)</option>
@@ -967,6 +979,7 @@ const handleSubmit = async () => {
                     onChange={(e) => setFormData(prev => ({ ...prev, doctor: e.target.value, timeSlot: '' }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     aria-required="true"
+                    autoComplete="off"
                   >
                     <option value="">Select Doctor</option>
                     {doctors.map(doctor => (
@@ -990,6 +1003,7 @@ const handleSubmit = async () => {
                     onChange={(e) => setFormData(prev => ({ ...prev, appointmentDate: e.target.value, timeSlot: '' }))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     aria-required="true"
+                    autoComplete="off"
                   />
                 </div>
 
@@ -1064,40 +1078,40 @@ const handleSubmit = async () => {
                                 📅 Choose Another Doctor/Date
                               </button>
                               <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  const waitingListRef = collection(db, 'waitingList');
-                                  await addDoc(waitingListRef, {
-                                    fullName: formData.fullName || '',
-                                    age: formData.age || '',
-                                    photo: formData.photo || '',
-                                    doctor: formData.doctor,
-                                    appointmentDate: formData.appointmentDate,
-                                    gender: formData.gender || '',
-                                    medicalCondition: formData.medicalCondition || '',
-                                    phone: formData.phone || '',
-                                    priorityLevel: formData.priorityLevel,
-                                    preferredTimeSlot: formData.timeSlot || '',
-                                    requestedDate: formData.appointmentDate,
-                                    status: 'waiting',
-                                    createdAt: new Date().toISOString()
-                                  });
-                                  
-                                  showToast('✅ You have been added to the waiting list! We will notify you when a slot becomes available.', 'success');
-                                  handleClose();
-                                } catch (error) {
-                                  console.error('Error adding to waiting list:', error);
-                                  showToast('Failed to join waiting list. Please try again.', 'error');
-                                }
-                              }}
-                              disabled={!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
-                                        !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
-                                        (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())}
-                              className="px-6 py-3 bg-orange-600 text-white border-2 border-orange-600 rounded-lg font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
-                            >
-                              📋 Join Waiting List
-                            </button>
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const waitingListRef = collection(db, 'waitingList');
+                                    await addDoc(waitingListRef, {
+                                      fullName: formData.fullName || '',
+                                      age: formData.age || '',
+                                      photo: formData.photo || '',
+                                      doctor: formData.doctor,
+                                      appointmentDate: formData.appointmentDate,
+                                      gender: formData.gender || '',
+                                      medicalCondition: formData.medicalCondition || '',
+                                      phone: formData.phone || '',
+                                      priorityLevel: formData.priorityLevel,
+                                      preferredTimeSlot: formData.timeSlot || '',
+                                      requestedDate: formData.appointmentDate,
+                                      status: 'waiting',
+                                      createdAt: new Date().toISOString()
+                                    });
+                                    
+                                    showToast('✅ You have been added to the waiting list! We will notify you when a slot becomes available.', 'success');
+                                    handleClose();
+                                  } catch (error) {
+                                    console.error('Error adding to waiting list:', error);
+                                    showToast('Failed to join waiting list. Please try again.', 'error');
+                                  }
+                                }}
+                                disabled={!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+                                          !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
+                                          (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())}
+                                className="px-6 py-3 bg-orange-600 text-white border-2 border-orange-600 rounded-lg font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
+                              >
+                                📋 Join Waiting List
+                              </button>
                             </div>
                           </div>
                         );
@@ -1194,6 +1208,7 @@ const handleSubmit = async () => {
                     onChange={(e) => setFormData(prev => ({ ...prev, medicalCondition: e.target.value, customCondition: '' }))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     aria-required="true"
+                    autoComplete="off"
                   >
                     <option value="">Select your eye condition</option>
                     {eyeConditions.map((condition) => (
@@ -1218,6 +1233,7 @@ const handleSubmit = async () => {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Describe your eye condition or reason for visit"
                       aria-required="true"
+                      autoComplete="off"
                     />
                   </div>
                 )}
@@ -1246,7 +1262,7 @@ const handleSubmit = async () => {
         </div>
       </div>
 
-       {/* Add Toast Notification Component - PLACE IT HERE, INSIDE THE OUTER MODAL DIV */}
+      {/* Add Toast Notification Component - PLACE IT HERE, INSIDE THE OUTER MODAL DIV */}
       {toast && toast.show && (
         <div className="fixed top-4 right-4 z-[200] animate-slide-in-right">
           <div className={`

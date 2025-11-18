@@ -80,7 +80,7 @@ const Home = () => {
 
         <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto py-20">
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight drop-shadow-lg">
-            Welcome to <span className="text-blue-500 drop-shadow-none">TimeFly</span>
+            Welcome to <span className="text-white drop-shadow-none">TimeFly</span>
           </h1>
           
           <p className="text-xl sm:text-3xl text-white mb-12 max-w-3xl mx-auto leading-relaxed drop-shadow-md">
@@ -92,7 +92,7 @@ const Home = () => {
               onClick={() => setIsModalOpen(true)}
               className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-10 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200"
             >
-              Book An Appointment
+              Book an Appointment
             </button>
             
             <button 
