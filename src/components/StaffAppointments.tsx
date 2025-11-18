@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown, Mail } from 'lucide-react';
-import { collection, query, getDocs, updateDoc, doc, orderBy, deleteDoc, where } from 'firebase/firestore';
+import { collection, query, getDocs, updateDoc, doc, orderBy, where } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import StaffViewAppointments from './StaffViewAppointments';
 import RescheduleModal from './RescheduleModal';
+import CancelModal from './CancelModal';
 import ToastNotification from './ToastNotification';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -37,6 +38,7 @@ const StaffAppointments = () => {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -57,74 +59,73 @@ const StaffAppointments = () => {
     setToast({ message, type, isVisible: true });
   };
 
-  // Move loadAppointments outside the useEffect
-  const loadAppointments = async () => {
-    setIsLoading(true);
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      
-      // Get current user's email
-      const userEmail = auth.currentUser?.email;
-      
-      if (!userEmail) {
-        console.error('No user email found');
-        setIsLoading(false);
-        return;
-      }
-
-      // Get user role from Firestore
-      const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-      const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-      let q;
-      
-      // If staff or doctor, show all appointments
-      if (userRole === 'staff' || userRole === 'doctor') {
-        q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-      } else {
-        // If patient, show only their appointments
-        q = query(
-          appointmentsRef, 
-          where('email', '==', userEmail),
-          orderBy('createdAt', 'desc')
-        );
-      }
-      
-      const querySnapshot = await getDocs(q);
-      
-      // Filter out appointments deleted by staff
-      const appointmentsData = querySnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Appointment))
-        .filter(apt => !apt.deletedByStaff);
-      
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
-      showToast('Failed to load appointments. Please try again.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadDoctors = async () => {
-    try {
-      const doctorsRef = collection(db, 'doctors');
-      const q = query(doctorsRef, where('isActive', '==', true));
-      const querySnapshot = await getDocs(q);
-      
-      const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
-      setDoctors(doctorsData);
-    } catch (error) {
-      console.error('Error loading doctors:', error);
-      showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-    }
-  };
-
   // Use useEffect to call the functions on component mount
   useEffect(() => {
+    const loadAppointments = async () => {
+      setIsLoading(true);
+      try {
+        const appointmentsRef = collection(db, 'appointments');
+        
+        // Get current user's email
+        const userEmail = auth.currentUser?.email;
+        
+        if (!userEmail) {
+          console.error('No user email found');
+          setIsLoading(false);
+          return;
+        }
+
+        // Get user role from Firestore
+        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+        const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+        let q;
+        
+        // If staff or doctor, show all appointments
+        if (userRole === 'staff' || userRole === 'doctor') {
+          q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+        } else {
+          // If patient, show only their appointments
+          q = query(
+            appointmentsRef, 
+            where('email', '==', userEmail),
+            orderBy('createdAt', 'desc')
+          );
+        }
+        
+        const querySnapshot = await getDocs(q);
+        
+        // Filter out appointments deleted by staff
+        const appointmentsData = querySnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Appointment))
+          .filter(apt => !apt.deletedByStaff);
+        
+        setAppointments(appointmentsData);
+      } catch (error) {
+        console.error('Error loading appointments:', error);
+        showToast('Failed to load appointments. Please try again.', 'error');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const loadDoctors = async () => {
+      try {
+        const doctorsRef = collection(db, 'doctors');
+        const q = query(doctorsRef, where('isActive', '==', true));
+        const querySnapshot = await getDocs(q);
+        
+        const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
+        setDoctors(doctorsData);
+      } catch (error) {
+        console.error('Error loading doctors:', error);
+        showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+      }
+    };
+
     loadAppointments();
     loadDoctors();
   }, []);
@@ -221,20 +222,176 @@ const StaffAppointments = () => {
     if (!selectedAppointment) return;
 
     try {
+      // First update Firebase
       const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
       await updateDoc(appointmentRef, {
         appointmentDate: updatedData.appointmentDate,
         timeSlot: updatedData.timeSlot,
-        status: 'rescheduled'
+        status: 'rescheduled',
+        rescheduledAt: new Date().toISOString()
       });
+
+      console.log('✅ Firebase updated for reschedule');
+
+      // Then send email notification
+      const response = await fetch('/api/reschedule-appointment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appointmentId: selectedAppointment.id,
+          appointmentDate: updatedData.appointmentDate,
+          timeSlot: updatedData.timeSlot,
+          patientEmail: selectedAppointment.email,
+          patientName: selectedAppointment.fullName,
+          doctor: selectedAppointment.doctor,
+          queueNumber: selectedAppointment.queueNumber,
+          oldDate: selectedAppointment.appointmentDate,
+          oldTimeSlot: selectedAppointment.timeSlot,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send reschedule email');
+      }
+
+      // Reload appointments to reflect real-time updates
+      const loadAppointments = async () => {
+        try {
+          const appointmentsRef = collection(db, 'appointments');
+          const userEmail = auth.currentUser?.email;
+          
+          if (!userEmail) return;
+
+          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+          let q;
+          
+          if (userRole === 'staff' || userRole === 'doctor') {
+            q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+          } else {
+            q = query(
+              appointmentsRef, 
+              where('email', '==', userEmail),
+              orderBy('createdAt', 'desc')
+            );
+          }
+          
+          const querySnapshot = await getDocs(q);
+          const appointmentsData = querySnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Appointment))
+            .filter(apt => !apt.deletedByStaff);
+          
+          setAppointments(appointmentsData);
+        } catch (error) {
+          console.error('Error loading appointments:', error);
+        }
+      };
 
       await loadAppointments();
       setShowRescheduleModal(false);
       setSelectedAppointment(null);
-      showToast('Appointment rescheduled successfully!', 'success');
+      showToast('Appointment rescheduled successfully! Email notification sent.', 'success');
     } catch (error) {
       console.error('Error rescheduling appointment:', error);
-      showToast('Failed to reschedule appointment. Please try again.', 'error');
+      showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
+    }
+  };
+
+  const handleCancel = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setShowCancelModal(true);
+  };
+
+  const confirmCancel = async (reason: string) => {
+    if (!selectedAppointment) return;
+
+    try {
+      // First update Firebase
+      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
+      await updateDoc(appointmentRef, {
+        status: 'cancelled',
+        cancelReason: reason,
+        cancelledAt: new Date().toISOString()
+      });
+
+      console.log('✅ Firebase updated for cancellation');
+
+      // Then send email notification
+      const response = await fetch('/api/cancel-appointment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appointmentId: selectedAppointment.id,
+          cancelReason: reason,
+          patientEmail: selectedAppointment.email,
+          patientName: selectedAppointment.fullName,
+          appointmentDate: selectedAppointment.appointmentDate,
+          timeSlot: selectedAppointment.timeSlot,
+          doctor: selectedAppointment.doctor,
+          queueNumber: selectedAppointment.queueNumber,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send cancellation email');
+      }
+
+      // Reload appointments to reflect real-time updates
+      const loadAppointments = async () => {
+        try {
+          const appointmentsRef = collection(db, 'appointments');
+          const userEmail = auth.currentUser?.email;
+          
+          if (!userEmail) return;
+
+          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+          let q;
+          
+          if (userRole === 'staff' || userRole === 'doctor') {
+            q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+          } else {
+            q = query(
+              appointmentsRef, 
+              where('email', '==', userEmail),
+              orderBy('createdAt', 'desc')
+            );
+          }
+          
+          const querySnapshot = await getDocs(q);
+          const appointmentsData = querySnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Appointment))
+            .filter(apt => !apt.deletedByStaff);
+          
+          setAppointments(appointmentsData);
+        } catch (error) {
+          console.error('Error loading appointments:', error);
+        }
+      };
+
+      await loadAppointments();
+      setShowCancelModal(false);
+      setSelectedAppointment(null);
+      showToast('Appointment cancelled successfully! Email notification sent.', 'success');
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to cancel appointment. Please try again.', 'error');
     }
   };
 
@@ -251,6 +408,44 @@ const StaffAppointments = () => {
       await updateDoc(appointmentRef, {
         deletedByStaff: true
       });
+      
+      // Reload appointments to reflect real-time updates
+      const loadAppointments = async () => {
+        try {
+          const appointmentsRef = collection(db, 'appointments');
+          const userEmail = auth.currentUser?.email;
+          
+          if (!userEmail) return;
+
+          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+          let q;
+          
+          if (userRole === 'staff' || userRole === 'doctor') {
+            q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+          } else {
+            q = query(
+              appointmentsRef, 
+              where('email', '==', userEmail),
+              orderBy('createdAt', 'desc')
+            );
+          }
+          
+          const querySnapshot = await getDocs(q);
+          const appointmentsData = querySnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Appointment))
+            .filter(apt => !apt.deletedByStaff);
+          
+          setAppointments(appointmentsData);
+        } catch (error) {
+          console.error('Error loading appointments:', error);
+        }
+      };
+
       await loadAppointments();
       setShowDeleteModal(false);
       setSelectedAppointment(null);
@@ -540,13 +735,22 @@ const StaffAppointments = () => {
                           <Eye className="w-4 h-4" />
                         </button>
                         {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
-                          <button
-                            onClick={() => handleReschedule(appointment)}
-                            className="text-yellow-600 hover:text-yellow-900 transition"
-                            title="Reschedule"
-                          >
-                            <RefreshCw className="w-4 h-4" />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleReschedule(appointment)}
+                              className="text-yellow-600 hover:text-yellow-900 transition"
+                              title="Reschedule"
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleCancel(appointment)}
+                              className="text-red-600 hover:text-red-900 transition"
+                              title="Cancel"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={() => handleDelete(appointment)}
@@ -676,13 +880,22 @@ const StaffAppointments = () => {
                     </button>
                     
                     {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
-                      <button
-                        onClick={() => handleReschedule(appointment)}
-                        className="flex-1 px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700 transition flex items-center justify-center gap-2"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                        Reschedule
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleReschedule(appointment)}
+                          className="flex-1 px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700 transition flex items-center justify-center gap-2"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          Reschedule
+                        </button>
+                        <button
+                          onClick={() => handleCancel(appointment)}
+                          className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-2"
+                        >
+                          <X className="w-4 h-4" />
+                          Cancel
+                        </button>
+                      </>
                     )}
 
                     <button
@@ -708,7 +921,45 @@ const StaffAppointments = () => {
             setSelectedAppointment(null);
           }}
           appointment={selectedAppointment}
-          onAppointmentUpdate={loadAppointments}
+          onAppointmentUpdate={() => {
+            // Reload appointments when modal updates
+            const loadAppointments = async () => {
+              try {
+                const appointmentsRef = collection(db, 'appointments');
+                const userEmail = auth.currentUser?.email;
+                
+                if (!userEmail) return;
+
+                const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+                const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+                let q;
+                
+                if (userRole === 'staff' || userRole === 'doctor') {
+                  q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+                } else {
+                  q = query(
+                    appointmentsRef, 
+                    where('email', '==', userEmail),
+                    orderBy('createdAt', 'desc')
+                  );
+                }
+                
+                const querySnapshot = await getDocs(q);
+                const appointmentsData = querySnapshot.docs
+                  .map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                  } as Appointment))
+                  .filter(apt => !apt.deletedByStaff);
+                
+                setAppointments(appointmentsData);
+              } catch (error) {
+                console.error('Error loading appointments:', error);
+              }
+            };
+            loadAppointments();
+          }}
         />
       )}
 
@@ -722,6 +973,19 @@ const StaffAppointments = () => {
           }}
           appointment={selectedAppointment}
           onConfirm={confirmReschedule}
+        />
+      )}
+
+      {/* Cancel Modal */}
+      {showCancelModal && selectedAppointment && (
+        <CancelModal
+          isOpen={showCancelModal}
+          onClose={() => {
+            setShowCancelModal(false);
+            setSelectedAppointment(null);
+          }}
+          appointment={selectedAppointment}
+          onConfirm={confirmCancel}
         />
       )}
 

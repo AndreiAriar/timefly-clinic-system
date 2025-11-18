@@ -15,7 +15,8 @@ interface RescheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
   appointment: Appointment;
-  onConfirm: (updatedData: { appointmentDate: string; timeSlot: string }) => void;
+  onConfirm: (updatedData: { appointmentDate: string; timeSlot: string }) => void | Promise<void>;
+  isSubmitting?: boolean;
 }
 
 interface TimeSlot {
@@ -23,10 +24,15 @@ interface TimeSlot {
   available: boolean;
 }
 
-const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm }: RescheduleModalProps) => {
+const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting = false }: RescheduleModalProps) => {
   const [newDate, setNewDate] = useState(appointment.appointmentDate);
   const [newTimeSlot, setNewTimeSlot] = useState(appointment.timeSlot);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<TimeSlot[]>([]);
+
+  useEffect(() => {
+    setNewDate(appointment.appointmentDate);
+    setNewTimeSlot(appointment.timeSlot);
+  }, [appointment]);
 
   useEffect(() => {
     if (isOpen && newDate) {
@@ -205,10 +211,11 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm }: Reschedule
               </button>
               <button
                 type="submit"
-                disabled={!newTimeSlot}
+                disabled={!newTimeSlot || isSubmitting}
                 className="flex-1 px-6 py-3 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+                aria-busy={isSubmitting}
               >
-                Confirm Reschedule
+                {isSubmitting ? 'Updating...' : 'Confirm Reschedule'}
               </button>
             </div>
           </form>
