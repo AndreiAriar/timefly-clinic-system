@@ -195,7 +195,7 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
                 <div>
                   <h5 className="text-sm font-medium text-yellow-800 mb-1">Important</h5>
                   <p className="text-sm text-yellow-700">
-                    Rescheduling will update your appointment details. Please arrive 15 minutes before your new scheduled time.
+                  Rescheduling this appointment will update the patient’s appointment details. Please remind the patient to arrive 15 minutes before the new scheduled time.
                   </p>
                 </div>
               </div>

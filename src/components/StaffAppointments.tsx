@@ -4,7 +4,7 @@ import { collection, query, getDocs, updateDoc, doc, orderBy, where } from 'fire
 import { db, auth } from '../firebase/config';
 import StaffViewAppointments from './StaffViewAppointments';
 import RescheduleModal from './RescheduleModal';
-import CancelModal from './CancelModal';
+import StaffCancel from './StaffCancel';
 import ToastNotification from './ToastNotification';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -38,7 +38,7 @@ const StaffAppointments = () => {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showStaffCancelModal, setShowStaffCancelModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -307,7 +307,7 @@ const StaffAppointments = () => {
 
   const handleCancel = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
-    setShowCancelModal(true);
+    setShowStaffCancelModal(true);
   };
 
   const confirmCancel = async (reason: string) => {
@@ -386,7 +386,7 @@ const StaffAppointments = () => {
       };
 
       await loadAppointments();
-      setShowCancelModal(false);
+      setShowStaffCancelModal(false);
       setSelectedAppointment(null);
       showToast('Appointment cancelled successfully! Email notification sent.', 'success');
     } catch (error) {
@@ -976,12 +976,12 @@ const StaffAppointments = () => {
         />
       )}
 
-      {/* Cancel Modal */}
-      {showCancelModal && selectedAppointment && (
-        <CancelModal
-          isOpen={showCancelModal}
+      {/* Staff Cancel Modal */}
+      {showStaffCancelModal && selectedAppointment && (
+        <StaffCancel
+          isOpen={showStaffCancelModal}
           onClose={() => {
-            setShowCancelModal(false);
+            setShowStaffCancelModal(false);
             setSelectedAppointment(null);
           }}
           appointment={selectedAppointment}

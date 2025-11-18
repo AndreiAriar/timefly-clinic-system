@@ -40,6 +40,7 @@ const StaffQueue = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const [sendingMissedNotification, setSendingMissedNotification] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({
     isOpen: false,
     title: '',
@@ -235,35 +236,66 @@ useEffect(() => {
         }
       }
     );
-  };
-
-  const handleMiss = async (appointment: Appointment) => {
-    showConfirmDialog(
-      'Mark as Missed',
-      `Mark ${appointment.fullName}'s appointment as missed? This will move to the next patient.`,
-      async () => {
+  };const handleMiss = async (appointment: Appointment) => {
+  showConfirmDialog(
+    'Mark as Missed',
+    `Mark ${appointment.fullName}'s appointment as missed? This will move to the next patient and send an email notification.`,
+    async () => {
+      try {
+        // First update Firebase status
+        const appointmentRef = doc(db, 'appointments', appointment.id);
+        await updateDoc(appointmentRef, {
+          status: 'missed'
+        });
+        
+        // Send email notification
+        setSendingMissedNotification(appointment.id);
         try {
-          const appointmentRef = doc(db, 'appointments', appointment.id);
-          await updateDoc(appointmentRef, {
-            status: 'missed'
+          const response = await fetch('/api/send-missed-notification', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              patientEmail: appointment.email,
+              patientName: appointment.fullName,
+              appointmentDate: appointment.appointmentDate,
+              timeSlot: appointment.timeSlot,
+              doctor: appointment.doctor,
+              queueNumber: appointment.queueNumber,
+            }),
           });
-          
-          // Remove from queue display (filter out missed appointments)
-          setAppointments(prev => prev.filter(apt => apt.id !== appointment.id));
-          
-          // If the missed appointment was the one being served, clear nowServing
-          if (nowServing && nowServing.id === appointment.id) {
-            setNowServing(null);
+
+          const data = await response.json();
+
+          if (!response.ok || !data.success) {
+            console.error('Failed to send missed notification:', data.error);
+            // Continue with the process even if email fails
           }
-          
-          addNotification('info', `${appointment.fullName} marked as missed (Queue #${appointment.queueNumber})`);
-        } catch (error) {
-          console.error('Error marking appointment as missed:', error);
-          addNotification('error', 'Failed to mark as missed. Please try again.');
+        } catch (emailError) {
+          console.error('Error sending missed notification:', emailError);
+          // Continue with the process even if email fails
+        } finally {
+          setSendingMissedNotification(null);
         }
+
+        // Remove from queue display (filter out missed appointments)
+        setAppointments(prev => prev.filter(apt => apt.id !== appointment.id));
+        
+        // If the missed appointment was the one being served, clear nowServing
+        if (nowServing && nowServing.id === appointment.id) {
+          setNowServing(null);
+        }
+        
+        addNotification('info', `${appointment.fullName} marked as missed (Queue #${appointment.queueNumber})`);
+      } catch (error) {
+        console.error('Error marking appointment as missed:', error);
+        addNotification('error', 'Failed to mark as missed. Please try again.');
+        setSendingMissedNotification(null);
       }
-    );
-  };
+    }
+  );
+};
 
   const sendReminder = async (appointment: Appointment) => {
   // Use email field only
@@ -604,13 +636,26 @@ useEffect(() => {
                     <Play className="w-4 h-4" />
                     Serve
                   </button>
-                  <button
-                    onClick={() => handleMiss(appointment)}
-                    className="px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition"
-                    title="Mark as Missed"
-                  >
-                    Miss
-                  </button>
+                 <button
+                onClick={() => handleMiss(appointment)}
+                disabled={sendingMissedNotification === appointment.id}
+                className={`bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition min-w-[70px] justify-center flex items-center gap-2 ${
+                  sendingMissedNotification === appointment.id ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                title="Mark as Missed"
+              >
+                {sendingMissedNotification === appointment.id ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Sending...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden sm:inline">Miss</span>
+                    <span className="sm:hidden">Miss</span>
+                  </>
+                )}
+              </button>
                 </div>
               </div>
             ))}
