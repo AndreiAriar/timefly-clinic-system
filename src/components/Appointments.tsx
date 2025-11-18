@@ -5,6 +5,7 @@ import { db, auth } from '../firebase/config';
 import ViewAppointmentModal from './ViewAppointmentModal';
 import RescheduleModal from './RescheduleModal';
 import CancelModal from './CancelModal';
+import { toast } from 'react-toastify';
 
 interface Appointment {
   id: string;
@@ -126,7 +127,10 @@ const Appointments = () => {
       setAppointments(appointmentsData);
     } catch (error) {
       console.error('Error loading appointments:', error);
-      alert('Failed to load appointments. Please try again.');
+      toast.error('Failed to load appointments. Please try again.', {
+        position: "top-center",
+        autoClose: 5000,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -168,10 +172,16 @@ const Appointments = () => {
       
       setShowRescheduleModal(false);
       setSelectedAppointment(null);
-      alert('Appointment rescheduled successfully!');
+      toast.success('Appointment rescheduled successfully!', {
+        position: "top-center",
+        autoClose: 3000,
+      });
     } catch (error) {
       console.error('Error rescheduling appointment:', error);
-      alert('Failed to reschedule appointment. Please try again.');
+      toast.error('Failed to reschedule appointment. Please try again.', {
+        position: "top-center",
+        autoClose: 5000,
+      });
     }
   };
 
@@ -195,10 +205,16 @@ const Appointments = () => {
       
       setShowCancelModal(false);
       setSelectedAppointment(null);
-      alert('Appointment cancelled successfully!');
+      toast.success('Appointment cancelled successfully!', {
+        position: "top-center",
+        autoClose: 3000,
+      });
     } catch (error) {
       console.error('Error cancelling appointment:', error);
-      alert('Failed to cancel appointment. Please try again.');
+      toast.error('Failed to cancel appointment. Please try again.', {
+        position: "top-center",
+        autoClose: 5000,
+      });
     }
   };
 
@@ -221,10 +237,16 @@ const Appointments = () => {
       
       setShowDeleteModal(false);
       setSelectedAppointment(null);
-      alert('Appointment deleted successfully!');
+      toast.success('Appointment deleted successfully!', {
+        position: "top-center",
+        autoClose: 3000,
+      });
     } catch (error) {
       console.error('Error deleting appointment:', error);
-      alert('Failed to delete appointment. Please try again.');
+      toast.error('Failed to delete appointment. Please try again.', {
+        position: "top-center",
+        autoClose: 5000,
+      });
     }
   };
 
@@ -249,99 +271,100 @@ const Appointments = () => {
       default: return 'bg-gray-300 text-white';
     }
   };
-const AppointmentCard = ({ appointment, showActions = true }: { appointment: Appointment; showActions?: boolean }) => (
-  <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
-    <div className="bg-blue-500 px-4 py-3 flex justify-between items-center">
-      <div className="text-white">
-        <p className="text-sm font-medium">Queue Number</p>
-        <p className="text-3xl font-bold mt-1">#{appointment.queueNumber}</p>
-      </div>
-      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
-        {appointment.status}
-      </span>
-    </div>
 
-    <div className="p-4 space-y-3">
-      <div className="flex items-start gap-3">
-        {appointment.photo ? (
-          <img
-            src={appointment.photo}
-            alt="Patient"
-            className="w-12 h-12 rounded-full object-cover"
-          />
-        ) : (
-          <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
-            <User className="w-6 h-6 text-indigo-600" />
-          </div>
-        )}
-        <div className="flex-1">
-          <h3 className="font-semibold text-gray-900">{appointment.fullName}</h3>
-          <p className="text-sm text-gray-500">{appointment.age} years, {appointment.gender}</p>
+  const AppointmentCard = ({ appointment, showActions = true }: { appointment: Appointment; showActions?: boolean }) => (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
+      <div className="bg-blue-500 px-4 py-3 flex justify-between items-center">
+        <div className="text-white">
+          <p className="text-sm font-medium">Queue Number</p>
+          <p className="text-3xl font-bold mt-1">#{appointment.queueNumber}</p>
         </div>
-      </div>
-
-      <div className="space-y-2 pt-2 border-t">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Calendar className="w-4 h-4" />
-          <span>{formatDate(appointment.appointmentDate)}</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Clock className="w-4 h-4" />
-          <span>{convertTo12Hour(appointment.timeSlot)}</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Stethoscope className="w-4 h-4" />
-          <span>{appointment.doctor}</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Phone className="w-4 h-4" />
-          <span>{appointment.phone}</span>
-        </div>
-      </div>
-
-      <div className="pt-2">
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
-          <AlertCircle className="w-3 h-3" />
-          {appointment.priorityLevel}
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
+          {appointment.status}
         </span>
       </div>
 
-      {/* Action Buttons - Text Only with Icons - 2 per row */}
-      {showActions && (
-        <div className="pt-4 border-t grid grid-cols-2 gap-2">
-          <button
-            onClick={() => handleView(appointment)}
-            className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition text-sm font-medium"
-          >
-            <Eye className="w-4 h-4" />
-            <span>View</span>
-          </button>
-          <button
-            onClick={() => handleReschedule(appointment)}
-            className="flex items-center gap-2 px-3 py-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition text-sm font-medium"
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Reschedule</span>
-          </button>
-          <button
-            onClick={() => handleCancel(appointment)}
-            className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition text-sm font-medium"
-          >
-            <X className="w-4 h-4" />
-            <span>Cancel</span>
-          </button>
-          <button
-            onClick={() => handleDelete(appointment)}
-            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg transition text-sm font-medium"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>Delete</span>
-          </button>
+      <div className="p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          {appointment.photo ? (
+            <img
+              src={appointment.photo}
+              alt="Patient"
+              className="w-12 h-12 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+              <User className="w-6 h-6 text-indigo-600" />
+            </div>
+          )}
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-900">{appointment.fullName}</h3>
+            <p className="text-sm text-gray-500">{appointment.age} years, {appointment.gender}</p>
+          </div>
         </div>
-      )}
+
+        <div className="space-y-2 pt-2 border-t">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Calendar className="w-4 h-4" />
+            <span>{formatDate(appointment.appointmentDate)}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Clock className="w-4 h-4" />
+            <span>{convertTo12Hour(appointment.timeSlot)}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Stethoscope className="w-4 h-4" />
+            <span>{appointment.doctor}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Phone className="w-4 h-4" />
+            <span>{appointment.phone}</span>
+          </div>
+        </div>
+
+        <div className="pt-2">
+          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(appointment.priorityLevel)}`}>
+            <AlertCircle className="w-3 h-3" />
+            {appointment.priorityLevel}
+          </span>
+        </div>
+
+        {/* Action Buttons - Text Only with Icons - 2 per row */}
+        {showActions && (
+          <div className="pt-4 border-t grid grid-cols-2 gap-2">
+            <button
+              onClick={() => handleView(appointment)}
+              className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition text-sm font-medium"
+            >
+              <Eye className="w-4 h-4" />
+              <span>View</span>
+            </button>
+            <button
+              onClick={() => handleReschedule(appointment)}
+              className="flex items-center gap-2 px-3 py-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition text-sm font-medium"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Reschedule</span>
+            </button>
+            <button
+              onClick={() => handleCancel(appointment)}
+              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition text-sm font-medium"
+            >
+              <X className="w-4 h-4" />
+              <span>Cancel</span>
+            </button>
+            <button
+              onClick={() => handleDelete(appointment)}
+              className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg transition text-sm font-medium"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete</span>
+            </button>
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 
   const todaysAppointments = getTodaysAppointments();
   const myAppointments = getMyAppointments();

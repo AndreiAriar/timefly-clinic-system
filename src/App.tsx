@@ -27,6 +27,16 @@ interface ToastType {
   isVisible: boolean;
 }
 
+// Fast-loading authentication spinner
+const AuthSpinner = () => (
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+      <p className="text-gray-600 font-medium">Authenticating...</p>
+    </div>
+  </div>
+);
+
 // Ultra-minimal loading component - just a subtle background
 const MinimalLoader = () => (
   <div className="min-h-screen bg-gray-50 transition-opacity duration-200" />
@@ -320,9 +330,9 @@ function AppContent() {
     }
   }, [user, userRole, userData, handleLogout]);
 
-  // Show minimal loader only during very initial load
+  // Show authentication spinner during initial auth check
   if (loading && isInitialLoad.current) {
-    return <MinimalLoader />;
+    return <AuthSpinner />;
   }
 
   // Main app content - renders immediately once auth is determined
