@@ -8,7 +8,7 @@ import PatientFeedback from './PatientFeedback';
 import Appointments from './Appointments';
 import Queue from './Queue';
 import ContactUs from './ContactUs';
-import PrivacyPolicy from './PrivacyPolicy';
+
 
 interface DashboardProps {
   userEmail: string;
@@ -39,16 +39,36 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
     }
   }, [userPhoto]);
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfilePhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (file) {
+    // ✅ REMOVED FILE SIZE LIMIT - Only validate file type
+    const validTypes = [
+      'image/jpeg', 
+      'image/jpg', 
+      'image/png', 
+      'image/gif', 
+      'image/webp',
+      'image/bmp',
+      'image/tiff',
+      'image/svg+xml'
+    ];
+    
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).');
+      return;
     }
-  };
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProfilePhoto(reader.result as string);
+    };
+    reader.onerror = () => {
+      alert('Error reading file. Please try again.');
+    };
+    reader.readAsDataURL(file);
+  }
+};
 
   const handleChangePhotoClick = () => {
     fileInputRef.current?.click();
@@ -253,7 +273,7 @@ const renderPage = () => {
 
                 {isDesktopDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl overflow-hidden z-50">
-                    <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+                    <div className="p-4 bg-blue-700 text-white">
                       <div className="flex items-center space-x-3">
                         {profilePhoto ? (
                           <img 

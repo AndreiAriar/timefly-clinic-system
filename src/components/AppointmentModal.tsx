@@ -74,6 +74,7 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [isDoctorUnavailable, setIsDoctorUnavailable] = useState(false);
 
   const eyeConditions = [
     'Blurred Vision',
@@ -218,22 +219,22 @@ const loadDoctors = useCallback(async () => {
     }
   }, []);
 
-  const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: string): Promise<boolean> => {
-    if (!doctor || !appointmentDate) return false;
+  const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: string): Promise<{isFullyBooked: boolean; isUnavailable: boolean}> => {
+    if (!doctor || !appointmentDate) return {isFullyBooked: false, isUnavailable: false};
     
     try {
       const doctorsRef = collection(db, 'doctors');
       const doctorQuery = query(doctorsRef, where('name', '==', doctor));
       const doctorSnapshot = await getDocs(doctorQuery);
       
-      if (doctorSnapshot.empty) return false;
+      if (doctorSnapshot.empty) return {isFullyBooked: false, isUnavailable: false};
       
       const doctorData = doctorSnapshot.docs[0].data();
       
       const unavailableDates = doctorData.unavailableDates || {};
       if (unavailableDates[appointmentDate] === true) {
         console.log('🚫 Doctor is marked as unavailable on this date');
-        return true;
+        return {isFullyBooked: false, isUnavailable: true};
       }
       
       const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
@@ -257,10 +258,10 @@ const loadDoctors = useCallback(async () => {
       console.log('📋 Current booked appointments:', bookedCount);
       console.log('🔍 Is fully booked?', bookedCount >= maxSlots);
       
-      return bookedCount >= maxSlots;
+      return {isFullyBooked: bookedCount >= maxSlots, isUnavailable: false};
     } catch (error) {
       console.error('Error checking if doctor is fully booked:', error);
-      return false;
+      return {isFullyBooked: false, isUnavailable: false};
     }
   }, []);
 
@@ -279,265 +280,258 @@ const loadDoctors = useCallback(async () => {
     
     return isPast;
   };
+const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
+  console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
+  
+  setIsCheckingAvailability(true);
+  
+  const {isFullyBooked, isUnavailable} = await isDoctorFullyBooked(doctor, appointmentDate);
+  
+  if (isUnavailable) {
+    console.log('🚫 DOCTOR IS UNAVAILABLE - No slots available');
+    setAvailableTimeSlots([]);
+    setHasAvailableSlots(false);
+    setIsDoctorUnavailable(true); // ✅ ADD THIS LINE
+    setIsCheckingAvailability(false);
+    return;
+  }
+  
+  // ✅ ADD THIS LINE - Reset unavailable state if doctor is available
+  setIsDoctorUnavailable(false);
+  
+  if (isFullyBooked) {
+    console.log('🚫 DOCTOR IS FULLY BOOKED - No slots available');
+    setAvailableTimeSlots([]);
+    setHasAvailableSlots(false);
+    setIsCheckingAvailability(false);
+    return;
+  }
+  
+  const slots: TimeSlot[] = [];
+  const startHour = 8;
+  const endHour = 17;
+  
+  const bookedSlots = await getBookedTimeSlots(doctor, appointmentDate);
+  console.log('📋 Booked slots:', bookedSlots);
+  
+  const doctorsRef = collection(db, 'doctors');
+  const doctorQuery = query(doctorsRef, where('name', '==', doctor));
+  const doctorSnapshot = await getDocs(doctorQuery);
+  
+  let unavailableTimeSlots: string[] = [];
+  
+  if (!doctorSnapshot.empty) {
+    const doctorData = doctorSnapshot.docs[0].data();
+    unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
+    console.log('⛔ Unavailable time slots:', unavailableTimeSlots);
+  }
 
-  const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
-    console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
+  if (priorityLevel === 'normal') {
+    for (let hour = startHour; hour < endHour; hour++) {
+      if (hour === 12) continue;
+      
+      const timeString = `${hour.toString().padStart(2, '0')}:00`;
+      const isBooked = bookedSlots.includes(timeString);
+      const isPast = isPastTime(appointmentDate, timeString);
+      const isUnavailable = unavailableTimeSlots.includes(timeString);
+      const isAvailable = !isBooked && !isUnavailable && !isPast;
+      
+      slots.push({
+        time: timeString,
+        available: isAvailable,
+        isBooked,
+        isUnavailable
+      });
+      
+      console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
+    }
+  } else if (priorityLevel === 'urgent') {
+    for (let hour = startHour; hour < endHour; hour++) {
+      if (hour === 12) continue;
+      
+      const timeString = `${hour.toString().padStart(2, '0')}:30`;
+      const isBooked = bookedSlots.includes(timeString);
+      const isPast = isPastTime(appointmentDate, timeString);
+      const isUnavailable = unavailableTimeSlots.includes(timeString);
+      const isAvailable = !isBooked && !isUnavailable && !isPast;
+      
+      slots.push({
+        time: timeString,
+        available: isAvailable,
+        isBooked,
+        isUnavailable,
+        isBuffer: true,
+        bufferType: 'urgent'
+      });
+      
+      console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
+    }
+  } else if (priorityLevel === 'emergency') {
+    for (let hour = startHour; hour < endHour; hour++) {
+      if (hour === 12) continue;
+      
+      const timeString15 = `${hour.toString().padStart(2, '0')}:15`;
+      const isBooked15 = bookedSlots.includes(timeString15);
+      const isPast15 = isPastTime(appointmentDate, timeString15);
+      const isUnavailable15 = unavailableTimeSlots.includes(timeString15);
+      const isAvailable15 = !isBooked15 && !isUnavailable15 && !isPast15;
+      
+      slots.push({
+        time: timeString15,
+        available: isAvailable15,
+        isBooked: isBooked15,
+        isUnavailable: isUnavailable15,
+        isBuffer: true,
+        bufferType: 'emergency'
+      });
+      
+      console.log(`  ${timeString15}: ${isAvailable15 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked15}, unavailable: ${isUnavailable15}, past: ${isPast15})`);
+      
+      const timeString45 = `${hour.toString().padStart(2, '0')}:45`;
+      const isBooked45 = bookedSlots.includes(timeString45);
+      const isPast45 = isPastTime(appointmentDate, timeString45);
+      const isUnavailable45 = unavailableTimeSlots.includes(timeString45);
+      const isAvailable45 = !isBooked45 && !isUnavailable45 && !isPast45;
+      
+      slots.push({
+        time: timeString45,
+        available: isAvailable45,
+        isBooked: isBooked45,
+        isUnavailable: isUnavailable45,
+        isBuffer: true,
+        bufferType: 'emergency'
+      });
+      
+      console.log(`  ${timeString45}: ${isAvailable45 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked45}, unavailable: ${isUnavailable45}, past: ${isPast45})`);
+    }
+  }
+
+  const actuallyAvailableSlots = slots.filter(slot => 
+    slot.available && !slot.isBooked && !slot.isUnavailable
+  );
+  const anyAvailable = actuallyAvailableSlots.length > 0;
+
+  setHasAvailableSlots(anyAvailable);
+  setAvailableTimeSlots(slots);
+
+  console.log(`✅ Generated ${slots.length} total slots`);
+  console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
+  console.log(`✅ Booked slots: ${slots.filter(s => s.isBooked).length}`);
+  console.log(`✅ Unavailable slots: ${slots.filter(s => s.isUnavailable).length}`);
+  console.log(`✅ hasAvailableSlots set to: ${anyAvailable}`);
+
+  if (anyAvailable) {
+    console.log('Available times:', actuallyAvailableSlots.map(s => s.time).join(', '));
+  } else {
+    console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
+  }
+  
+  setIsCheckingAvailability(false);
+}, [getBookedTimeSlots, isDoctorFullyBooked]);
+
+useEffect(() => {
+  if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+    generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+  } else {
+    setAvailableTimeSlots([]);
+    setHasAvailableSlots(true);
+    setIsDoctorUnavailable(false); // ✅ ADD THIS LINE - Reset when clearing form
+  }
+}, [formData.doctor, formData.appointmentDate, formData.priorityLevel, generateTimeSlots]);
+
+useEffect(() => {
+  if (isOpen) {
+    document.body.style.overflow = 'hidden';
+  } else {
+    document.body.style.overflow = 'unset';
+  }
+  return () => {
+    document.body.style.overflow = 'unset';
+  };
+}, [isOpen]);
+
+ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (file) {
+    // ✅ REMOVED FILE SIZE LIMIT - Only validate file type
+    const validTypes = [
+      'image/jpeg', 
+      'image/jpg', 
+      'image/png', 
+      'image/gif', 
+      'image/webp',
+      'image/bmp',
+      'image/tiff',
+      'image/svg+xml'
+    ];
     
-    setIsCheckingAvailability(true);
-    
-    const isFullyBooked = await isDoctorFullyBooked(doctor, appointmentDate);
-    
-    if (isFullyBooked) {
-      console.log('🚫 DOCTOR IS FULLY BOOKED - No slots available');
-      setAvailableTimeSlots([]);
-      setHasAvailableSlots(false);
-      setIsCheckingAvailability(false);
+    if (!validTypes.includes(file.type)) {
+      showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
       return;
     }
-    
-    const slots: TimeSlot[] = [];
-    const startHour = 8;
-    const endHour = 17;
-    
-    const bookedSlots = await getBookedTimeSlots(doctor, appointmentDate);
-    console.log('📋 Booked slots:', bookedSlots);
-    
-    const doctorsRef = collection(db, 'doctors');
-    const doctorQuery = query(doctorsRef, where('name', '==', doctor));
-    const doctorSnapshot = await getDocs(doctorQuery);
-    
-    let unavailableTimeSlots: string[] = [];
-    
-    if (!doctorSnapshot.empty) {
-      const doctorData = doctorSnapshot.docs[0].data();
-      unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
-      console.log('⛔ Unavailable time slots:', unavailableTimeSlots);
-    }
 
-    if (priorityLevel === 'normal') {
-      for (let hour = startHour; hour < endHour; hour++) {
-        if (hour === 12) continue;
+    const reader = new FileReader();
+    
+    reader.onloadend = () => {
+      const img = new Image();
+      img.onload = () => {
+        // ✅ KEPT DIMENSION CONSTRAINTS for display optimization
+        const maxWidth = 2048;
+        const maxHeight = 2048;
         
-        const timeString = `${hour.toString().padStart(2, '0')}:00`;
-        const isBooked = bookedSlots.includes(timeString);
-        const isPast = isPastTime(appointmentDate, timeString);
-        const isUnavailable = unavailableTimeSlots.includes(timeString);
-        const isAvailable = !isBooked && !isUnavailable && !isPast;
+        let width = img.width;
+        let height = img.height;
+
+        // Only scale if necessary for display
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.floor(width * ratio);
+          height = Math.floor(height * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
         
-        slots.push({
-          time: timeString,
-          available: isAvailable,
-          isBooked,
-          isUnavailable
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        // Convert to base64 for display (not stored in database)
+        let processedDataUrl;
+        if (file.type === 'image/png' || file.type === 'image/gif') {
+          processedDataUrl = canvas.toDataURL('image/png');
+        } else if (file.type === 'image/webp') {
+          processedDataUrl = canvas.toDataURL('image/webp', 0.95);
+        } else {
+          processedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        }
+        
+        setFormData(prev => ({ ...prev, photo: processedDataUrl }));
+        
+        console.log('🖼️ Image processed for display:', {
+          originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+          originalDimensions: `${img.width}x${img.height}`,
+          displayDimensions: `${width}x${height}`,
+          format: file.type
         });
-        
-        console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
-      }
-    } else if (priorityLevel === 'urgent') {
-      for (let hour = startHour; hour < endHour; hour++) {
-        if (hour === 12) continue;
-        
-        const timeString = `${hour.toString().padStart(2, '0')}:30`;
-        const isBooked = bookedSlots.includes(timeString);
-        const isPast = isPastTime(appointmentDate, timeString);
-        const isUnavailable = unavailableTimeSlots.includes(timeString);
-        const isAvailable = !isBooked && !isUnavailable && !isPast;
-        
-        slots.push({
-          time: timeString,
-          available: isAvailable,
-          isBooked,
-          isUnavailable,
-          isBuffer: true,
-          bufferType: 'urgent'
-        });
-        
-        console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
-      }
-    } else if (priorityLevel === 'emergency') {
-      for (let hour = startHour; hour < endHour; hour++) {
-        if (hour === 12) continue;
-        
-        const timeString15 = `${hour.toString().padStart(2, '0')}:15`;
-        const isBooked15 = bookedSlots.includes(timeString15);
-        const isPast15 = isPastTime(appointmentDate, timeString15);
-        const isUnavailable15 = unavailableTimeSlots.includes(timeString15);
-        const isAvailable15 = !isBooked15 && !isUnavailable15 && !isPast15;
-        
-        slots.push({
-          time: timeString15,
-          available: isAvailable15,
-          isBooked: isBooked15,
-          isUnavailable: isUnavailable15,
-          isBuffer: true,
-          bufferType: 'emergency'
-        });
-        
-        console.log(`  ${timeString15}: ${isAvailable15 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked15}, unavailable: ${isUnavailable15}, past: ${isPast15})`);
-        
-        const timeString45 = `${hour.toString().padStart(2, '0')}:45`;
-        const isBooked45 = bookedSlots.includes(timeString45);
-        const isPast45 = isPastTime(appointmentDate, timeString45);
-        const isUnavailable45 = unavailableTimeSlots.includes(timeString45);
-        const isAvailable45 = !isBooked45 && !isUnavailable45 && !isPast45;
-        
-        slots.push({
-          time: timeString45,
-          available: isAvailable45,
-          isBooked: isBooked45,
-          isUnavailable: isUnavailable45,
-          isBuffer: true,
-          bufferType: 'emergency'
-        });
-        
-        console.log(`  ${timeString45}: ${isAvailable45 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked45}, unavailable: ${isUnavailable45}, past: ${isPast45})`);
-      }
-    }
-
-    const actuallyAvailableSlots = slots.filter(slot => 
-      slot.available && !slot.isBooked && !slot.isUnavailable
-    );
-    const anyAvailable = actuallyAvailableSlots.length > 0;
-
-    setHasAvailableSlots(anyAvailable);
-    setAvailableTimeSlots(slots);
-
-    console.log(`✅ Generated ${slots.length} total slots`);
-    console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
-    console.log(`✅ Booked slots: ${slots.filter(s => s.isBooked).length}`);
-    console.log(`✅ Unavailable slots: ${slots.filter(s => s.isUnavailable).length}`);
-    console.log(`✅ hasAvailableSlots set to: ${anyAvailable}`);
-
-    if (anyAvailable) {
-      console.log('Available times:', actuallyAvailableSlots.map(s => s.time).join(', '));
-    } else {
-      console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
-    }
-    
-    setIsCheckingAvailability(false);
-  }, [getBookedTimeSlots, isDoctorFullyBooked]);
-
-  useEffect(() => {
-    if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-      generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
-    } else {
-      setAvailableTimeSlots([]);
-      setHasAvailableSlots(true);
-    }
-  }, [formData.doctor, formData.appointmentDate, formData.priorityLevel, generateTimeSlots]);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
+      };
+      
+      img.src = reader.result as string;
     };
-  }, [isOpen]);
-
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // ✅ INCREASED UPLOAD SIZE LIMIT: From 10MB to 25MB
-      const maxSize = 25 * 1024 * 1024;
-      
-      if (file.size > maxSize) {
-        showToast('File size is too large. Please upload an image smaller than 25MB.', 'error');
-        return;
-      }
-
-      // ✅ ADDED MORE IMAGE FORMATS for better compatibility
-      const validTypes = [
-        'image/jpeg', 
-        'image/jpg', 
-        'image/png', 
-        'image/gif', 
-        'image/webp',
-        'image/bmp',
-        'image/tiff',
-        'image/svg+xml'
-      ];
-      
-      if (!validTypes.includes(file.type)) {
-        showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
-        return;
-      }
-
-      const reader = new FileReader();
-      
-      reader.onloadend = () => {
-        const img = new Image();
-        img.onload = () => {
-          // ✅ INCREASED MAX DIMENSIONS for higher quality
-          const maxWidth = 2048; // Increased from 1024
-          const maxHeight = 2048; // Increased from 1024
-          
-          let width = img.width;
-          let height = img.height;
-
-          // ✅ IMPROVED SCALING ALGORITHM - Only scale if necessary
-          if (width > maxWidth || height > maxHeight) {
-            const ratio = Math.min(maxWidth / width, maxHeight / height);
-            width = Math.floor(width * ratio);
-            height = Math.floor(height * ratio);
-          }
-
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          
-          // ✅ SET HIGH-QUALITY RENDERING
-          if (ctx) {
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          
-          ctx?.drawImage(img, 0, 0, width, height);
-          
-          // ✅ IMPROVED QUALITY SETTINGS:
-          // - Use original format when possible
-          // - Higher quality compression (0.95 instead of 0.8)
-          // - Preserve transparency for PNG
-          let compressedDataUrl;
-          if (file.type === 'image/png' || file.type === 'image/gif') {
-            // Preserve transparency for PNG/GIF
-            compressedDataUrl = canvas.toDataURL('image/png');
-          } else if (file.type === 'image/webp') {
-            // Use WebP for better compression
-            compressedDataUrl = canvas.toDataURL('image/webp', 0.95);
-          } else {
-            // High quality JPEG for other formats
-            compressedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-          }
-          
-          setFormData(prev => ({ ...prev, photo: compressedDataUrl }));
-          
-          // ✅ LOG IMAGE QUALITY INFO (for debugging)
-          console.log('🖼️ Image processed:', {
-            originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-            originalDimensions: `${img.width}x${img.height}`,
-            processedDimensions: `${width}x${height}`,
-            format: file.type,
-            quality: 'high'
-          });
-        };
-        
-        img.src = reader.result as string;
-      };
-      
-      reader.onerror = () => {
-        showToast('Error reading file. Please try again.', 'error');
-      };
-      
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSubmit = async () => {
+    
+    reader.onerror = () => {
+      showToast('Error reading file. Please try again.', 'error');
+    };
+    
+    reader.readAsDataURL(file);
+  }
+};  const handleSubmit = async () => {
     if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
         !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
       showToast('Please fill in all required fields', 'warning');
@@ -778,6 +772,7 @@ const loadDoctors = useCallback(async () => {
     setAvailableTimeSlots([]);
     setHasAvailableSlots(true);
     setIsCheckingAvailability(false);
+    setIsDoctorUnavailable(false); 
     onClose();
   };
 
@@ -998,7 +993,7 @@ const loadDoctors = useCallback(async () => {
                   >
                     <option value="normal">Normal (1 hour slots)</option>
                     <option value="urgent">Urgent (30 minute buffer slots)</option>
-                    <option value="emergency">Emergency (15 minute buffer slots)</option>
+                    <option value="emergery">Emergency (15 minute buffer slots)</option>
                   </select>
                 </div>
 
@@ -1041,85 +1036,79 @@ const loadDoctors = useCallback(async () => {
                     autoComplete="off"
                   />
                 </div>
-
                 <div>
-                  <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Time Slot <span className="text-red-500" aria-label="required">*</span>
-                  </label>
-                  {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
-                    (() => {
-                      const isLoading = isCheckingAvailability;
-                      const availableSlotsCount = availableTimeSlots.filter(slot => 
-                        slot.available && !slot.isBooked && !slot.isUnavailable
-                      ).length;
-                      const hasSlots = availableSlotsCount > 0;
-                      
-                      // Check if doctor is marked as unavailable
-                      const isDoctorUnavailable = availableTimeSlots.some(slot => slot.isUnavailable && !slot.isBooked) && 
-                                                availableSlotsCount === 0;
+                <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Time Slot <span className="text-red-500" aria-label="required">*</span>
+                </label>
+                {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
+                  (() => {
+                    const isLoading = isCheckingAvailability;
+                    const availableSlotsCount = availableTimeSlots.filter(slot => 
+                      slot.available && !slot.isBooked && !slot.isUnavailable
+                    ).length;
+                    const hasSlots = availableSlotsCount > 0;
+                    console.log(`🎯 UI Render Check - Loading: ${isLoading}, Available slots: ${availableSlotsCount}, Total slots: ${availableTimeSlots.length}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}, Doctor Unavailable: ${isDoctorUnavailable}`);
 
-                      console.log(`🎯 UI Render Check - Loading: ${isLoading}, Available slots: ${availableSlotsCount}, Total slots: ${availableTimeSlots.length}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}, Doctor Unavailable: ${isDoctorUnavailable}`);
-
-                      if (isLoading) {
-                        return (
-                          <div className="text-center py-8 border-2 border-gray-200 rounded-lg bg-gray-50">
-                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                            <h4 className="text-xl font-bold text-gray-700 mb-2">Checking availability...</h4>
-                            <p className="text-gray-600">Please wait while we load available time slots.</p>
+                    if (isLoading) {
+                      return (
+                        <div className="text-center py-8 border-2 border-gray-200 rounded-lg bg-gray-50">
+                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                           </div>
-                        );
-                      }
+                          <h4 className="text-xl font-bold text-gray-700 mb-2">Checking availability...</h4>
+                          <p className="text-gray-600">Please wait while we load available time slots.</p>
+                        </div>
+                      );
+                    }
 
-                      // Add reminder box for unavailable doctors
-                      if (isDoctorUnavailable) {
-                        return (
-                          <div className="text-center py-8 border-2 border-red-300 rounded-lg bg-red-50">
-                            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <span className="text-3xl">⏸️</span>
-                            </div>
-                            <h4 className="text-xl font-bold text-red-800 mb-2">Doctor Unavailable</h4>
-                            <p className="text-red-700 mb-4 px-4">
-                              Dr. {formData.doctor} is marked as unavailable on {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
-                                weekday: 'long', 
-                                year: 'numeric', 
-                                month: 'long', 
-                                day: 'numeric' 
-                              })}.
-                            </p>
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mx-4 mb-4">
-                              <div className="flex items-start gap-3">
-                                <Info className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                                <div className="text-left">
-                                  <p className="text-yellow-800 font-medium mb-1">Reminder:</p>
-                                  <p className="text-yellow-700 text-sm">
-                                    This doctor has been marked as unavailable by staff. Please select another doctor or date for your appointment.
-                                  </p>
-                                </div>
+                    // ✅ UPDATED - Use state variable instead of async call
+                    if (isDoctorUnavailable) {
+                      return (
+                        <div className="text-center py-8 border-2 border-red-300 rounded-lg bg-red-50">
+                          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span className="text-3xl">⏸️</span>
+                          </div>
+                          <h4 className="text-xl font-bold text-red-800 mb-2">Doctor Unavailable</h4>
+                          <p className="text-red-700 mb-4 px-4">
+                            Dr. {formData.doctor} is marked as unavailable on {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                              weekday: 'long', 
+                              year: 'numeric', 
+                              month: 'long', 
+                              day: 'numeric' 
+                            })}.
+                          </p>
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mx-4 mb-4">
+                            <div className="flex items-start gap-3">
+                              <Info className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                              <div className="text-left">
+                                <p className="text-yellow-800 font-medium mb-1">Reminder:</p>
+                                <p className="text-yellow-700 text-sm">
+                                  This doctor has been marked as unavailable by staff. Please select another doctor or date for your appointment.
+                                </p>
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData(prev => ({ 
-                                  ...prev, 
-                                  doctor: '', 
-                                  appointmentDate: '', 
-                                  timeSlot: '',
-                                  priorityLevel: 'normal'
-                                }));
-                                setAvailableTimeSlots([]);
-                                setHasAvailableSlots(true);
-                              }}
-                              className="px-6 py-3 bg-white text-red-700 border-2 border-red-300 rounded-lg font-medium hover:bg-red-50 transition"
-                            >
-                              📅 Choose Another Doctor/Date
-                            </button>
                           </div>
-                        );
-                      }
-
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                doctor: '', 
+                                appointmentDate: '', 
+                                timeSlot: '',
+                                priorityLevel: 'normal'
+                              }));
+                              setAvailableTimeSlots([]);
+                              setHasAvailableSlots(true);
+                              setIsDoctorUnavailable(false); // ✅ ADD THIS - Reset state
+                            }}
+                            className="px-6 py-3 bg-white text-red-700 border-2 border-red-300 rounded-lg font-medium hover:bg-red-50 transition"
+                          >
+                            📅 Choose Another Doctor/Date
+                          </button>
+                        </div>
+                      );
+                    }
                       if (!hasAvailableSlots && !hasSlots) {
                         return (
                           <div className="text-center py-8 border-2 border-orange-300 rounded-lg bg-orange-50">

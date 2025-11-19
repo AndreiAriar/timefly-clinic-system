@@ -1,25 +1,84 @@
-import { useState } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../firebase/config';
-import { Star, Upload, X, ArrowLeft } from 'lucide-react';
+import { Star, ArrowLeft, CheckCircle, AlertCircle, Info } from 'lucide-react';
 
 interface FeedbackFormProps {
   onBack: () => void;
 }
 
+interface UserData {
+  name: string;
+  email: string;
+  photoURL: string;
+}
+
 const FeedbackForm = ({ onBack }: FeedbackFormProps) => {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
     message: '',
     rating: 0,
-    photo: null as File | null
+    category: ''
   });
   const [hoverRating, setHoverRating] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [toast, setToast] = useState<{
+    show: boolean;
+    message: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+  } | null>(null);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const categories = [
+    'Easy to use',
+    'Smooth booking experience',
+    'Queue time was acceptable',
+    'Staff were friendly',
+    'Doctor was helpful',
+    'Updates were clear',
+    'Overall good experience',
+  ];
+
+  // Toast notification function
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  // Load user data from Firebase
+  useEffect(() => {
+    const auth = getAuth();
+    
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userDataFromFirestore = userDoc.data();
+          
+          setUserData({
+            name: user.displayName || userDataFromFirestore?.name || 'User',
+            email: user.email || '',
+            photoURL: user.photoURL || userDataFromFirestore?.photoURL || ''
+          });
+        } catch (error) {
+          console.error('Error loading user data:', error);
+          setUserData({
+            name: user.displayName || 'User',
+            email: user.email || '',
+            photoURL: user.photoURL || ''
+          });
+        }
+      } else {
+        setUserData(null);
+      }
+      setLoadingUser(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -28,72 +87,46 @@ const FeedbackForm = ({ onBack }: FeedbackFormProps) => {
     setFormData(prev => ({ ...prev, rating }));
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file (PNG, JPG, GIF)');
-        return;
-      }
-      
-      // Validate file size (10MB limit)
-      if (file.size > 10 * 1024 * 1024) {
-        alert('File size must be less than 10MB');
-        return;
-      }
-
-      setFormData(prev => ({ ...prev, photo: file }));
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const removePhoto = () => {
-    setFormData(prev => ({ ...prev, photo: null }));
-    setPhotoPreview(null);
-    // Reset the file input
-    const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
-    if (fileInput) {
-      fileInput.value = '';
-    }
+  const handleCategorySelect = (category: string) => {
+    setFormData(prev => ({ ...prev, category }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.email || !formData.message || formData.rating === 0) {
-      alert('Please fill in all required fields and provide a rating.');
+    if (!formData.message || formData.rating === 0 || !formData.category) {
+      showToast('Please provide a rating, select a category, and write your feedback.', 'warning');
+      return;
+    }
+
+    if (!userData) {
+      showToast('Please sign in to submit feedback.', 'error');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      let photoUrl = '';
-      if (photoPreview) {
-        photoUrl = photoPreview; // Store as base64
-      }
-
       await addDoc(collection(db, 'feedback'), {
-        name: formData.name,
-        email: formData.email,
+        userId: getAuth().currentUser?.uid,
+        userName: userData.name,
+        userEmail: userData.email,
+        userPhoto: userData.photoURL,
         message: formData.message,
         rating: formData.rating,
-        photoUrl: photoUrl,
+        category: formData.category,
         status: 'new',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
 
-      alert('Thank you for your feedback! We appreciate you taking the time to share your experience.');
-      onBack(); // Navigate back to feedback page
+      showToast('Thank you for your feedback! We appreciate you helping us improve TimeFly Clinic.', 'success');
+      setTimeout(() => {
+        onBack();
+      }, 2000);
     } catch (error) {
       console.error('Error submitting feedback:', error);
-      alert('Sorry, there was an error submitting your feedback. Please try again.');
+      showToast('Sorry, there was an error submitting your feedback. Please try again.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -122,65 +155,118 @@ const FeedbackForm = ({ onBack }: FeedbackFormProps) => {
     </div>
   );
 
+  if (loadingUser) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+        <div className="text-center">Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-12">
+      {/* Top-Centered Toast Notification */}
+      {toast && toast.show && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[200] w-full max-w-md px-4">
+          <div className={`
+            flex items-center gap-3 px-6 py-4 rounded-lg shadow-lg mx-auto
+            ${toast.type === 'success' ? 'bg-green-500 text-white' : ''}
+            ${toast.type === 'error' ? 'bg-red-500 text-white' : ''}
+            ${toast.type === 'warning' ? 'bg-orange-500 text-white' : ''}
+            ${toast.type === 'info' ? 'bg-blue-500 text-white' : ''}
+            animate-slide-down
+          `}>
+            {toast.type === 'success' && <CheckCircle className="w-6 h-6 flex-shrink-0" />}
+            {toast.type === 'error' && <AlertCircle className="w-6 h-6 flex-shrink-0" />}
+            {toast.type === 'warning' && <AlertCircle className="w-6 h-6 flex-shrink-0" />}
+            {toast.type === 'info' && <Info className="w-6 h-6 flex-shrink-0" />}
+            <p className="font-medium flex-1">{toast.message}</p>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 hover:opacity-80 transition flex-shrink-0"
+              aria-label="Close notification"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Back Button - Outside Modal */}
+        <div className="mb-4">
+          <button
+            onClick={onBack}
+            className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors"
+            disabled={isSubmitting}
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>Back</span>
+          </button>
+        </div>
+
         <div className="bg-white rounded-2xl shadow-xl p-8">
+          {/* Header with TimeFly Logo */}
           <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <img 
+                src="/timefly_logo.png" 
+                alt="TimeFly Clinic" 
+                className="h-16 w-auto"
+              />
+            </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Share Your Feedback</h1>
-            <p className="text-gray-600">Help us improve our healthcare services</p>
+            <p className="text-gray-600">Help us improve TimeFly Clinic services</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Star Rating */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
+              <label className="block text-sm font-medium text-gray-700 mb-3 text-center">
                 Overall Rating <span className="text-red-500">*</span>
               </label>
-              <StarRating />
-              <p className="text-sm text-gray-500 mt-2">
+              <div className="flex justify-center">
+                <StarRating />
+              </div>
+              <p className="text-sm text-gray-500 mt-2 text-center">
                 {formData.rating === 0 ? 'Select your rating' : `You rated: ${formData.rating} star${formData.rating > 1 ? 's' : ''}`}
               </p>
             </div>
 
-            {/* Name */}
+            {/* Category Selection */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Full Name <span className="text-red-500">*</span>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Tell us about your experience <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                required
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                placeholder="Enter your full name"
-              />
-            </div>
-
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                required
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                placeholder="your.email@example.com"
-              />
+              <div className="grid grid-cols-2 gap-3">
+                {categories.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => handleCategorySelect(category)}
+                    className={`flex items-center justify-center p-4 rounded-full border-2 transition-all ${
+                      formData.category === category
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-300 text-gray-700 hover:border-gray-400'
+                    }`}
+                  >
+                    <span className="text-sm font-medium text-center">{category}</span>
+                  </button>
+                ))}
+              </div>
+              {formData.category && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Selected: {formData.category}
+                </p>
+              )}
             </div>
 
             {/* Message */}
             <div>
               <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
-                Your Feedback <span className="text-red-500">*</span>
+                Your Suggestions <span className="text-red-500">*</span>
               </label>
               <textarea
                 id="message"
@@ -190,83 +276,16 @@ const FeedbackForm = ({ onBack }: FeedbackFormProps) => {
                 required
                 rows={6}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition resize-vertical"
-                placeholder="Please share your experience, suggestions, or any concerns..."
+                placeholder="Please share your suggestions, experience, or any concerns..."
               />
             </div>
 
-            {/* Photo Upload */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Upload Photo (Optional)
-              </label>
-              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
-                <div className="space-y-1 text-center">
-                  {photoPreview ? (
-                    <div className="flex flex-col items-center space-y-3">
-                      <div className="relative">
-                        <img
-                          src={photoPreview}
-                          alt="Preview"
-                          className="w-48 h-48 object-cover rounded-lg border border-gray-200"
-                        />
-                        <button
-                          type="button"
-                          onClick={removePhoto}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => document.getElementById('photo-upload')?.click()}
-                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                      >
-                        <Upload className="w-4 h-4" />
-                        <span>Change Photo</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                      <div className="flex flex-col items-center space-y-2">
-                        <label
-                          htmlFor="photo-upload"
-                          className="cursor-pointer bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium"
-                        >
-                          Choose a Photo
-                        </label>
-                        <p className="text-sm text-gray-500">or drag and drop</p>
-                        <p className="text-xs text-gray-400">PNG, JPG, GIF up to 10MB</p>
-                      </div>
-                    </div>
-                  )}
-                  <input
-                    id="photo-upload"
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={handlePhotoChange}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Submit Buttons */}
-            <div className="flex space-x-4 pt-6">
-              <button
-                type="button"
-                onClick={onBack}
-                className="flex items-center justify-center space-x-2 flex-1 px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition"
-                disabled={isSubmitting}
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
-              </button>
+            {/* Submit Button Only */}
+            <div className="pt-6">
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
               </button>
@@ -274,6 +293,25 @@ const FeedbackForm = ({ onBack }: FeedbackFormProps) => {
           </form>
         </div>
       </div>
+
+      {/* Add slide-down animation */}
+      <style>
+        {`
+          @keyframes slide-down {
+            from {
+              transform: translateY(-100%);
+              opacity: 0;
+            }
+            to {
+              transform: translateY(0);
+              opacity: 1;
+            }
+          }
+          .animate-slide-down {
+            animation: slide-down 0.3s ease-out;
+          }
+        `}
+      </style>
     </div>
   );
 };
