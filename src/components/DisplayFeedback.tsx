@@ -12,7 +12,7 @@ interface Feedback {
   rating: number;
   photoUrl?: string;
   status: 'new' | 'reviewed' | 'addressed';
-  createdAt: Timestamp; // ✅ Fixed: Line 14 - No more 'any'
+  createdAt: Timestamp;
 }
 
 const DisplayFeedback = () => {
@@ -45,9 +45,9 @@ const DisplayFeedback = () => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(fb => 
-        fb.name.toLowerCase().includes(query) ||
-        fb.email.toLowerCase().includes(query) ||
-        fb.message.toLowerCase().includes(query)
+        (fb.name?.toLowerCase() || '').includes(query) ||
+        (fb.email?.toLowerCase() || '').includes(query) ||
+        (fb.message?.toLowerCase() || '').includes(query)
       );
     }
 
@@ -61,14 +61,18 @@ const DisplayFeedback = () => {
 
   const formatDate = (timestamp: Timestamp | null) => {
     if (!timestamp) return 'N/A';
-    const date = timestamp.toDate();
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      const date = timestamp.toDate();
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return 'N/A';
+    }
   };
 
   const StarDisplay = ({ rating }: { rating: number }) => (
@@ -92,12 +96,20 @@ const DisplayFeedback = () => {
     return 'text-red-600';
   };
 
-  const getInitials = (name: string) => {
-    const names = name.split(' ');
+  const getInitials = (name?: string) => {
+    // Handle undefined or empty name
+    if (!name || !name.trim()) {
+      return '?';
+    }
+    
+    const trimmedName = name.trim();
+    const names = trimmedName.split(' ');
+    
     if (names.length >= 2) {
       return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
     }
-    return name.charAt(0).toUpperCase();
+    
+    return trimmedName.charAt(0).toUpperCase();
   };
 
   return (
@@ -236,8 +248,11 @@ const DisplayFeedback = () => {
                         {feedback.photoUrl ? (
                           <img
                             src={feedback.photoUrl}
-                            alt={feedback.name}
+                            alt={feedback.name || 'User'}
                             className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
                           />
                         ) : (
                           <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-lg border-2 border-blue-600">
@@ -250,7 +265,9 @@ const DisplayFeedback = () => {
                       <div className="flex-1">
                         <div className="flex flex-col space-y-2">
                           {/* Name */}
-                          <h3 className="text-lg font-semibold text-gray-900">{feedback.name}</h3>
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {feedback.name || 'Anonymous'}
+                          </h3>
                           
                           {/* Date */}
                           <div className="flex items-center space-x-1 text-sm text-gray-600">
@@ -260,9 +277,9 @@ const DisplayFeedback = () => {
                           
                           {/* Star Rating */}
                           <div className="flex items-center space-x-2">
-                            <StarDisplay rating={feedback.rating} />
-                            <span className={`text-sm font-semibold ${getRatingColor(feedback.rating)}`}>
-                              {feedback.rating}.0
+                            <StarDisplay rating={feedback.rating || 0} />
+                            <span className={`text-sm font-semibold ${getRatingColor(feedback.rating || 0)}`}>
+                              {feedback.rating || 0}.0
                             </span>
                           </div>
                         </div>
@@ -271,7 +288,9 @@ const DisplayFeedback = () => {
 
                     {/* Feedback Text */}
                     <div className="mt-2">
-                      <p className="text-gray-700 whitespace-pre-wrap">{feedback.message}</p>
+                      <p className="text-gray-700 whitespace-pre-wrap">
+                        {feedback.message || 'No message provided'}
+                      </p>
                     </div>
 
                     {/* REMOVED DUPLICATE PHOTO ATTACHMENT SECTION */}
