@@ -1247,67 +1247,74 @@ const handleSubmit = async () => {
                       if (availableTimeSlots.length > 0) {
                         return (
                           <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
-                            {availableTimeSlots.map((slot) => {
-                              const isAvailable = slot.available && !slot.isBooked && !slot.isUnavailable;
-                              const isBooked = slot.isBooked;
-                              const isUnavailable = slot.isUnavailable && !slot.isBooked;
-                              
-                              let buttonClasses = 'px-3 py-3 rounded-lg text-sm font-medium transition border-2 ';
-                              let statusLabel = '';
-                              let statusLabelClasses = '';
-                              
-                              if (isBooked) {
-                                buttonClasses += 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed opacity-75';
-                                statusLabel = 'Booked';
-                                statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
-                              } else if (isUnavailable) {
-                                buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
-                                statusLabel = 'Unavailable';
-                                statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
-                              } else if (isAvailable) {
-                                buttonClasses += 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 cursor-pointer';
-                                statusLabel = 'Available';
-                                statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70';
+                          {availableTimeSlots.map((slot) => {
+                            const isAvailable = slot.available && !slot.isBooked && !slot.isUnavailable;
+                            const isBooked = slot.isBooked;
+                            const isUnavailable = slot.isUnavailable && !slot.isBooked;
+                            
+                            let buttonClasses = 'px-3 py-3 rounded-lg text-sm font-medium transition border-2 ';
+                            let statusLabel = '';
+                            let statusLabelClasses = '';
+                            
+                            if (isBooked) {
+                              buttonClasses += 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed opacity-75';
+                              statusLabel = 'Booked';
+                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
+                            } else if (isUnavailable) {
+                              buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
+                              statusLabel = 'Unavailable';
+                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                            } else if (isAvailable) {
+                              // Apply priority-based colors for available slots
+                              if (slot.isBuffer && slot.bufferType === 'emergency') {
+                                buttonClasses += 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 cursor-pointer';
+                              } else if (slot.isBuffer && slot.bufferType === 'urgent') {
+                                buttonClasses += 'bg-yellow-50 text-yellow-700 border-yellow-300 hover:bg-yellow-100 cursor-pointer';
                               } else {
-                                buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
-                                statusLabel = 'Unavailable';
-                                statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                                buttonClasses += 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 cursor-pointer';
                               }
-                              
-                              if (formData.timeSlot === slot.time && isAvailable) {
-                                buttonClasses += ' ring-2 ring-blue-500 ring-offset-2';
-                              }
-                              
-                              return (
-                                <button
-                                  key={slot.time}
-                                  type="button"
-                                  onClick={() => {
-                                    if (isAvailable) {
-                                      setFormData(prev => ({ ...prev, timeSlot: slot.time }));
-                                    }
-                                  }}
-                                  disabled={!isAvailable}
-                                  className={buttonClasses}
-                                  aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
-                                  aria-disabled={!isAvailable}
-                                >
-                                  <div className="flex flex-col items-center">
-                                    <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
-                                    <span className={statusLabelClasses}>
-                                      {statusLabel}
-                                    </span>
-                                    {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && (
-                                      <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
-                                    )}
-                                    {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && (
-                                      <span className="text-xs mt-1 text-orange-600 font-semibold">Urgent</span>
-                                    )}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
+                              statusLabel = 'Available';
+                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70';
+                            } else {
+                              buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
+                              statusLabel = 'Unavailable';
+                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                            }
+                            
+                            if (formData.timeSlot === slot.time && isAvailable) {
+                              buttonClasses += ' ring-2 ring-blue-500 ring-offset-2';
+                            }
+                            
+                            return (
+                              <button
+                                key={slot.time}
+                                type="button"
+                                onClick={() => {
+                                  if (isAvailable) {
+                                    setFormData(prev => ({ ...prev, timeSlot: slot.time }));
+                                  }
+                                }}
+                                disabled={!isAvailable}
+                                className={buttonClasses}
+                                aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
+                                aria-disabled={!isAvailable}
+                              >
+                                <div className="flex flex-col items-center">
+                                  <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
+                                  <span className={statusLabelClasses}>
+                                    {statusLabel}
+                                  </span>
+                                  {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && (
+                                    <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
+                                  )}
+                                  {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && (
+                                    <span className="text-xs mt-1 text-yellow-600 font-semibold">Urgent</span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
                         );
                       }
                       

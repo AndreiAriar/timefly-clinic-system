@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, Mail, Phone, Stethoscope, Calendar } from 'lucide-react';
-import { collection, query, getDocs, where, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, onSnapshot, where, orderBy } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface Doctor {
@@ -33,10 +33,9 @@ const OurDoctors = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
 
-  useEffect(() => {
-    loadDoctors();
-    loadAppointments();
-  }, []);
+    useEffect(() => {
+      loadDoctors();
+    }, []);
 
   const loadDoctors = async () => {
     setIsLoading(true);
@@ -84,39 +83,52 @@ const OurDoctors = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  };// Real-time appointments listener
+useEffect(() => {
+  const today = new Date();
+  const phTime = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const year = phTime.getFullYear();
+  const month = String(phTime.getMonth() + 1).padStart(2, '0');
+  const day = String(phTime.getDate()).padStart(2, '0');
+  const todayPH = `${year}-${month}-${day}`;
   
-const loadAppointments = async () => {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    const appointmentsRef = collection(db, 'appointments');
-    
-    // ✅ FIXED: Use correct field names - appointmentDate instead of date
-    const q = query(
-      appointmentsRef,
-      where('appointmentDate', '==', today),
-      where('status', '!=', 'cancelled')  // Exclude cancelled appointments
-    );
-    
-    const querySnapshot = await getDocs(q);
-    
-    const appointmentsData = querySnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        doctorId: data.doctor || '',  // Store doctor name, not ID
-        status: data.status,
-        date: data.appointmentDate,
-        time: data.timeSlot
-      };
-    }) as Appointment[];
-    
-    console.log('📊 Loaded appointments for today:', appointmentsData);
-    setAppointments(appointmentsData);
-  } catch (error) {
-    console.error('Error loading appointments:', error);
-  }
-};
+  const appointmentsRef = collection(db, 'appointments');
+  const q = query(
+    appointmentsRef,
+    where('appointmentDate', '==', todayPH)
+  );
+  
+  // Subscribe to real-time updates
+  const unsubscribe = onSnapshot(
+    q,
+    (querySnapshot) => {
+      const appointmentsData = querySnapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            doctorId: data.doctor || '',
+            status: data.status,
+            date: data.appointmentDate,
+            time: data.timeSlot
+          };
+        })
+        .filter(apt => 
+          apt.status !== 'cancelled' && 
+          apt.status !== 'completed' && 
+          apt.status !== 'missed'
+        ) as Appointment[];
+      
+      console.log('📊 Real-time appointments update:', appointmentsData.length);
+      setAppointments(appointmentsData);
+    },
+    (error) => {
+      console.error('Error listening to appointments:', error);
+    }
+  );
+  
+  return () => unsubscribe();
+}, []);
 
  // ✅ FIXED: Match by doctor name, not ID
 const getDoctorAppointments = (doctorName: string) => {

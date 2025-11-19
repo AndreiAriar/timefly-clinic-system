@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle, X, Mail, Stethoscope } from 'lucide-react';
-import { collection, query, getDocs, updateDoc, doc, where } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 interface Appointment {
   id: string;
@@ -103,61 +103,64 @@ const StaffQueue = () => {
     };
     return date.toLocaleDateString('en-US', options);
   };
-const loadQueue = useCallback(async () => {
-  setIsLoading(true);
-  try {
-    const today = getTodayDatePH();
-    const appointmentsRef = collection(db, 'appointments');
-    
-    // Query all appointments for today
-    const q = query(
-      appointmentsRef,
-      where('appointmentDate', '==', today)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    
-    // Filter appointments that should be in the queue (excluding cancelled, completed, and missed)
-    let appointmentsData = querySnapshot.docs
-      .map(doc => {
-        const data = doc.data();
-        console.log('Appointment data:', data); // Debug: Check if email exists
-        return {
-          id: doc.id,
-          ...data
-        };
-      }) as Appointment[];
-    
-    // Filter out cancelled, completed, and missed appointments
-    appointmentsData = appointmentsData.filter(apt => 
-      apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
-    );
-    
-    // Sort by queue number
-    appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
-    
-    setAppointments(appointmentsData);
-    
-    // Check if there's an appointment with status 'serving' or 'confirmed'
-    const currentlyServing = appointmentsData.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
-    
-    if (currentlyServing) {
-      setNowServing(currentlyServing);
-    } else {
-      setNowServing(null);
-    }
-  } catch (error) {
-    console.error('Error loading queue:', error);
-    addNotification('error', 'Failed to load queue. Please try again.');
-  } finally {
-    setIsLoading(false);
-  }
-}, [addNotification]);
+
 
 useEffect(() => {
-  loadQueue();
-  // Removed auto-refresh interval to prevent unwanted reloads
-}, [loadQueue]);
+  setIsLoading(true);
+  
+  const today = getTodayDatePH();
+  const appointmentsRef = collection(db, 'appointments');
+  
+  const q = query(
+    appointmentsRef,
+    where('appointmentDate', '==', today)
+  );
+  
+  // Subscribe to real-time updates
+  const unsubscribe = onSnapshot(
+    q,
+    (querySnapshot) => {
+      try {
+        let appointmentsData = querySnapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            console.log('Appointment data:', data);
+            return {
+              id: doc.id,
+              ...data
+            };
+          }) as Appointment[];
+        
+        // Filter out cancelled, completed, and missed appointments
+        appointmentsData = appointmentsData.filter(apt => 
+          apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
+        );
+        
+        // Sort by queue number
+        appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
+        
+        setAppointments(appointmentsData);
+        
+        // Check if there's an appointment with status 'serving' or 'confirmed'
+        const currentlyServing = appointmentsData.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
+        
+        setNowServing(currentlyServing || null);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error processing queue:', error);
+        addNotification('error', 'Failed to process queue data.');
+        setIsLoading(false);
+      }
+    },
+    (error) => {
+      console.error('Error loading queue:', error);
+      addNotification('error', 'Failed to load queue. Please try again.');
+      setIsLoading(false);
+    }
+  );
+  
+  return () => unsubscribe();
+}, [addNotification]);
 
   const handleStartServing = async (appointment: Appointment) => {
     showConfirmDialog(
@@ -379,49 +382,35 @@ useEffect(() => {
     const hours12 = hours % 12 || 12;
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
-
-  const calculateWaitingTime = (timeSlot: string): string => {
-    const now = new Date();
-    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    
-    const [hours, minutes] = timeSlot.split(':').map(Number);
-    const appointmentTime = new Date(phTime);
-    appointmentTime.setHours(hours, minutes, 0, 0);
-    
-    // Calculate difference in minutes
-    const diffMs = appointmentTime.getTime() - phTime.getTime();
-    const diffMinutes = Math.floor(diffMs / 60000);
-    
-    if (diffMinutes > 0) {
-      // Appointment is in the future - show remaining time
-      if (diffMinutes < 60) {
-        return `${diffMinutes} min remaining`;
-      } else {
-        const hrs = Math.floor(diffMinutes / 60);
-        const mins = diffMinutes % 60;
-        if (mins === 0) {
-          return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} remaining`;
-        }
-        return `${hrs}h ${mins}m remaining`;
-      }
-    } else if (diffMinutes === 0) {
-      // Appointment is exactly now
-      return 'Starting now';
+const calculateWaitingTime = (timeSlot: string): string => {
+  const now = new Date();
+  const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  
+  const [hours, minutes] = timeSlot.split(':').map(Number);
+  const appointmentTime = new Date(phTime);
+  appointmentTime.setHours(hours, minutes, 0, 0);
+  
+  // Calculate difference in minutes
+  const diffMs = appointmentTime.getTime() - phTime.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  
+  if (diffMinutes > 0) {
+    // Appointment is in the future - show remaining time
+    if (diffMinutes < 60) {
+      return `${diffMinutes} min remaining`;
     } else {
-      // Appointment time has passed - show how long they've been waiting
-      const waitingMinutes = Math.abs(diffMinutes);
-      if (waitingMinutes < 60) {
-        return `Waiting ${waitingMinutes} min`;
-      } else {
-        const hrs = Math.floor(waitingMinutes / 60);
-        const mins = waitingMinutes % 60;
-        if (mins === 0) {
-          return `Waiting ${hrs}h`;
-        }
-        return `Waiting ${hrs}h ${mins}m`;
+      const hrs = Math.floor(diffMinutes / 60);
+      const mins = diffMinutes % 60;
+      if (mins === 0) {
+        return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} remaining`;
       }
+      return `${hrs}h ${mins}m remaining`;
     }
-  };
+  } else {
+    // Appointment time has passed or is now - show 0
+    return '0 min remaining';
+  }
+};
 
   const getNotificationColor = (type: string) => {
     switch (type) {

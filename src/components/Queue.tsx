@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Clock, Calendar, User, AlertCircle, CheckCircle } from 'lucide-react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface Appointment {
@@ -44,22 +44,9 @@ const calculateWaitingTime = (timeSlot: string): string => {
       }
       return `${hrs}h ${mins}m remaining`;
     }
-  } else if (diffMinutes === 0) {
-    // Appointment is exactly now
-    return 'Starting now';
   } else {
-    // Appointment time has passed - show how long they've been waiting
-    const waitingMinutes = Math.abs(diffMinutes);
-    if (waitingMinutes < 60) {
-      return `Waiting ${waitingMinutes} min`;
-    } else {
-      const hrs = Math.floor(waitingMinutes / 60);
-      const mins = waitingMinutes % 60;
-      if (mins === 0) {
-        return `Waiting ${hrs}h`;
-      }
-      return `Waiting ${hrs}h ${mins}m`;
-    }
+    // Appointment time has passed or is now - show 0
+    return '0 min remaining';
   }
 };
 
@@ -89,54 +76,54 @@ const Queue = () => {
     return date.toLocaleDateString('en-US', options);
   };
 
-  const loadTodaysAppointments = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const today = getTodayDatePH();
-      const appointmentsRef = collection(db, 'appointments');
-      
-      // Query all appointments for today
-      const q = query(
-        appointmentsRef,
-        where('appointmentDate', '==', today)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      // Filter appointments that should be in the queue (excluding cancelled and completed)
-      let appointmentsData = querySnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Appointment[];
-      
-      // Filter out cancelled and completed appointments
-      appointmentsData = appointmentsData.filter(apt => 
-        apt.status !== 'cancelled' && apt.status !== 'completed'
-      );
-      
-      // Sort by queue number
-      appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
-      
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    loadTodaysAppointments();
+    setIsLoading(true);
     
-    // Refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadTodaysAppointments();
-    }, 30000);
-    return () => {
-      clearInterval(interval);
-    };
-  }, [loadTodaysAppointments]);
+    const today = getTodayDatePH();
+    const appointmentsRef = collection(db, 'appointments');
+    
+    // Query all appointments for today
+    const q = query(
+      appointmentsRef,
+      where('appointmentDate', '==', today)
+    );
+    
+    // Subscribe to real-time updates
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        try {
+          // Filter appointments that should be in the queue (excluding cancelled, completed, and missed)
+          let appointmentsData = querySnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            })) as Appointment[];
+          
+          // Filter out cancelled, completed, and missed appointments
+          appointmentsData = appointmentsData.filter(apt => 
+            apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
+          );
+          
+          // Sort by queue number
+          appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
+          
+          setAppointments(appointmentsData);
+          setIsLoading(false);
+        } catch (error) {
+          console.error('Error processing appointments:', error);
+          setIsLoading(false);
+        }
+      },
+      (error) => {
+        console.error('Error loading appointments:', error);
+        setIsLoading(false);
+      }
+    );
+    
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []);
 
   const convertTo12Hour = (time24: string): string => {
     const [hours, minutes] = time24.split(':').map(Number);
@@ -153,16 +140,16 @@ const Queue = () => {
     }
   };
 
-    const getStatusColor = (status: string) => {
-      switch (status) {
-        case 'serving': return 'bg-green-100 text-green-800';
-        case 'confirmed': return 'bg-green-100 text-green-800';
-        case 'scheduled': return 'bg-green-100 text-green-800';
-        case 'pending': return 'bg-yellow-100 text-yellow-800';
-        case 'missed': return 'bg-red-100 text-red-800'; 
-        default: return 'bg-gray-100 text-gray-800';
-      }
-    };
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'serving': return 'bg-green-100 text-green-800';
+      case 'confirmed': return 'bg-green-100 text-green-800';
+      case 'scheduled': return 'bg-green-100 text-green-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'missed': return 'bg-red-100 text-red-800'; 
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
 
   // Find the appointment currently being served (status 'serving' or 'confirmed')
   const nowServing = appointments.find(apt => apt.status === 'serving' || apt.status === 'confirmed');
@@ -279,51 +266,51 @@ const Queue = () => {
                   </div>
 
                   <div className="ml-16 grid md:grid-cols-12 gap-4 items-center">
-                  {/* Patient Info - Anonymous */}
-                  <div className="md:col-span-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                        <User className="w-5 h-5 text-indigo-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">Patient #{appointment.queueNumber}</h3>
-                        <p className="text-sm text-gray-600">Appointment</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Time */}
-                  <div className="md:col-span-2">
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <Clock className="w-4 h-4" />
-                      <span className="font-semibold">{convertTo12Hour(appointment.timeSlot)}</span>
-                    </div>
-                  </div>
-
-                  {/* Waiting Time - NEW */}
-                  <div className="md:col-span-2">
-                    <div className="flex flex-col">
-                      <span className="text-xs text-gray-500 mb-1">Waiting Time</span>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-orange-500" />
-                        <span className="font-bold text-orange-600">{calculateWaitingTime(appointment.timeSlot)}</span>
+                    {/* Patient Info - Anonymous */}
+                    <div className="md:col-span-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                          <User className="w-5 h-5 text-indigo-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">Patient #{appointment.queueNumber}</h3>
+                          <p className="text-sm text-gray-600">Appointment</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Status & Priority */}
-                  <div className="md:col-span-5 flex flex-col gap-2">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold text-center ${getStatusColor(appointment.status)}`}>
-                      {appointment.status === 'serving' ? 'Being Served' : 
-                      appointment.status === 'confirmed' ? 'Confirmed' : 
-                      appointment.status}
-                    </span>
-                    <span className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs font-semibold border ${getPriorityColor(appointment.priorityLevel)}`}>
-                      <AlertCircle className="w-3 h-3" />
-                      {appointment.priorityLevel}
-                    </span>
+                    {/* Time */}
+                    <div className="md:col-span-2">
+                      <div className="flex items-center gap-2 text-gray-700">
+                        <Clock className="w-4 h-4" />
+                        <span className="font-semibold">{convertTo12Hour(appointment.timeSlot)}</span>
+                      </div>
+                    </div>
+
+                    {/* Waiting Time */}
+                    <div className="md:col-span-2">
+                      <div className="flex flex-col">
+                        <span className="text-xs text-gray-500 mb-1">Waiting Time</span>
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-orange-500" />
+                          <span className="font-bold text-orange-600">{calculateWaitingTime(appointment.timeSlot)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status & Priority */}
+                    <div className="md:col-span-5 flex flex-col gap-2">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold text-center ${getStatusColor(appointment.status)}`}>
+                        {appointment.status === 'serving' ? 'Being Served' : 
+                        appointment.status === 'confirmed' ? 'Confirmed' : 
+                        appointment.status}
+                      </span>
+                      <span className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs font-semibold border ${getPriorityColor(appointment.priorityLevel)}`}>
+                        <AlertCircle className="w-3 h-3" />
+                        {appointment.priorityLevel}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
                   {/* Status Indicator */}
                   {(appointment.status === 'serving' || appointment.status === 'confirmed') && (

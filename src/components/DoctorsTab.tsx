@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Filter, Plus, Edit2, Trash2, User, Mail, Phone, Stethoscope, Calendar, X } from 'lucide-react';
-import { collection, query, getDocs, deleteDoc, doc, orderBy, where } from 'firebase/firestore';
+import { collection, query, getDocs, onSnapshot, deleteDoc, doc, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import DoctorModal from './DoctorModal';
 import { toast } from 'react-toastify';
@@ -54,9 +54,8 @@ const DoctorsTab = () => {
   ];
 
   useEffect(() => {
-    loadDoctors();
-    loadAppointments();
-  }, []);
+  loadDoctors();
+}, []);
 
   useEffect(() => {
     let filtered = [...doctors];
@@ -106,37 +105,65 @@ const DoctorsTab = () => {
       setIsLoading(false);
     }
   };
-
-  const loadAppointments = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(
-        appointmentsRef,
-        where('status', '==', 'confirmed'),
-        where('date', '==', today)
-      );
-      const querySnapshot = await getDocs(q);
+// Real-time appointments listener
+useEffect(() => {
+  const today = new Date();
+  const phTime = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const year = phTime.getFullYear();
+  const month = String(phTime.getMonth() + 1).padStart(2, '0');
+  const day = String(phTime.getDate()).padStart(2, '0');
+  const todayPH = `${year}-${month}-${day}`;
+  
+  const appointmentsRef = collection(db, 'appointments');
+  const q = query(
+    appointmentsRef,
+    where('appointmentDate', '==', todayPH)
+  );
+  
+  // Subscribe to real-time updates
+  const unsubscribe = onSnapshot(
+    q,
+    (querySnapshot) => {
+      const appointmentsData = querySnapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            doctorId: data.doctor || '',
+            status: data.status,
+            date: data.appointmentDate,
+            time: data.timeSlot
+          };
+        })
+        .filter(apt => 
+          apt.status !== 'cancelled' && 
+          apt.status !== 'completed' && 
+          apt.status !== 'missed'
+        ) as Appointment[];
       
-      const appointmentsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-      
+      console.log('📊 Real-time appointments update:', appointmentsData.length);
       setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
+    },
+    (error) => {
+      console.error('Error listening to appointments:', error);
     }
-  };
+  );
+  
+  return () => unsubscribe();
+}, []);
 
-  const getDoctorAppointments = (doctorId: string) => {
-    return appointments.filter(appointment => appointment.doctorId === doctorId);
-  };
+ const getDoctorAppointments = (doctorName: string) => {
+  const filtered = appointments.filter(appointment => 
+    appointment.doctorId === doctorName || 
+    appointment.doctorId === `Dr. ${doctorName}`
+  );
+  return filtered;
+};
 
-  const getDoctorSlotCount = (doctorId: string) => {
-    const doctorAppointments = getDoctorAppointments(doctorId);
-    return doctorAppointments.length;
-  };
+const getDoctorSlotCount = (doctorName: string) => {
+  const doctorAppointments = getDoctorAppointments(doctorName);
+  return doctorAppointments.length;
+};
 
   const getDoctorTotalSlots = (doctor: Doctor) => {
     const today = new Date().toISOString().split('T')[0];
@@ -158,12 +185,13 @@ const DoctorsTab = () => {
     return availableSlots;
   };
 
-  const isDoctorAvailable = (doctor: Doctor) => {
-    const slotCount = getDoctorSlotCount(doctor.id);
-    const totalSlots = getDoctorTotalSlots(doctor);
-    
-    return doctor.isActive && totalSlots > 0 && slotCount < totalSlots;
-  };
+const isDoctorAvailable = (doctor: Doctor) => {
+  const slotCount = getDoctorSlotCount(doctor.name);
+  const totalSlots = getDoctorTotalSlots(doctor);
+  const active = doctor.isActive === undefined ? true : doctor.isActive;
+  
+  return active && totalSlots > 0 && slotCount < totalSlots;
+};
 
   const handleAddDoctor = () => {
     setSelectedDoctor(null);
@@ -340,7 +368,7 @@ const DoctorsTab = () => {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredDoctors.map((doctor) => {
-              const slotCount = getDoctorSlotCount(doctor.id);
+              const slotCount = getDoctorSlotCount(doctor.name);
               const totalSlots = getDoctorTotalSlots(doctor);
               const available = isDoctorAvailable(doctor);
 
