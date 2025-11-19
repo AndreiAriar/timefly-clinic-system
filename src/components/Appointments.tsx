@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Stethoscope, Eye, X, Trash2 } from 'lucide-react';
-import { collection, query, getDocs, updateDoc, doc, orderBy, where } from 'firebase/firestore';
+import { collection, query, updateDoc, doc, orderBy, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import ViewAppointmentModal from './ViewAppointmentModal';
 import RescheduleModal from './RescheduleModal';
@@ -25,6 +25,7 @@ interface Appointment {
   cancelReason?: string;
   deletedByStaff?: boolean;
   deletedByPatient?: boolean;
+  email: string;
 }
 
 const Appointments = () => {
@@ -41,7 +42,6 @@ const Appointments = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadAppointments();
   }, []);
 
   useEffect(() => {
@@ -94,47 +94,57 @@ const Appointments = () => {
     const day = String(today.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+useEffect(() => {
+  // Get current user's email from auth
+  const userEmail = auth.currentUser?.email;
+  
+  if (!userEmail) {
+    console.error('No user email found');
+    setIsLoading(false);
+    return;
+  }
 
-  const loadAppointments = async () => {
-    setIsLoading(true);
-    try {
-      // Get current user's email from auth
-      const userEmail = auth.currentUser?.email;
-      
-      if (!userEmail) {
-        console.error('No user email found');
-        setIsLoading(false);
-        return;
-      }
+  console.log('🔥 Setting up real-time listener for patient appointments...');
 
-      const appointmentsRef = collection(db, 'appointments');
-      // Filter appointments by current user's email
-      const q = query(
-        appointmentsRef, 
-        where('email', '==', userEmail),
-        orderBy('createdAt', 'desc')
-      );
-      const querySnapshot = await getDocs(q);
-      
+  // Real-time listener for appointments
+  const appointmentsRef = collection(db, 'appointments');
+  const q = query(
+    appointmentsRef, 
+    where('email', '==', userEmail),
+    orderBy('createdAt', 'desc')
+  );
+  
+  const unsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
       // Filter out appointments deleted by patient
-      const appointmentsData = querySnapshot.docs
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Appointment))
-      .filter(apt => !apt.deletedByPatient);
+      const appointmentsData = snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Appointment))
+        .filter(apt => !apt.deletedByPatient);
       
+      console.log('📊 Real-time update - Patient Appointments:', appointmentsData.length);
       setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading appointments:', error);
+      setIsLoading(false);
+    },
+    (error) => {
+      console.error('❌ Error in appointments listener:', error);
       toast.error('Failed to load appointments. Please try again.', {
         position: "top-center",
         autoClose: 5000,
       });
-    } finally {
       setIsLoading(false);
     }
+  );
+
+  // Cleanup function
+  return () => {
+    console.log('🔌 Cleaning up patient appointments listener');
+    unsubscribe();
   };
+}, []);
 
   // In Appointments.tsx - Update the filtering functions
   const getTodaysAppointments = () => {
@@ -157,98 +167,92 @@ const Appointments = () => {
   };
 
   const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
-    if (!selectedAppointment) return;
+  if (!selectedAppointment) return;
 
-    try {
-      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-      await updateDoc(appointmentRef, {
-        appointmentDate: updatedData.appointmentDate,
-        timeSlot: updatedData.timeSlot,
-        status: 'rescheduled'
-      });
+  try {
+    const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
+    await updateDoc(appointmentRef, {
+      appointmentDate: updatedData.appointmentDate,
+      timeSlot: updatedData.timeSlot,
+      status: 'rescheduled'
+    });
 
-      // Reload appointments
-      await loadAppointments();
-      
-      setShowRescheduleModal(false);
-      setSelectedAppointment(null);
-      toast.success('Appointment rescheduled successfully!', {
-        position: "top-center",
-        autoClose: 3000,
-      });
-    } catch (error) {
-      console.error('Error rescheduling appointment:', error);
-      toast.error('Failed to reschedule appointment. Please try again.', {
-        position: "top-center",
-        autoClose: 5000,
-      });
-    }
-  };
+    // Real-time listener will auto-update, no need to reload
+    setShowRescheduleModal(false);
+    setSelectedAppointment(null);
+    toast.success('Appointment rescheduled successfully!', {
+      position: "top-center",
+      autoClose: 3000,
+    });
+  } catch (error) {
+    console.error('Error rescheduling appointment:', error);
+    toast.error('Failed to reschedule appointment. Please try again.', {
+      position: "top-center",
+      autoClose: 5000,
+    });
+  }
+};
 
   const handleCancel = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setShowCancelModal(true);
   };
 
-  const confirmCancel = async (reason: string) => {
-    if (!selectedAppointment) return;
+const handleDelete = (appointment: Appointment) => {
+  setSelectedAppointment(appointment);
+  setShowDeleteModal(true);
+};
 
-    try {
-      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-      await updateDoc(appointmentRef, {
-        status: 'cancelled',
-        cancelReason: reason
-      });
+const confirmCancel = async (reason: string) => {
+  if (!selectedAppointment) return;
 
-      // Reload appointments
-      await loadAppointments();
-      
-      setShowCancelModal(false);
-      setSelectedAppointment(null);
-      toast.success('Appointment cancelled successfully!', {
-        position: "top-center",
-        autoClose: 3000,
-      });
-    } catch (error) {
-      console.error('Error cancelling appointment:', error);
-      toast.error('Failed to cancel appointment. Please try again.', {
-        position: "top-center",
-        autoClose: 5000,
-      });
-    }
-  };
+  try {
+    const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
+    await updateDoc(appointmentRef, {
+      status: 'cancelled',
+      cancelReason: reason
+    });
 
-  const handleDelete = (appointment: Appointment) => {
-    setSelectedAppointment(appointment);
-    setShowDeleteModal(true);
-  };
+    // Real-time listener will auto-update, no need to reload
+    setShowCancelModal(false);
+    setSelectedAppointment(null);
+    toast.success('Appointment cancelled successfully!', {
+      position: "top-center",
+      autoClose: 3000,
+    });
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    toast.error('Failed to cancel appointment. Please try again.', {
+      position: "top-center",
+      autoClose: 5000,
+    });
+  }
+};
 
-  const confirmDelete = async () => {
-    if (!selectedAppointment) return;
+const confirmDelete = async () => {
+  if (!selectedAppointment) return;
 
-    try {
-      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-      await updateDoc(appointmentRef, {
-        deletedByPatient: true
-      });
+  try {
+    const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
+    await updateDoc(appointmentRef, {
+      deletedByPatient: true
+    });
 
-      // Reload appointments
-      await loadAppointments();
-      
-      setShowDeleteModal(false);
-      setSelectedAppointment(null);
-      toast.success('Appointment deleted successfully!', {
-        position: "top-center",
-        autoClose: 3000,
-      });
-    } catch (error) {
-      console.error('Error deleting appointment:', error);
-      toast.error('Failed to delete appointment. Please try again.', {
-        position: "top-center",
-        autoClose: 5000,
-      });
-    }
-  };
+    // Real-time listener will auto-update, no need to reload
+    setShowDeleteModal(false);
+    setSelectedAppointment(null);
+    toast.success('Appointment deleted successfully!', {
+      position: "top-center",
+      autoClose: 3000,
+    });
+  } catch (error) {
+    console.error('Error deleting appointment:', error);
+    toast.error('Failed to delete appointment. Please try again.', {
+      position: "top-center",
+      autoClose: 5000,
+    });
+  }
+};
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -542,7 +546,6 @@ const Appointments = () => {
             setSelectedAppointment(null);
           }}
           appointment={selectedAppointment}
-          onAppointmentUpdate={loadAppointments}
         />
       )}
 

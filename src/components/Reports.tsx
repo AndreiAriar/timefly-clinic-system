@@ -10,7 +10,7 @@ import {
   Stethoscope,
   Clock
 } from 'lucide-react';
-import { collection, query, getDocs, where, orderBy } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import {
   LineChart,
@@ -25,10 +25,8 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  type PieLabelRenderProps
+  ResponsiveContainer
 } from 'recharts';
-
 interface Appointment {
   id: string;
   fullName: string;
@@ -39,6 +37,9 @@ interface Appointment {
   priorityLevel: string;
   status: string;
   createdAt: string;
+  deletedByStaff?: boolean;
+  deletedByPatient?: boolean;
+  email: string;
 }
 
 interface Doctor {
@@ -82,10 +83,22 @@ interface LineChartData {
 interface PieChartData {
   name: string;
   value: number;
-  [key: string]: string | number; // Add index signature to fix TypeScript error
+  [key: string]: string | number;
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+// Rainbow colors for medical conditions
+const RAINBOW_COLORS = [
+  '#FF0000', // Red
+  '#FF7F00', // Orange
+  '#FFFF00', // Yellow
+  '#00FF00', // Green
+  '#0000FF', // Blue
+  '#4B0082', // Indigo
+  '#8B00FF', // Violet
+  '#FF1493', // Deep Pink
+  '#00CED1', // Dark Turquoise
+  '#FFD700'  // Gold
+];
 
 const Reports = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -101,44 +114,9 @@ const Reports = () => {
     normalCases: 0
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      // Load appointments
-      const appointmentsRef = collection(db, 'appointments');
-      const appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
-      const appointmentsSnapshot = await getDocs(appointmentsQuery);
-      const appointmentsData = appointmentsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-      setAppointments(appointmentsData);
-
-      // Load doctors
-      const doctorsRef = collection(db, 'doctors');
-      const doctorsQuery = query(doctorsRef, where('isActive', '==', true));
-      const doctorsSnapshot = await getDocs(doctorsQuery);
-      const doctorsData = doctorsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Doctor[];
-      setDoctors(doctorsData);
-
-      // Calculate stats
-      calculateStats(appointmentsData);
-    } catch (error) {
-      console.error('Error loading reports data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const calculateStats = (appointmentsData: Appointment[]) => {
+  const calculateStats = useCallback((appointmentsData: Appointment[]) => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -167,7 +145,69 @@ const Reports = () => {
     };
 
     setStats(statsData);
+    console.log('📈 Stats calculated:', statsData);
+  }, []);
+useEffect(() => {
+  console.log('🔥 Setting up real-time listeners...');
+  
+  // Real-time listener for appointments
+  const appointmentsRef = collection(db, 'appointments');
+  const appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
+  
+  const unsubscribeAppointments = onSnapshot(
+    appointmentsQuery,
+    (snapshot) => {
+      // Filter out deleted appointments
+      const appointmentsData = snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Appointment[];
+      
+      // Remove appointments deleted by staff or patient
+      const activeAppointments = appointmentsData.filter(
+        apt => !apt.deletedByStaff && !apt.deletedByPatient
+      );
+      
+      console.log('📊 Real-time update - Active Appointments:', activeAppointments.length);
+      setAppointments(activeAppointments);
+      calculateStats(activeAppointments);
+      setLastUpdated(new Date());
+      setIsLoading(false);
+    },
+    (error) => {
+      console.error('❌ Error in appointments listener:', error);
+      setIsLoading(false);
+    }
+  );
+
+  // Real-time listener for doctors
+  const doctorsRef = collection(db, 'doctors');
+  const doctorsQuery = query(doctorsRef, where('isActive', '==', true));
+  
+  const unsubscribeDoctors = onSnapshot(
+    doctorsQuery,
+    (snapshot) => {
+      const doctorsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Doctor[];
+      
+      console.log('👨‍⚕️ Real-time update - Doctors:', doctorsData.length);
+      setDoctors(doctorsData);
+    },
+    (error) => {
+      console.error('❌ Error in doctors listener:', error);
+    }
+  );
+
+  // Cleanup function to unsubscribe from listeners
+  return () => {
+    console.log('🔌 Cleaning up real-time listeners');
+    unsubscribeAppointments();
+    unsubscribeDoctors();
   };
+}, [calculateStats]);
 
   // Convert to Philippine Time (UTC+8)
   const toPHTime = (date: Date): Date => {
@@ -255,7 +295,6 @@ const Reports = () => {
     
     return Object.entries(conditions)
       .sort(([,a], [,b]) => b - a)
-      .slice(0, 5)
       .map(([name, value]) => ({ name, value }));
   };
 
@@ -291,16 +330,50 @@ const Reports = () => {
     return Math.round(((stats.finishedThisMonth - stats.finishedLastMonth) / stats.finishedLastMonth) * 100);
   };
 
-  // Pie chart label renderer with proper Recharts typing - improved to prevent overlap
-  const renderPieLabel = (props: PieLabelRenderProps): string | null => {
-    const { name, percent } = props;
-    const displayName = name || 'Unknown';
-    const displayPercent = percent || 0;
+  // Custom legend renderer for medical conditions with rainbow colors
+  const renderMedicalConditionsLegend = () => {
+    const medicalConditionsData = getMedicalConditionsData();
     
-    // Only show label if percentage is significant enough to avoid clutter
-    if (displayPercent < 0.05) return null;
+    return (
+      <div className="flex flex-wrap justify-center gap-4 mt-4">
+        {medicalConditionsData.map((entry, index) => (
+          <div key={`legend-${entry.name}`} className="flex items-center gap-2">
+            <div 
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: RAINBOW_COLORS[index % RAINBOW_COLORS.length] }}
+            />
+            <span className="text-sm text-gray-700">{entry.name}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Custom legend renderer for priority distribution with percentages
+  const renderPriorityLegend = () => {
+    const priorityData = getPriorityAnalysisData();
+    const total = priorityData.reduce((sum, item) => sum + item.value, 0);
     
-    return `${displayName} (${(displayPercent * 100).toFixed(0)}%)`;
+    return (
+      <div className="flex flex-wrap justify-center gap-6 mt-4">
+        {priorityData.map((entry, index) => {
+          const percentage = total > 0 ? Math.round((entry.value / total) * 100) : 0;
+          const colors = ['#EF4444', '#F59E0B', '#10B981']; // Red, Orange, Green
+          
+          return (
+            <div key={`priority-legend-${entry.name}`} className="flex items-center gap-2">
+              <div 
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: colors[index] }}
+              />
+              <span className="text-sm font-medium text-gray-700">
+                {entry.name} ({percentage}%)
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   // Calculate percentage for each status
@@ -324,8 +397,16 @@ const Reports = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
-          <p className="text-gray-600 mt-2">Comprehensive overview of clinic performance and patient statistics</p>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
+            <p className="text-gray-600 mt-2">Comprehensive overview of clinic performance and patient statistics</p>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <p className="text-xs text-gray-500">
+                Live Updates • Last updated: {lastUpdated.toLocaleTimeString()}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -481,16 +562,20 @@ const Reports = () => {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={renderPieLabel}
+                      label={false}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
                     >
                       {getMedicalConditionsData().map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={RAINBOW_COLORS[index % RAINBOW_COLORS.length]} 
+                        />
                       ))}
                     </Pie>
                     <Tooltip />
+                    <Legend content={renderMedicalConditionsLegend} />
                   </RechartsPieChart>
                 </ResponsiveContainer>
               </div>
@@ -510,17 +595,17 @@ const Reports = () => {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={renderPieLabel}
+                      label={false}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      <Cell fill="#EF4444" /> {/* Emergency - Red */}
-                      <Cell fill="#F59E0B" /> {/* Urgent - Orange */}
-                      <Cell fill="#10B981" /> {/* Normal - Green */}
+                      <Cell fill="#EF4444" />
+                      <Cell fill="#F59E0B" />
+                      <Cell fill="#10B981" />
                     </Pie>
                     <Tooltip />
-                    <Legend />
+                    <Legend content={renderPriorityLegend} />
                   </RechartsPieChart>
                 </ResponsiveContainer>
               </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown, Mail } from 'lucide-react';
-import { collection, query, getDocs, updateDoc, doc, orderBy, where } from 'firebase/firestore';
+import { collection, query, getDocs, updateDoc, doc, orderBy, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import StaffViewAppointments from './StaffViewAppointments';
 import RescheduleModal from './RescheduleModal';
@@ -58,77 +58,98 @@ const StaffAppointments = () => {
   const showToast = (message: string, type: ToastType) => {
     setToast({ message, type, isVisible: true });
   };
+useEffect(() => {
+  console.log('🔥 Setting up real-time listeners for staff...');
+  
+  // Get current user's email
+  const userEmail = auth.currentUser?.email;
+  
+  if (!userEmail) {
+    console.error('No user email found');
+    setIsLoading(false);
+    return;
+  }
 
-  // Use useEffect to call the functions on component mount
-  useEffect(() => {
-    const loadAppointments = async () => {
-      setIsLoading(true);
-      try {
-        const appointmentsRef = collection(db, 'appointments');
-        
-        // Get current user's email
-        const userEmail = auth.currentUser?.email;
-        
-        if (!userEmail) {
-          console.error('No user email found');
+  let unsubscribeAppointments: (() => void) | undefined;
+
+  // Load user role and setup appointments listener
+  const setupListeners = async () => {
+    try {
+      // Get user role from Firestore
+      const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+      const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+      const appointmentsRef = collection(db, 'appointments');
+      let appointmentsQuery;
+      
+      // If staff or doctor, show all appointments
+      if (userRole === 'staff' || userRole === 'doctor') {
+        appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
+      } else {
+        // If patient, show only their appointments
+        appointmentsQuery = query(
+          appointmentsRef, 
+          where('email', '==', userEmail),
+          orderBy('createdAt', 'desc')
+        );
+      }
+      
+      // Real-time listener for appointments
+      unsubscribeAppointments = onSnapshot(
+        appointmentsQuery,
+        (snapshot) => {
+          // Filter out appointments deleted by staff
+          const appointmentsData = snapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Appointment))
+            .filter(apt => !apt.deletedByStaff);
+          
+          console.log('📊 Real-time update - Staff Appointments:', appointmentsData.length);
+          setAppointments(appointmentsData);
           setIsLoading(false);
-          return;
+        },
+        (error) => {
+          console.error('❌ Error in appointments listener:', error);
+          showToast('Failed to load appointments. Please try again.', 'error');
+          setIsLoading(false);
         }
+      );
+    } catch (error) {
+      console.error('Error setting up listeners:', error);
+      showToast('Failed to load appointments. Please try again.', 'error');
+      setIsLoading(false);
+    }
+  };
 
-        // Get user role from Firestore
-        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-        const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+  setupListeners();
 
-        let q;
-        
-        // If staff or doctor, show all appointments
-        if (userRole === 'staff' || userRole === 'doctor') {
-          q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-        } else {
-          // If patient, show only their appointments
-          q = query(
-            appointmentsRef, 
-            where('email', '==', userEmail),
-            orderBy('createdAt', 'desc')
-          );
-        }
-        
-        const querySnapshot = await getDocs(q);
-        
-        // Filter out appointments deleted by staff
-        const appointmentsData = querySnapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as Appointment))
-          .filter(apt => !apt.deletedByStaff);
-        
-        setAppointments(appointmentsData);
-      } catch (error) {
-        console.error('Error loading appointments:', error);
-        showToast('Failed to load appointments. Please try again.', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // Load doctors
+  const loadDoctors = async () => {
+    try {
+      const doctorsRef = collection(db, 'doctors');
+      const q = query(doctorsRef, where('isActive', '==', true));
+      const querySnapshot = await getDocs(q);
+      
+      const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
+      setDoctors(doctorsData);
+    } catch (error) {
+      console.error('Error loading doctors:', error);
+      showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+    }
+  };
 
-    const loadDoctors = async () => {
-      try {
-        const doctorsRef = collection(db, 'doctors');
-        const q = query(doctorsRef, where('isActive', '==', true));
-        const querySnapshot = await getDocs(q);
-        
-        const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
-        setDoctors(doctorsData);
-      } catch (error) {
-        console.error('Error loading doctors:', error);
-        showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-      }
-    };
+  loadDoctors();
 
-    loadAppointments();
-    loadDoctors();
-  }, []);
+  // Cleanup function
+  return () => {
+    console.log('🔌 Cleaning up staff appointments listener');
+    if (unsubscribeAppointments) {
+      unsubscribeAppointments();
+    }
+  };
+}, []);
 
   useEffect(() => {
     let filtered = [...appointments];
@@ -218,92 +239,55 @@ const StaffAppointments = () => {
     setShowRescheduleModal(true);
   };
 
-  const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
-    if (!selectedAppointment) return;
+ const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
+  if (!selectedAppointment) return;
 
-    try {
-      // First update Firebase
-      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-      await updateDoc(appointmentRef, {
+  try {
+    // First update Firebase
+    const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
+    await updateDoc(appointmentRef, {
+      appointmentDate: updatedData.appointmentDate,
+      timeSlot: updatedData.timeSlot,
+      status: 'rescheduled',
+      rescheduledAt: new Date().toISOString()
+    });
+
+    console.log('✅ Firebase updated for reschedule');
+
+    // Then send email notification
+    const response = await fetch('/api/reschedule-appointment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        appointmentId: selectedAppointment.id,
         appointmentDate: updatedData.appointmentDate,
         timeSlot: updatedData.timeSlot,
-        status: 'rescheduled',
-        rescheduledAt: new Date().toISOString()
-      });
+        patientEmail: selectedAppointment.email,
+        patientName: selectedAppointment.fullName,
+        doctor: selectedAppointment.doctor,
+        queueNumber: selectedAppointment.queueNumber,
+        oldDate: selectedAppointment.appointmentDate,
+        oldTimeSlot: selectedAppointment.timeSlot,
+      }),
+    });
 
-      console.log('✅ Firebase updated for reschedule');
+    const data = await response.json();
 
-      // Then send email notification
-      const response = await fetch('/api/reschedule-appointment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          appointmentId: selectedAppointment.id,
-          appointmentDate: updatedData.appointmentDate,
-          timeSlot: updatedData.timeSlot,
-          patientEmail: selectedAppointment.email,
-          patientName: selectedAppointment.fullName,
-          doctor: selectedAppointment.doctor,
-          queueNumber: selectedAppointment.queueNumber,
-          oldDate: selectedAppointment.appointmentDate,
-          oldTimeSlot: selectedAppointment.timeSlot,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to send reschedule email');
-      }
-
-      // Reload appointments to reflect real-time updates
-      const loadAppointments = async () => {
-        try {
-          const appointmentsRef = collection(db, 'appointments');
-          const userEmail = auth.currentUser?.email;
-          
-          if (!userEmail) return;
-
-          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-          let q;
-          
-          if (userRole === 'staff' || userRole === 'doctor') {
-            q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-          } else {
-            q = query(
-              appointmentsRef, 
-              where('email', '==', userEmail),
-              orderBy('createdAt', 'desc')
-            );
-          }
-          
-          const querySnapshot = await getDocs(q);
-          const appointmentsData = querySnapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            } as Appointment))
-            .filter(apt => !apt.deletedByStaff);
-          
-          setAppointments(appointmentsData);
-        } catch (error) {
-          console.error('Error loading appointments:', error);
-        }
-      };
-
-      await loadAppointments();
-      setShowRescheduleModal(false);
-      setSelectedAppointment(null);
-      showToast('Appointment rescheduled successfully! Email notification sent.', 'success');
-    } catch (error) {
-      console.error('Error rescheduling appointment:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Failed to send reschedule email');
     }
-  };
+
+    // Real-time listener will auto-update appointments
+    setShowRescheduleModal(false);
+    setSelectedAppointment(null);
+    showToast('Appointment rescheduled successfully! Email notification sent.', 'success');
+  } catch (error) {
+    console.error('Error rescheduling appointment:', error);
+    showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
+  }
+};
 
   const handleCancel = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
