@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, X, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { Camera, X, CheckCircle, AlertCircle, Info, Upload } from 'lucide-react';
 import { collection, addDoc, query, where, getDocs, doc, updateDoc, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 
@@ -75,6 +75,7 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [isDoctorUnavailable, setIsDoctorUnavailable] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const eyeConditions = [
     'Blurred Vision',
@@ -280,6 +281,7 @@ const loadDoctors = useCallback(async () => {
     
     return isPast;
   };
+
 const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
   console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
   
@@ -450,8 +452,8 @@ useEffect(() => {
   };
 }, [isOpen]);
 
- const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
+// ✅ UPDATED: Enhanced photo upload with drag-and-drop support
+const handlePhotoUpload = (file: File) => {
   if (file) {
     // ✅ REMOVED FILE SIZE LIMIT - Only validate file type
     const validTypes = [
@@ -531,7 +533,39 @@ useEffect(() => {
     
     reader.readAsDataURL(file);
   }
-};  const handleSubmit = async () => {
+};
+
+// ✅ NEW: Drag and drop event handlers
+const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  e.preventDefault();
+  setIsDragOver(true);
+};
+
+const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+  e.preventDefault();
+  setIsDragOver(false);
+};
+
+const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  e.preventDefault();
+  setIsDragOver(false);
+  
+  const files = e.dataTransfer.files;
+  if (files && files.length > 0) {
+    const file = files[0];
+    handlePhotoUpload(file);
+  }
+};
+
+// ✅ UPDATED: File input change handler
+const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (file) {
+    handlePhotoUpload(file);
+  }
+};
+
+const handleSubmit = async () => {
     if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
         !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
       showToast('Please fill in all required fields', 'warning');
@@ -879,6 +913,7 @@ useEffect(() => {
                   </div>
                 </div>
 
+                {/* ✅ UPDATED: Photo upload section with drag-and-drop */}
                 <div>
                   <label htmlFor="photo" className="block text-sm font-medium text-gray-700 mb-2">
                     Upload Photo (Optional)
@@ -909,15 +944,30 @@ useEffect(() => {
                         </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
+                      <div
+                        className={`w-32 h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition cursor-pointer ${
+                          isDragOver 
+                            ? 'border-blue-600 bg-blue-50' 
+                            : 'border-gray-300 hover:border-blue-600 hover:bg-blue-50'
+                        }`}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
                         onClick={() => fileInputRef.current?.click()}
-                        className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center hover:border-blue-600 hover:bg-blue-50 transition cursor-pointer"
-                        aria-label="Upload photo"
+                        aria-label="Upload photo area"
                       >
-                        <Camera className="w-8 h-8 text-gray-400 mb-2" aria-hidden="true" />
-                        <span className="text-sm text-gray-500">Upload Photo</span>
-                      </button>
+                        {isDragOver ? (
+                          <>
+                            <Upload className="w-8 h-8 text-blue-600 mb-2" aria-hidden="true" />
+                            <span className="text-sm text-blue-600 font-medium">Drop image here</span>
+                          </>
+                        ) : (
+                          <>
+                            <Camera className="w-8 h-8 text-gray-400 mb-2" aria-hidden="true" />
+                            <span className="text-sm text-gray-500">Click or drag & drop</span>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                   <input
@@ -926,10 +976,13 @@ useEffect(() => {
                     id="photo"
                     name="photo"
                     accept="image/*"
-                    onChange={handlePhotoUpload}
+                    onChange={handleFileInputChange}
                     className="hidden"
                     aria-label="Photo upload input"
                   />
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    Click to browse or drag and drop an image file
+                  </p>
                 </div>
 
                 <div>
@@ -1336,24 +1389,25 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* Toast Notification for race condition to avoid double booking */}
-        {toast && toast.show && (
-        <div className="fixed inset-0 flex items-center justify-center z-[200] p-4">
+      {/* ✅ UPDATED: Toast Notification positioned on the right side */}
+      {toast && toast.show && (
+        <div className="fixed top-4 right-4 z-[200] max-w-md w-full">
           <div className={`
-            flex items-center gap-3 px-6 py-4 rounded-lg shadow-lg max-w-md mx-auto
+            flex items-center gap-3 px-6 py-4 rounded-lg shadow-lg transform transition-all duration-300
             ${toast.type === 'success' ? 'bg-green-500 text-white' : ''}
             ${toast.type === 'error' ? 'bg-red-500 text-white' : ''}
-            ${toast.type === 'warning' ? 'bg-red-600 text-white' : ''}
+            ${toast.type === 'warning' ? 'bg-orange-500 text-white' : ''}
             ${toast.type === 'info' ? 'bg-blue-500 text-white' : ''}
+            animate-in slide-in-from-right-full
           `}>
             {toast.type === 'success' && <CheckCircle className="w-6 h-6 flex-shrink-0" />}
             {toast.type === 'error' && <AlertCircle className="w-6 h-6 flex-shrink-0" />}
             {toast.type === 'warning' && <AlertCircle className="w-6 h-6 flex-shrink-0" />}
             {toast.type === 'info' && <Info className="w-6 h-6 flex-shrink-0" />}
-            <p className="font-medium">{toast.message}</p>
+            <p className="font-medium flex-1">{toast.message}</p>
             <button
               onClick={() => setToast(null)}
-              className="ml-auto hover:opacity-80 transition"
+              className="ml-2 hover:opacity-80 transition flex-shrink-0"
               aria-label="Close notification"
             >
               <X className="w-5 h-5" />
