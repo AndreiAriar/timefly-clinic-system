@@ -993,7 +993,7 @@ useEffect(() => {
                   >
                     <option value="normal">Normal (1 hour slots)</option>
                     <option value="urgent">Urgent (30 minute buffer slots)</option>
-                    <option value="emergery">Emergency (15 minute buffer slots)</option>
+                    <option value="emergency">Emergency (15 minute buffer slots)</option>
                   </select>
                 </div>
 
@@ -1036,106 +1036,68 @@ useEffect(() => {
                     autoComplete="off"
                   />
                 </div>
+
+                {/* ✅ UPDATED TIME SLOT SECTION - Moved Warning to Top */}
                 <div>
-                <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Time Slot <span className="text-red-500" aria-label="required">*</span>
-                </label>
-                {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
-                  (() => {
-                    const isLoading = isCheckingAvailability;
-                    const availableSlotsCount = availableTimeSlots.filter(slot => 
-                      slot.available && !slot.isBooked && !slot.isUnavailable
-                    ).length;
-                    const hasSlots = availableSlotsCount > 0;
-                    console.log(`🎯 UI Render Check - Loading: ${isLoading}, Available slots: ${availableSlotsCount}, Total slots: ${availableTimeSlots.length}, hasAvailableSlots: ${hasAvailableSlots}, hasSlots: ${hasSlots}, Doctor Unavailable: ${isDoctorUnavailable}`);
+                  <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Time Slot <span className="text-red-500" aria-label="required">*</span>
+                  </label>
+                  
+                  {/* ✅ MOVE WARNING TO TOP - Show before time slot grid */}
+                  {formData.doctor && formData.appointmentDate && formData.priorityLevel && !isCheckingAvailability && (
+                    (() => {
+                      const availableSlotsCount = availableTimeSlots.filter(slot => 
+                        slot.available && !slot.isBooked && !slot.isUnavailable
+                      ).length;
+                      const hasSlots = availableSlotsCount > 0;
 
-                    if (isLoading) {
-                      return (
-                        <div className="text-center py-8 border-2 border-gray-200 rounded-lg bg-gray-50">
-                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                          </div>
-                          <h4 className="text-xl font-bold text-gray-700 mb-2">Checking availability...</h4>
-                          <p className="text-gray-600">Please wait while we load available time slots.</p>
-                        </div>
-                      );
-                    }
-
-                    // ✅ UPDATED - Use state variable instead of async call
-                    if (isDoctorUnavailable) {
-                      return (
-                        <div className="text-center py-8 border-2 border-red-300 rounded-lg bg-red-50">
-                          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <span className="text-3xl">⏸️</span>
-                          </div>
-                          <h4 className="text-xl font-bold text-red-800 mb-2">Doctor Unavailable</h4>
-                          <p className="text-red-700 mb-4 px-4">
-                            Dr. {formData.doctor} is marked as unavailable on {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
-                              weekday: 'long', 
-                              year: 'numeric', 
-                              month: 'long', 
-                              day: 'numeric' 
-                            })}.
-                          </p>
-                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mx-4 mb-4">
-                            <div className="flex items-start gap-3">
-                              <Info className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                              <div className="text-left">
-                                <p className="text-yellow-800 font-medium mb-1">Reminder:</p>
-                                <p className="text-yellow-700 text-sm">
-                                  This doctor has been marked as unavailable by staff. Please select another doctor or date for your appointment.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                doctor: '', 
-                                appointmentDate: '', 
-                                timeSlot: '',
-                                priorityLevel: 'normal'
-                              }));
-                              setAvailableTimeSlots([]);
-                              setHasAvailableSlots(true);
-                              setIsDoctorUnavailable(false); // ✅ ADD THIS - Reset state
-                            }}
-                            className="px-6 py-3 bg-white text-red-700 border-2 border-red-300 rounded-lg font-medium hover:bg-red-50 transition"
-                          >
-                            📅 Choose Another Doctor/Date
-                          </button>
-                        </div>
-                      );
-                    }
-                      if (!hasAvailableSlots && !hasSlots) {
+                      // Show warning at top if doctor is unavailable or fully booked
+                      if (isDoctorUnavailable) {
                         return (
-                          <div className="text-center py-8 border-2 border-orange-300 rounded-lg bg-orange-50">
-                            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <span className="text-3xl">⚠️</span>
+                          <div className="mb-4 text-center py-6 border-2 border-red-300 rounded-lg bg-red-50">
+                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                              <span className="text-2xl">⏸️</span>
                             </div>
-                            <h4 className="text-xl font-bold text-orange-800 mb-2">No available time slots.</h4>
-                            <p className="text-orange-700 mb-6 px-4">
-                              {formData.doctor} is fully booked for {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                            <h4 className="text-lg font-bold text-red-800 mb-2">Doctor Unavailable</h4>
+                            <p className="text-red-700 text-sm px-4">
+                              Dr. {formData.doctor} is marked as unavailable on {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
                                 weekday: 'long', 
                                 year: 'numeric', 
                                 month: 'long', 
                                 day: 'numeric' 
-                              })}. Please select another doctor or date, or join the waiting list.
+                              })}.
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      if (!hasAvailableSlots && !hasSlots) {
+                        return (
+                          <div className="mb-4 text-center py-6 border-2 border-orange-300 rounded-lg bg-orange-50">
+                            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                              <span className="text-2xl">⚠️</span>
+                            </div>
+                            <h4 className="text-lg font-bold text-orange-800 mb-2">No Available Time Slots</h4>
+                            <p className="text-orange-700 text-sm mb-4 px-4">
+                              Dr. {formData.doctor} is fully booked for {new Date(formData.appointmentDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                              })}.
                             </p>
                             
                             {(!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
-                              !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
+                              !formData.medicalCondition ||
                               (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())) && (
-                              <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                <p className="text-blue-700 text-sm font-medium">
-                                  📝 Please fill all the fields to join the waiting list, and we'll let you know when a slot has opened up.
+                              <div className="mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-blue-700 text-xs font-medium">
+                                  📝 Please fill all required fields to join the waiting list
                                 </p>
                               </div>
                             )}
                             
-                            <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
+                            <div className="flex flex-col sm:flex-row gap-2 justify-center px-4">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1149,7 +1111,7 @@ useEffect(() => {
                                   setAvailableTimeSlots([]);
                                   setHasAvailableSlots(true);
                                 }}
-                                className="px-6 py-3 bg-white text-orange-700 border-2 border-orange-300 rounded-lg font-medium hover:bg-orange-50 transition"
+                                className="px-4 py-2 bg-white text-orange-700 border-2 border-orange-300 rounded-lg text-sm font-medium hover:bg-orange-50 transition"
                               >
                                 📅 Choose Another Doctor/Date
                               </button>
@@ -1165,7 +1127,9 @@ useEffect(() => {
                                       doctor: formData.doctor,
                                       appointmentDate: formData.appointmentDate,
                                       gender: formData.gender || '',
-                                      medicalCondition: formData.medicalCondition || '',
+                                      medicalCondition: formData.medicalCondition === 'Other (Please Specify)' 
+                                        ? formData.customCondition 
+                                        : formData.medicalCondition,
                                       phone: formData.phone || '',
                                       priorityLevel: formData.priorityLevel,
                                       preferredTimeSlot: formData.timeSlot || '',
@@ -1182,9 +1146,9 @@ useEffect(() => {
                                   }
                                 }}
                                 disabled={!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
-                                          !formData.doctor || !formData.appointmentDate || !formData.medicalCondition ||
+                                          !formData.medicalCondition ||
                                           (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())}
-                                className="px-6 py-3 bg-orange-600 text-white border-2 border-orange-600 rounded-lg font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
+                                className="px-4 py-2 bg-orange-600 text-white border-2 border-orange-600 rounded-lg text-sm font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
                               >
                                 📋 Join Waiting List
                               </button>
@@ -1192,7 +1156,40 @@ useEffect(() => {
                           </div>
                         );
                       }
-  
+
+                      return null;
+                    })()
+                  )}
+
+                  {/* Time Slot Selection Area */}
+                  {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
+                    (() => {
+                      const isLoading = isCheckingAvailability;
+                      const availableSlotsCount = availableTimeSlots.filter(slot => 
+                        slot.available && !slot.isBooked && !slot.isUnavailable
+                      ).length;
+                      const hasSlots = availableSlotsCount > 0;
+
+                      if (isLoading) {
+                        return (
+                          <div className="text-center py-8 border-2 border-gray-200 rounded-lg bg-gray-50">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                            <h4 className="text-xl font-bold text-gray-700 mb-2">Checking availability...</h4>
+                            <p className="text-gray-600">Please wait while we load available time slots.</p>
+                          </div>
+                        );
+                      }
+
+                      // ✅ Don't show the inline warnings - they're now at the top
+                      if (isDoctorUnavailable || (!hasAvailableSlots && !hasSlots)) {
+                        return (
+                          <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
+                            <p className="text-gray-500">Please see the message above and choose another option.</p>
+                          </div>
+                        );
+                      }
 
                       if (availableTimeSlots.length > 0) {
                         return (
