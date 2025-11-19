@@ -957,15 +957,15 @@ const handleSubmit = async () => {
                         aria-label="Upload photo area"
                       >
                         {isDragOver ? (
-                          <>
+                          <div className="flex flex-col items-center justify-center text-center">
                             <Upload className="w-8 h-8 text-blue-600 mb-2" aria-hidden="true" />
                             <span className="text-sm text-blue-600 font-medium">Drop image here</span>
-                          </>
+                          </div>
                         ) : (
-                          <>
+                          <div className="flex flex-col items-center justify-center text-center">
                             <Camera className="w-8 h-8 text-gray-400 mb-2" aria-hidden="true" />
                             <span className="text-sm text-gray-500">Click or drag & drop</span>
-                          </>
+                          </div>
                         )}
                       </div>
                     )}
