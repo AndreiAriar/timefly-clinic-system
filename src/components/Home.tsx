@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Calendar, Clock, Users } from 'lucide-react';
 import AppointmentModal from './AppointmentModal';
 import CalendarWizardModal from './CalendarWizardModal';
-import { collection, query, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface Appointment {
@@ -21,6 +21,8 @@ interface Appointment {
   queueNumber?: number;
   createdAt?: string;
   cancelReason?: string;
+  deletedByStaff?: string;
+  deletedByPatient?: string;
 }
 
 const Home = () => {
@@ -31,21 +33,25 @@ const Home = () => {
     pendingAppointments: 0,
     totalAppointments: 0
   });
+useEffect(() => {
+  console.log('🔥 Setting up real-time listener for home stats...');
 
-  useEffect(() => {
-    loadStats();
-  }, [isModalOpen, isCalendarWizardOpen]);
+  // Real-time listener for appointments
+  const appointmentsRef = collection(db, 'appointments');
+  const q = query(appointmentsRef);
+  
+  const unsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      // Filter out deleted appointments
+      const appointments = snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Appointment))
+        .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
 
-  const loadStats = async () => {
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(appointmentsRef);
-      const querySnapshot = await getDocs(q);
-      
-      const appointments = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
+      console.log('📊 Total appointments (after filtering):', appointments.length);
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -53,7 +59,11 @@ const Home = () => {
       const upcomingCount = appointments.filter((apt: Appointment) => {
         const aptDate = new Date(apt.appointmentDate);
         aptDate.setHours(0, 0, 0, 0);
-        return aptDate >= today && apt.status !== 'completed' && apt.status !== 'cancelled';
+        const isUpcoming = aptDate >= today && 
+                          apt.status !== 'completed' && 
+                          apt.status !== 'cancelled' &&
+                          apt.status !== 'missed';
+        return isUpcoming;
       }).length;
       
       const pendingCount = appointments.filter((apt: Appointment) => 
@@ -65,10 +75,24 @@ const Home = () => {
         pendingAppointments: pendingCount,
         totalAppointments: appointments.length
       });
-    } catch (error) {
-      console.error('Error loading stats:', error);
+
+      console.log('✅ Real-time stats update:', {
+        upcoming: upcomingCount,
+        pending: pendingCount,
+        total: appointments.length
+      });
+    },
+    (error) => {
+      console.error('❌ Error in stats listener:', error);
     }
+  );
+
+  // Cleanup function
+  return () => {
+    console.log('🔌 Cleaning up home stats listener');
+    unsubscribe();
   };
+}, []);
 
   return (
     <div className="min-h-screen">

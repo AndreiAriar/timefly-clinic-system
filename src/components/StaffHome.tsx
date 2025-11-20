@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, Users, FileText, Sun, CloudSun, Moon } from 'lucide-react';
 import AppointmentModal from './AppointmentModal';
-import { collection, query, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface Appointment {
@@ -20,6 +20,8 @@ interface Appointment {
   queueNumber?: number;
   createdAt?: string;
   cancelReason?: string;
+  deletedByStaff?: string;
+  deletedByPatient?: string;
 }
 
 interface StaffHomeProps {
@@ -52,89 +54,114 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
     return phTime;
   };
 
-  const updateGreeting = () => {
-    const phTime = getPhilippineTime();
-    const hour = phTime.getHours();
-
-    let greetingData: GreetingData;
-
-    if (hour >= 5 && hour < 12) {
-      // Morning: 5:00 AM - 11:59 AM
-      greetingData = {
-        message: 'Good Morning Staff',
-        icon: <Sun className="w-12 h-12 text-yellow-200" />
-      };
-    } else if (hour >= 12 && hour < 18) {
-      // Afternoon: 12:00 PM - 5:59 PM
-      greetingData = {
-        message: 'Good Afternoon Staff',
-        icon: <CloudSun className="w-12 h-12 text-orange-300" />
-      };
-    } else {
-      // Evening: 6:00 PM - 4:59 AM
-      greetingData = {
-        message: 'Good Evening Staff',
-        icon: <Moon className="w-12 h-12 text-blue-100" />
-      };
-    }
-
-    setGreeting(greetingData);
-  };
-
-  const loadStats = async () => {
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(appointmentsRef);
-      const querySnapshot = await getDocs(q);
-      
-      const appointmentsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const todayCount = appointmentsData.filter((apt: Appointment) => {
-        const aptDate = new Date(apt.appointmentDate);
-        aptDate.setHours(0, 0, 0, 0);
-        return aptDate.getTime() === today.getTime() && apt.status !== 'cancelled';
-      }).length;
-      
-      const inProgressCount = appointmentsData.filter((apt: Appointment) => 
-        apt.status === 'in-progress'
-      ).length;
-
-      const upcomingCount = appointmentsData.filter((apt: Appointment) => {
-        const aptDate = new Date(apt.appointmentDate);
-        aptDate.setHours(0, 0, 0, 0);
-        return aptDate > today && apt.status !== 'completed' && apt.status !== 'cancelled';
-      }).length;
-
-      const completedCount = appointmentsData.filter((apt: Appointment) => 
-        apt.status === 'completed'
-      ).length;
-
-      setStats({
-        todayPatients: todayCount,
-        inProgress: inProgressCount,
-        upcoming: upcomingCount,
-        completed: completedCount
-      });
-    } catch (error) {
-      console.error('Error loading stats:', error);
-    }
-  };
-
   useEffect(() => {
-    loadStats();
+    console.log('🔥 Setting up real-time listener for staff stats...');
+    
+    // Define updateGreeting inside useEffect to avoid dependency warning
+    const updateGreeting = () => {
+      const phTime = getPhilippineTime();
+      const hour = phTime.getHours();
+
+      let greetingData: GreetingData;
+
+      if (hour >= 5 && hour < 12) {
+        // Morning: 5:00 AM - 11:59 AM
+        greetingData = {
+          message: 'Good Morning Staff',
+          icon: <Sun className="w-12 h-12 text-yellow-200" />
+        };
+      } else if (hour >= 12 && hour < 18) {
+        // Afternoon: 12:00 PM - 5:59 PM
+        greetingData = {
+          message: 'Good Afternoon Staff',
+          icon: <CloudSun className="w-12 h-12 text-orange-300" />
+        };
+      } else {
+        // Evening: 6:00 PM - 4:59 AM
+        greetingData = {
+          message: 'Good Evening Staff',
+          icon: <Moon className="w-12 h-12 text-blue-100" />
+        };
+      }
+
+      setGreeting(greetingData);
+    };
+
     updateGreeting();
     
     // Update greeting every minute to handle time changes
-    const interval = setInterval(updateGreeting, 60000);
+    const greetingInterval = setInterval(updateGreeting, 60000);
+
+    // Real-time listener for appointments stats
+    const appointmentsRef = collection(db, 'appointments');
+    const q = query(appointmentsRef);
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        // Filter out deleted appointments
+        const appointmentsData = snapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Appointment))
+          .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
+
+        console.log('📊 Total appointments (after filtering):', appointmentsData.length);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const todayCount = appointmentsData.filter((apt: Appointment) => {
+          const aptDate = new Date(apt.appointmentDate);
+          aptDate.setHours(0, 0, 0, 0);
+          return aptDate.getTime() === today.getTime() && 
+                 apt.status !== 'cancelled' &&
+                 apt.status !== 'missed';
+        }).length;
+        
+        const inProgressCount = appointmentsData.filter((apt: Appointment) => 
+          apt.status === 'in-progress' || apt.status === 'serving'
+        ).length;
+
+        const upcomingCount = appointmentsData.filter((apt: Appointment) => {
+          const aptDate = new Date(apt.appointmentDate);
+          aptDate.setHours(0, 0, 0, 0);
+          return aptDate > today && 
+                 apt.status !== 'completed' && 
+                 apt.status !== 'cancelled' &&
+                 apt.status !== 'missed';
+        }).length;
+
+        const completedCount = appointmentsData.filter((apt: Appointment) => 
+          apt.status === 'completed'
+        ).length;
+
+        setStats({
+          todayPatients: todayCount,
+          inProgress: inProgressCount,
+          upcoming: upcomingCount,
+          completed: completedCount
+        });
+
+        console.log('✅ Real-time staff stats update:', {
+          today: todayCount,
+          inProgress: inProgressCount,
+          upcoming: upcomingCount,
+          completed: completedCount
+        });
+      },
+      (error) => {
+        console.error('❌ Error in staff stats listener:', error);
+      }
+    );
     
-    return () => clearInterval(interval);
-  }, [showAppointmentModal]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Cleanup function
+    return () => {
+      console.log('🔌 Cleaning up staff stats listener');
+      clearInterval(greetingInterval);
+      unsubscribe();
+    };
+  }, []); 
 
   return (
     <div className="min-h-screen bg-gray-50">

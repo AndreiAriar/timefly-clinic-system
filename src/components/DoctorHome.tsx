@@ -1,6 +1,6 @@
 import { Calendar, Clock, Users, Activity, Sun, Cloud, Moon } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, query, where, getDocs} from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import DoctorCalendarModal from './DoctorCalendarModal';
 
@@ -12,8 +12,22 @@ interface DoctorHomeProps {
 
 interface Appointment {
   id: string;
-  status: string;
   appointmentDate: string;
+  status: string;
+  fullName?: string;
+  age?: string;
+  photo?: string;
+  doctor?: string;
+  gender?: string;
+  medicalCondition?: string;
+  phone?: string;
+  priorityLevel?: string;
+  timeSlot?: string;
+  queueNumber?: number;
+  createdAt?: string;
+  cancelReason?: string;
+  deletedByStaff?: boolean;
+  deletedByPatient?: boolean;
 }
 
 interface Doctor {
@@ -25,7 +39,7 @@ interface Doctor {
   unavailableDates: { [date: string]: boolean };
 }
 
-const DoctorHome = ({ doctorName, onNavigateToAppointments, onNavigateToQueue }: DoctorHomeProps) => {
+const DoctorHome = ({ doctorName, onNavigateToAppointments }: DoctorHomeProps) => {
   const [stats, setStats] = useState({
     todayAppointments: 0,
     pendingQueue: 0,
@@ -74,17 +88,17 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments, onNavigateToQueue }:
   }, []);
 
   useEffect(() => {
-    const loadStats = async () => {
+    console.log('🔥 Setting up real-time listener for doctor stats...');
+
+    // Get today's date in Philippine Time (UTC+8)
+    const phTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const today = phTime.toISOString().split('T')[0];
+    
+    console.log('📅 Today\'s date (PH):', today);
+    
+    // Load doctor data first
+    const loadDoctorData = async () => {
       try {
-        // Get today's date in Philippine Time (UTC+8)
-        const phTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-        const today = phTime.toISOString().split('T')[0];
-        
-        console.log('📊 Loading stats for doctor:', doctorName);
-        console.log('🇵🇭 Philippine Time:', phTime.toLocaleString('en-PH'));
-        console.log('📅 Today\'s date (PH):', today);
-        
-        // Load doctor data to get max slots configuration
         const doctorsRef = collection(db, 'doctors');
         let doctorQuery = query(doctorsRef, where('name', '==', doctorName));
         let doctorSnapshot = await getDocs(doctorQuery);
@@ -112,184 +126,169 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments, onNavigateToQueue }:
             ...doctorDoc.data()
           } as Doctor;
           actualDoctorName = doctorData.name;
-          
-          console.log('✅ Doctor data loaded:', {
-            id: doctorData.id,
-            name: doctorData.name,
-            maxSlots: doctorData.maxSlots
-          });
-          console.log('📊 Will query appointments with doctor name:', actualDoctorName);
-        } else {
-          console.warn('⚠️ Doctor not found in database');
-          console.log('💡 Will try querying with provided name:', doctorName);
+          console.log('✅ Doctor data loaded:', actualDoctorName);
         }
 
-        // Get today's appointments - Try multiple doctor name variations
-        const appointmentsRef = collection(db, 'appointments');
-        
-        console.log('🔍 Querying appointments with:');
-        console.log('   doctor =', actualDoctorName);
-        console.log('   appointmentDate =', today);
-        
-        let appointmentsQuery = query(
-          appointmentsRef,
-          where('doctor', '==', actualDoctorName),
-          where('appointmentDate', '==', today)
-        );
-        
-        let querySnapshot = await getDocs(appointmentsQuery);
-        
-        // If no results and doctor name doesn't have "Dr.", try with "Dr." prefix
-        if (querySnapshot.empty && !actualDoctorName.startsWith('Dr.')) {
-          console.log('🔄 No results found. Trying with "Dr." prefix...');
-          const nameWithDr = `Dr. ${actualDoctorName}`;
-          console.log('   doctor =', nameWithDr);
-          
-          appointmentsQuery = query(
-            appointmentsRef,
-            where('doctor', '==', nameWithDr),
-            where('appointmentDate', '==', today)
-          );
-          querySnapshot = await getDocs(appointmentsQuery);
-          
-          if (!querySnapshot.empty) {
-            actualDoctorName = nameWithDr;
-            console.log('✅ Found appointments with name:', nameWithDr);
-          }
-        }
-        
-        // If no results and doctor name has "Dr.", try without it
-        if (querySnapshot.empty && actualDoctorName.startsWith('Dr.')) {
-          console.log('🔄 No results found. Trying without "Dr." prefix...');
-          const nameWithoutDr = actualDoctorName.replace(/^Dr\.\s*/i, '');
-          console.log('   doctor =', nameWithoutDr);
-          
-          appointmentsQuery = query(
-            appointmentsRef,
-            where('doctor', '==', nameWithoutDr),
-            where('appointmentDate', '==', today)
-          );
-          querySnapshot = await getDocs(appointmentsQuery);
-          
-          if (!querySnapshot.empty) {
-            actualDoctorName = nameWithoutDr;
-            console.log('✅ Found appointments with name:', nameWithoutDr);
-          }
-        }
-        
-        console.log('📊 Query returned', querySnapshot.docs.length, 'appointments');
-        
-        const appointments = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          console.log('📋 Appointment found:', {
-            id: doc.id,
-            date: data.appointmentDate,
-            status: data.status,
-            patient: data.fullName || 'Unknown',
-            doctor: data.doctor
-          });
-          return {
-            id: doc.id,
-            ...data
-          };
-        }) as Appointment[];
-
-        if (appointments.length === 0) {
-          console.log('\n⚠️ === NO APPOINTMENTS FOUND ===');
-          console.log('Possible reasons:');
-          console.log('1. Date mismatch:');
-          console.log('   System date (PH):', today);
-          console.log('   Check if appointments exist for this date in Firebase');
-          console.log('2. Doctor name tried:');
-          console.log('   -', doctorName);
-          console.log('   - Dr.', doctorName);
-          console.log('   Make sure Firebase "doctor" field matches one of these');
-          console.log('================================\n');
-        }
-
-        // Calculate stats - matching Home.tsx logic
-        const todayAppointments = appointments.filter(apt => 
-          apt.status !== 'cancelled'
-        ).length;
-        
-        const pendingQueue = appointments.filter(apt => 
-          apt.status === 'pending' || apt.status === 'scheduled' || apt.status === 'confirmed'
-        ).length;
-        
-        const completedToday = appointments.filter(apt => 
-          apt.status === 'completed'
-        ).length;
-
-        console.log('📊 Stats breakdown:');
-        console.log('   Total appointments (non-cancelled):', todayAppointments);
-        console.log('   Pending queue:', pendingQueue);
-        console.log('   Completed:', completedToday);
-
-        // Calculate available slots based on doctor's configuration
-        let availableSlots = 0;
-        
-        if (doctorData) {
-          // Check if doctor is completely unavailable for today
-          const unavailableDates = doctorData.unavailableDates || {};
-          
-          if (unavailableDates[today]) {
-            console.log('⛔ Doctor is unavailable today');
-            availableSlots = 0;
-          } else {
-            // Get max slots for today (per-date override or global)
-            const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-            const dateSpecificSlots = maxSlotsPerDate[today];
-            const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : (doctorData.maxSlots || 0);
-            
-            console.log('📊 Max slots for today:', maxSlots, '(', dateSpecificSlots !== undefined ? 'date-specific' : 'global', ')');
-            
-            // Get unavailable time slots marked by staff
-            const unavailableTimeSlots = doctorData.availableSlots?.[today] || [];
-            console.log('⛔ Unavailable time slots:', unavailableTimeSlots.length);
-            
-            // Calculate total available slots
-            const totalAvailableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
-            
-            // Subtract booked appointments (excluding cancelled)
-            const bookedSlots = appointments.filter(apt => apt.status !== 'cancelled').length;
-            availableSlots = Math.max(0, totalAvailableSlots - bookedSlots);
-            
-            console.log('✨ Available slots calculation:');
-            console.log('   Max slots configured:', maxSlots);
-            console.log('   Unavailable time slots:', unavailableTimeSlots.length);
-            console.log('   Total available slots:', totalAvailableSlots);
-            console.log('   Booked appointments (non-cancelled):', bookedSlots);
-            console.log('   Remaining available:', availableSlots);
-          }
-        } else {
-          // Fallback if doctor data not found - use a default calculation
-          const bookedSlots = appointments.filter(apt => apt.status !== 'cancelled').length;
-          availableSlots = Math.max(0, 10 - bookedSlots);
-          console.log('⚠️ Using fallback calculation: 10 - ' + bookedSlots + ' = ' + availableSlots);
-        }
-
-        setStats({
-          todayAppointments,
-          pendingQueue,
-          completedToday,
-          availableSlots
-        });
-
-        console.log('\n📊 === FINAL STATS ===');
-        console.log('   Today\'s Appointments:', todayAppointments);
-        console.log('   Pending in Queue:', pendingQueue);
-        console.log('   Completed Today:', completedToday);
-        console.log('   Available Slots:', availableSlots);
-        console.log('======================\n');
-
+        return { doctorData, actualDoctorName };
       } catch (error) {
-        console.error('❌ Error loading stats:', error);
-      } finally {
-        setIsLoading(false);
+        console.error('Error loading doctor data:', error);
+        return { doctorData: null, actualDoctorName: doctorName };
       }
     };
 
-    loadStats();
+    let unsubscribe: (() => void) | undefined;
+
+    const setupListener = async () => {
+      const { doctorData, actualDoctorName } = await loadDoctorData();
+      
+      // Setup real-time listener for appointments
+      const appointmentsRef = collection(db, 'appointments');
+      
+      // Try multiple doctor name variations
+      const appointmentsQuery = query(
+        appointmentsRef,
+        where('doctor', '==', actualDoctorName),
+        where('appointmentDate', '==', today)
+      );
+      
+      unsubscribe = onSnapshot(
+        appointmentsQuery,
+        async (snapshot) => {
+          console.log('📊 Raw snapshot size:', snapshot.docs.length);
+          
+          let appointments = snapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Appointment))
+            .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
+
+          console.log('📊 After filtering deleted:', appointments.length);
+
+          // If no results and doctor name doesn't have "Dr.", try with "Dr." prefix
+          if (appointments.length === 0 && !actualDoctorName.startsWith('Dr.')) {
+            const nameWithDr = `Dr. ${actualDoctorName}`;
+            const altQuery = query(
+              appointmentsRef,
+              where('doctor', '==', nameWithDr),
+              where('appointmentDate', '==', today)
+            );
+            const altSnapshot = await getDocs(altQuery);
+            if (!altSnapshot.empty) {
+              appointments = altSnapshot.docs
+                .map(doc => ({
+                  id: doc.id,
+                  ...doc.data()
+                } as Appointment))
+                .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
+            }
+          }
+          
+          // If no results and doctor name has "Dr.", try without it
+          if (appointments.length === 0 && actualDoctorName.startsWith('Dr.')) {
+            const nameWithoutDr = actualDoctorName.replace(/^Dr\.\s*/i, '');
+            const altQuery = query(
+              appointmentsRef,
+              where('doctor', '==', nameWithoutDr),
+              where('appointmentDate', '==', today)
+            );
+            const altSnapshot = await getDocs(altQuery);
+            if (!altSnapshot.empty) {
+              appointments = altSnapshot.docs
+                .map(doc => ({
+                  id: doc.id,
+                  ...doc.data()
+                } as Appointment))
+                .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
+            }
+          }
+
+          console.log('📊 Final appointments count:', appointments.length);
+
+          // Calculate stats
+          const todayAppointments = appointments.filter(apt => 
+            apt.status !== 'cancelled' && apt.status !== 'missed'
+          ).length;
+          
+          const pendingQueue = appointments.filter(apt => 
+            apt.status === 'pending' || 
+            apt.status === 'scheduled' || 
+            apt.status === 'confirmed'
+          ).length;
+          
+          const completedToday = appointments.filter(apt => 
+            apt.status === 'completed'
+          ).length;
+
+          // Calculate available slots
+          let availableSlots = 0;
+          
+          if (doctorData) {
+            const unavailableDates = doctorData.unavailableDates || {};
+            
+            if (unavailableDates[today]) {
+              console.log('⛔ Doctor unavailable today');
+              availableSlots = 0;
+            } else {
+              const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+              const dateSpecificSlots = maxSlotsPerDate[today];
+              const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : (doctorData.maxSlots || 0);
+              
+              const unavailableTimeSlots = doctorData.availableSlots?.[today] || [];
+              const totalAvailableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
+              const bookedSlots = appointments.filter(apt => 
+                apt.status !== 'cancelled' && apt.status !== 'missed'
+              ).length;
+              availableSlots = Math.max(0, totalAvailableSlots - bookedSlots);
+              
+              console.log('📊 Slots calculation:', {
+                maxSlots,
+                unavailableTimeSlots: unavailableTimeSlots.length,
+                totalAvailableSlots,
+                bookedSlots,
+                remaining: availableSlots
+              });
+            }
+          } else {
+            const bookedSlots = appointments.filter(apt => 
+              apt.status !== 'cancelled' && apt.status !== 'missed'
+            ).length;
+            availableSlots = Math.max(0, 10 - bookedSlots);
+            console.log('⚠️ Using fallback calculation');
+          }
+
+          setStats({
+            todayAppointments,
+            pendingQueue,
+            completedToday,
+            availableSlots
+          });
+
+          console.log('✅ Real-time doctor stats update:', {
+            today: todayAppointments,
+            pending: pendingQueue,
+            completed: completedToday,
+            available: availableSlots
+          });
+
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error('❌ Error in doctor stats listener:', error);
+          setIsLoading(false);
+        }
+      );
+    };
+
+    setupListener();
+
+    // Cleanup function
+    return () => {
+      console.log('🔌 Cleaning up doctor stats listener');
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, [doctorName]);
 
   if (isLoading) {
@@ -308,7 +307,7 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments, onNavigateToQueue }:
       <div className="min-h-screen bg-gray-50">
         {/* Content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-       {/* Welcome Section - Fixed mobile alignment */}
+          {/* Welcome Section - Fixed mobile alignment */}
           <div className="text-center mb-12">
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
               {greeting.icon}

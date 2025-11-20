@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle, X, Mail, Stethoscope } from 'lucide-react';
 import { collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
+
 interface Appointment {
   id: string;
   fullName: string;
@@ -12,12 +13,14 @@ interface Appointment {
   gender: string;
   medicalCondition: string;
   phone: string;
-  email: string; // Add this line
+  email: string;
   priorityLevel: string;
   timeSlot: string;
   queueNumber: number;
   status: string;
   createdAt: string;
+  deletedByStaff?: boolean; 
+  deletedByPatient?: boolean; 
 }
 
 interface Notification {
@@ -130,10 +133,14 @@ useEffect(() => {
               ...data
             };
           }) as Appointment[];
-        
-        // Filter out cancelled, completed, and missed appointments
+   
+      // Filter out cancelled, completed, missed appointments AND deleted appointments
         appointmentsData = appointmentsData.filter(apt => 
-          apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
+          apt.status !== 'cancelled' && 
+          apt.status !== 'completed' && 
+          apt.status !== 'missed' &&
+          !apt.deletedByStaff &&
+          !apt.deletedByPatient
         );
         
         // Sort by queue number

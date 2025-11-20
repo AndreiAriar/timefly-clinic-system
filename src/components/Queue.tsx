@@ -13,11 +13,14 @@ interface Appointment {
   gender: string;
   medicalCondition: string;
   phone: string;
+  email: string;
   priorityLevel: string;
   timeSlot: string;
   queueNumber: number;
   status: string;
   createdAt: string;
+  deletedByStaff?: boolean;  
+  deletedByPatient?: boolean; 
 }
 
 const calculateWaitingTime = (timeSlot: string): string => {
@@ -100,12 +103,15 @@ const Queue = () => {
               ...doc.data()
             })) as Appointment[];
           
-          // Filter out cancelled, completed, and missed appointments
-          appointmentsData = appointmentsData.filter(apt => 
-            apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
-          );
-          
-          // Sort by queue number
+          // Filter out cancelled, completed, missed appointments AND deleted appointments
+            appointmentsData = appointmentsData.filter(apt => 
+              apt.status !== 'cancelled' && 
+              apt.status !== 'completed' && 
+              apt.status !== 'missed' &&
+              !apt.deletedByStaff &&
+              !apt.deletedByPatient
+            );
+              // Sort by queue number
           appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
           
           setAppointments(appointmentsData);

@@ -19,6 +19,8 @@ interface Appointment {
   queueNumber: number;
   status: string;
   createdAt: string;
+  deletedByStaff?: boolean;  // Add this
+  deletedByPatient?: boolean; // Add this
 }
 
 interface DoctorQueueProps {
@@ -79,9 +81,13 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
               ...doc.data()
             })) as Appointment[];
           
-          // Filter out cancelled, completed, and missed appointments
+         // Filter out cancelled, completed, missed appointments AND deleted appointments
           const filteredAppointments = appointmentsData.filter(apt => 
-            apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'missed'
+            apt.status !== 'cancelled' && 
+            apt.status !== 'completed' && 
+            apt.status !== 'missed' &&
+            !apt.deletedByStaff &&
+            !apt.deletedByPatient
           );
 
           setAppointments(filteredAppointments);
