@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, Users } from 'lucide-react';
 import AppointmentModal from './AppointmentModal';
 import CalendarWizardModal from './CalendarWizardModal';
 import { collection, query, getDocs } from 'firebase/firestore';
@@ -120,53 +120,53 @@ const Home = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {/* Upcoming Appointments Card */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-indigo-100 rounded-lg">
-                  <Calendar className="w-8 h-8 text-indigo-600" />
+            <div className="bg-blue-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+              <div className="flex flex-col items-center text-center mb-4">
+                <div className="mb-4">
+                  <Calendar className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm font-medium text-gray-500">Upcoming</span>
+                <span className="text-sm font-medium text-white opacity-90">Upcoming</span>
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">
+              <h3 className="text-3xl font-bold text-white text-center mb-2">
                 {stats.upcomingAppointments}
               </h3>
-              <p className="text-sm text-gray-600">Upcoming Appointments</p>
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500">Scheduled future visits</p>
+              <p className="text-sm text-white text-center opacity-90">Upcoming Appointments</p>
+              <div className="mt-4 pt-4 border-t border-white/30">
+                <p className="text-xs text-white opacity-100 text-center">Scheduled future visits</p>
               </div>
             </div>
 
             {/* Pending Appointments Card */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-yellow-100 rounded-lg">
-                  <Clock className="w-8 h-8 text-yellow-600" />
+            <div className="bg-yellow-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+              <div className="flex flex-col items-center text-center mb-4">
+                <div className="mb-4">
+                  <Clock className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm font-medium text-gray-500">Pending</span>
+                <span className="text-sm font-medium text-white opacity-90">Pending</span>
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">
+              <h3 className="text-3xl font-bold text-white text-center mb-2">
                 {stats.pendingAppointments}
               </h3>
-              <p className="text-sm text-gray-600">Pending Appointments</p>
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500">Awaiting confirmation</p>
+              <p className="text-sm text-white text-center opacity-90">Pending Appointments</p>
+              <div className="mt-4 pt-4 border-t border-white/30">
+                <p className="text-xs text-white opacity-100 text-center">Awaiting confirmation</p>
               </div>
             </div>
 
             {/* Total Appointments Card */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-green-100 rounded-lg">
-                  <CheckCircle className="w-8 h-8 text-green-600" />
+            <div className="bg-green-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+              <div className="flex flex-col items-center text-center mb-4">
+                <div className="mb-4">
+                  <Users className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm font-medium text-gray-500">Total</span>
+                <span className="text-sm font-medium text-white opacity-90">Total</span>
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">
+              <h3 className="text-3xl font-bold text-white text-center mb-2">
                 {stats.totalAppointments}
               </h3>
-              <p className="text-sm text-gray-600">Total Appointments</p>
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500">All time bookings</p>
+              <p className="text-sm text-white text-center opacity-90">Total Appointments</p>
+              <div className="mt-4 pt-4 border-t border-white/30">
+                <p className="text-xs text-white opacity-100 text-center">All time bookings</p>
               </div>
             </div>
           </div>
@@ -215,7 +215,7 @@ const Home = () => {
             {/* Feature 3 */}
             <div className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-6">
-                <CheckCircle className="w-8 h-8 text-purple-600" />
+                <Users className="w-8 h-8 text-purple-600" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Priority System

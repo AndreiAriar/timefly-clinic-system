@@ -880,7 +880,7 @@ const handleSubmit = async () => {
                   <div className="inline-block bg-blue-600 text-white text-4xl font-bold px-8 py-4 rounded-lg">
                     #{queueNumber}
                   </div>
-                  <p className="text-gray-600 mt-4">Please arrive 15 minutes before your scheduled time.</p>
+                  <p className="text-gray-600 mt-4">Please arrive 30 minutes before your scheduled time.</p>
                 </div>
               </div>
             ) : (

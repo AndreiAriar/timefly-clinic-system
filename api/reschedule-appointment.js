@@ -89,7 +89,7 @@ export default async function handler(req, res) {
 
             <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #ffeaa7;">
               <p style="margin: 0; color: #856404;">
-                <strong>Important:</strong> Please arrive 15 minutes before your scheduled appointment time. If you need to make any further changes, please contact us immediately.
+                <strong>Important:</strong> Please arrive 30 minutes before your scheduled appointment time. If you need to make any further changes, please contact us immediately.
               </p>
             </div>
 
