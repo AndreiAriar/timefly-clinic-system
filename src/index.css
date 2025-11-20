@@ -1,53 +1,37 @@
 @import "tailwindcss";
 
+/* CRITICAL: Disable ALL animations and transitions globally */
+*, *::before, *::after {
+  animation: none !important;
+  transition: none !important;
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
 /* Critical CSS - Minimal and fast */
 html {
   background-color: #f9fafb;
   margin: 0;
   padding: 0;
 }
-
 body {
   background-color: #f9fafb;
   margin: 0;
   padding: 0;
   font-family: system-ui, -apple-system, sans-serif;
 }
-
 #root {
   min-height: 100vh;
   background: transparent;
-}
-
-/* Remove all animations and tap highlights for maximum performance */
-* {
-  -webkit-tap-highlight-color: transparent;
-  box-sizing: border-box;
-}
-
-/* Ultra-fast fade animation only when necessary */
-@keyframes fade-in {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.1s ease-out;
 }
 
 /* Background images */
 .hero-section {
   background-image: url(/timefly_bg.jpg);
 }
-
 .staff-hero-section {
   background-image: url(/timefly_staff_bg.png);
 }
-
 /* Optimize background image loading */
 .hero-section,
 .staff-hero-section {
@@ -55,7 +39,6 @@ body {
   background-position: center;
   background-repeat: no-repeat;
 }
-
 /* Basic autofill styles */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -63,10 +46,8 @@ input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
   -webkit-background-clip: text;
   -webkit-text-fill-color: white;
-  transition: background-color 5000s ease-in-out 0s;
   box-shadow: inset 0 0 20px 20px rgba(255, 255, 255, 0.1);
 }
-
 /* Performance optimizations */
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -75,7 +56,6 @@ input:-webkit-autofill:active {
     transition-duration: 0.01ms !important;
   }
 }
-
 /* Mobile optimizations */
 @media (max-width: 768px) {
   .hero-section,
@@ -83,18 +63,15 @@ input:-webkit-autofill:active {
     background-attachment: scroll;
   }
 }
-
 /* Ensure images maintain aspect ratio and clarity */
 .patient-profile-image, 
 .appointment-card-image {
   object-fit: cover;
   object-position: center;
-  image-rendering: -webkit-optimize-contrast; /* Safari */
-  image-rendering: crisp-edges; /* Firefox */
-  image-rendering: pixelated; /* For pixel art */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
   image-rendering: auto;
 }
-
 /* High-quality image rendering */
 .high-quality-image {
   max-width: 100%;
@@ -107,7 +84,6 @@ input:-webkit-autofill:active {
   background-size: 20px 20px;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
-
 /* Fix autofill white background issue */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -115,9 +91,7 @@ input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 30px white inset !important;
   -webkit-text-fill-color: #374151 !important;
-  transition: background-color 5000s ease-in-out 0s;
 }
-
 /* For dark mode support if needed */
 @media (prefers-color-scheme: dark) {
   input:-webkit-autofill,
@@ -127,4 +101,21 @@ input:-webkit-autofill:active {
     -webkit-box-shadow: 0 0 0 30px #1f2937 inset !important;
     -webkit-text-fill-color: #f9fafb !important;
   }
+}
+
+/* FORCE remove all focus rings that might cause blue flash */
+*:focus,
+*:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Disable default browser focus indicators */
+button:focus,
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
 }

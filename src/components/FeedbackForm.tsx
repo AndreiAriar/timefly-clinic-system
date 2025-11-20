@@ -6,6 +6,9 @@ import { Star, ArrowLeft, CheckCircle, AlertCircle, Info } from 'lucide-react';
 
 interface FeedbackFormProps {
   onBack: () => void;
+  currentUserName?: string;
+  currentUserPhoto?: string;
+  currentUserEmail?: string;
 }
 
 interface UserData {
@@ -14,7 +17,7 @@ interface UserData {
   photoURL: string;
 }
 
-const FeedbackForm = ({ onBack }: FeedbackFormProps) => {
+const FeedbackForm = ({ onBack, currentUserName, currentUserPhoto, currentUserEmail }: FeedbackFormProps) => {
   const [formData, setFormData] = useState({
     message: '',
     rating: 0,
@@ -46,27 +49,29 @@ const FeedbackForm = ({ onBack }: FeedbackFormProps) => {
     setTimeout(() => setToast(null), 5000);
   };
 
-  // Load user data from Firebase
+  // Load user data from Firebase and use current profile data
   useEffect(() => {
     const auth = getAuth();
     
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
+          // Priority: Use props > Firebase Auth > Firestore
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           const userDataFromFirestore = userDoc.data();
           
           setUserData({
-            name: user.displayName || userDataFromFirestore?.name || 'User',
-            email: user.email || '',
-            photoURL: user.photoURL || userDataFromFirestore?.photoURL || ''
+            name: currentUserName || user.displayName || userDataFromFirestore?.name || 'User',
+            email: currentUserEmail || user.email || '',
+            photoURL: currentUserPhoto || user.photoURL || userDataFromFirestore?.photoURL || ''
           });
         } catch (error) {
           console.error('Error loading user data:', error);
+          // Fallback to props and auth data
           setUserData({
-            name: user.displayName || 'User',
-            email: user.email || '',
-            photoURL: user.photoURL || ''
+            name: currentUserName || user.displayName || 'User',
+            email: currentUserEmail || user.email || '',
+            photoURL: currentUserPhoto || user.photoURL || ''
           });
         }
       } else {
@@ -76,7 +81,7 @@ const FeedbackForm = ({ onBack }: FeedbackFormProps) => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUserName, currentUserPhoto, currentUserEmail]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = e.target;

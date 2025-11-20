@@ -233,19 +233,19 @@ const isDoctorAvailable = (doctor: Doctor) => {
     setSelectedDoctor(null);
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading doctors...</p>
-        </div>
-      </div>
-    );
-  }
-
+ if (isLoading) {
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading doctors...</p>
+      </div>
+    </div>
+  );
+}
+
+return (
+  <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -255,7 +255,7 @@ const isDoctorAvailable = (doctor: Doctor) => {
           </div>
           <button
             onClick={handleAddDoctor}
-            className="mt-4 sm:mt-0 px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition flex items-center gap-2"
+            className="mt-4 sm:mt-0 px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
             Add New Doctor
@@ -373,8 +373,7 @@ const isDoctorAvailable = (doctor: Doctor) => {
               const available = isDoctorAvailable(doctor);
 
               return (
-                <div key={doctor.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition relative">
-                  {/* Availability Tag - Top Right */}
+               <div key={doctor.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg relative">
                   <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-medium z-10 ${
                     available 
                       ? 'bg-green-100 text-green-800 border border-green-200' 
@@ -437,11 +436,11 @@ const isDoctorAvailable = (doctor: Doctor) => {
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                        <div 
-                          className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${totalSlots > 0 ? (slotCount / totalSlots) * 100 : 0}%` }}
-                        />
-                      </div>
+                    <div 
+                      className="bg-indigo-600 h-2 rounded-full"
+                      style={{ width: `${totalSlots > 0 ? (slotCount / totalSlots) * 100 : 0}%` }}
+                    />
+                  </div>
                     </div>
 
                     <div className="space-y-2 pt-2 border-t">
@@ -465,14 +464,14 @@ const isDoctorAvailable = (doctor: Doctor) => {
                   <div className="flex justify-center items-center gap-4 pt-3">
                     <button
                       onClick={() => handleEditDoctor(doctor)}
-                      className="px-4 py-2 text-gray-700 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium"
+                     className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium"
                     >
                       <Edit2 className="w-4 h-4" />
                       Edit
                     </button>
                     <button
                       onClick={() => handleDeleteDoctor(doctor)}
-                      className="px-4 py-2 text-gray-700 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium"
+                      className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium"
                     >
                       <Trash2 className="w-4 h-4" />
                       Delete
@@ -506,7 +505,7 @@ const isDoctorAvailable = (doctor: Doctor) => {
 
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[101]">
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform  sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[101]">
               {/* Modal content remains exactly the same here */}
               <div className="bg-white px-6 py-6">
                 <div className="flex items-center justify-between mb-4">
@@ -515,7 +514,7 @@ const isDoctorAvailable = (doctor: Doctor) => {
                   </h3>
                   <button
                     onClick={cancelDeleteDoctor}
-                    className="text-gray-400 hover:text-gray-600 transition"
+                    className="text-gray-400 hover:text-gray-600"
                     aria-label="Close modal"
                   >
                     <X className="w-6 h-6" />
@@ -537,14 +536,14 @@ const isDoctorAvailable = (doctor: Doctor) => {
                   <button
                     type="button"
                     onClick={cancelDeleteDoctor}
-                    className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition"
+                   className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={confirmDeleteDoctor}
-                    className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition"
+                    className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
                   >
                     Delete Doctor
                   </button>

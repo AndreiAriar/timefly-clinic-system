@@ -230,6 +230,16 @@ function AppContent() {
     }
   }, [isSigningUp, setupUserDataListener, showToast]);
 
+
+useEffect(() => {
+  // Disable all transitions on mount
+  document.body.style.transition = 'none';
+  document.documentElement.style.transition = 'none';
+  
+  // Force repaint
+  void document.body.offsetHeight;
+}, []);
+
   // Optimized auth state subscription
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChange(handleAuthStateChange);

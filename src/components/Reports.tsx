@@ -8,7 +8,7 @@ import {
   TrendingUp,
   PieChart,
   Stethoscope,
-  Clock
+  Download
 } from 'lucide-react';
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -27,6 +27,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+
 interface Appointment {
   id: string;
   fullName: string;
@@ -147,67 +148,68 @@ const Reports = () => {
     setStats(statsData);
     console.log('📈 Stats calculated:', statsData);
   }, []);
-useEffect(() => {
-  console.log('🔥 Setting up real-time listeners...');
-  
-  // Real-time listener for appointments
-  const appointmentsRef = collection(db, 'appointments');
-  const appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
-  
-  const unsubscribeAppointments = onSnapshot(
-    appointmentsQuery,
-    (snapshot) => {
-      // Filter out deleted appointments
-      const appointmentsData = snapshot.docs
-        .map(doc => ({
+
+  useEffect(() => {
+    console.log('🔥 Setting up real-time listeners...');
+    
+    // Real-time listener for appointments
+    const appointmentsRef = collection(db, 'appointments');
+    const appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
+    
+    const unsubscribeAppointments = onSnapshot(
+      appointmentsQuery,
+      (snapshot) => {
+        // Filter out deleted appointments
+        const appointmentsData = snapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Appointment[];
+        
+        // Remove appointments deleted by staff or patient
+        const activeAppointments = appointmentsData.filter(
+          apt => !apt.deletedByStaff && !apt.deletedByPatient
+        );
+        
+        console.log('📊 Real-time update - Active Appointments:', activeAppointments.length);
+        setAppointments(activeAppointments);
+        calculateStats(activeAppointments);
+        setLastUpdated(new Date());
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error('❌ Error in appointments listener:', error);
+        setIsLoading(false);
+      }
+    );
+
+    // Real-time listener for doctors
+    const doctorsRef = collection(db, 'doctors');
+    const doctorsQuery = query(doctorsRef, where('isActive', '==', true));
+    
+    const unsubscribeDoctors = onSnapshot(
+      doctorsQuery,
+      (snapshot) => {
+        const doctorsData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
-        })) as Appointment[];
-      
-      // Remove appointments deleted by staff or patient
-      const activeAppointments = appointmentsData.filter(
-        apt => !apt.deletedByStaff && !apt.deletedByPatient
-      );
-      
-      console.log('📊 Real-time update - Active Appointments:', activeAppointments.length);
-      setAppointments(activeAppointments);
-      calculateStats(activeAppointments);
-      setLastUpdated(new Date());
-      setIsLoading(false);
-    },
-    (error) => {
-      console.error('❌ Error in appointments listener:', error);
-      setIsLoading(false);
-    }
-  );
+        })) as Doctor[];
+        
+        console.log('👨‍⚕️ Real-time update - Doctors:', doctorsData.length);
+        setDoctors(doctorsData);
+      },
+      (error) => {
+        console.error('❌ Error in doctors listener:', error);
+      }
+    );
 
-  // Real-time listener for doctors
-  const doctorsRef = collection(db, 'doctors');
-  const doctorsQuery = query(doctorsRef, where('isActive', '==', true));
-  
-  const unsubscribeDoctors = onSnapshot(
-    doctorsQuery,
-    (snapshot) => {
-      const doctorsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Doctor[];
-      
-      console.log('👨‍⚕️ Real-time update - Doctors:', doctorsData.length);
-      setDoctors(doctorsData);
-    },
-    (error) => {
-      console.error('❌ Error in doctors listener:', error);
-    }
-  );
-
-  // Cleanup function to unsubscribe from listeners
-  return () => {
-    console.log('🔌 Cleaning up real-time listeners');
-    unsubscribeAppointments();
-    unsubscribeDoctors();
-  };
-}, [calculateStats]);
+    // Cleanup function to unsubscribe from listeners
+    return () => {
+      console.log('🔌 Cleaning up real-time listeners');
+      unsubscribeAppointments();
+      unsubscribeDoctors();
+    };
+  }, [calculateStats]);
 
   // Convert to Philippine Time (UTC+8)
   const toPHTime = (date: Date): Date => {
@@ -381,30 +383,97 @@ useEffect(() => {
     return doctor.total > 0 ? Math.round((doctor[status] / doctor.total) * 100) : 0;
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading reports...</p>
-        </div>
-      </div>
-    );
-  }
+  // Export CSV functionality - exports all displayed data
+  const exportToCSV = () => {
+    try {
+      // Define CSV headers
+      const headers = [
+        'ID',
+        'Full Name',
+        'Age',
+        'Email',
+        'Doctor',
+        'Appointment Date',
+        'Medical Condition',
+        'Priority Level',
+        'Status',
+        'Created At'
+      ];
 
+      // Convert appointments to CSV rows
+      const csvRows = appointments.map(apt => [
+        apt.id,
+        `"${apt.fullName.replace(/"/g, '""')}"`, // Escape quotes in names
+        apt.age,
+        `"${apt.email}"`,
+        `"${apt.doctor}"`,
+        apt.appointmentDate,
+        `"${apt.medicalCondition.replace(/"/g, '""')}"`,
+        apt.priorityLevel,
+        apt.status,
+        apt.createdAt
+      ]);
+
+      // Combine headers and rows
+      const csvContent = [
+        headers.join(','),
+        ...csvRows.map(row => row.join(','))
+      ].join('\n');
+
+      // Create and download the file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `appointments_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log('✅ CSV export completed successfully');
+    } catch (error) {
+      console.error('❌ Error exporting CSV:', error);
+      alert('Error exporting data. Please try again.');
+    }
+  };
+if (isLoading) {
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading reports...</p>
+      </div>
+    </div>
+  );
+}
+
+return (
+ <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
+        {/* Header with Export Button Only */}
         <div className="mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
-            <p className="text-gray-600 mt-2">Comprehensive overview of clinic performance and patient statistics</p>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <p className="text-xs text-gray-500">
-                Live Updates • Last updated: {lastUpdated.toLocaleTimeString()}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
+              <p className="text-gray-600 mt-2">Comprehensive overview of clinic performance and patient statistics</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Last updated: {lastUpdated.toLocaleTimeString()}
               </p>
+            </div>
+            
+            {/* Export CSV Button Only */}
+            <div className="flex gap-3">
+              <button
+                onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm w-full sm:w-auto justify-center"
+                disabled={appointments.length === 0}
+              >
+                <Download className="w-4 h-4" />
+                <span>Export CSV</span>
+              </button>
             </div>
           </div>
         </div>
@@ -455,45 +524,6 @@ useEffect(() => {
                 <p className="text-2xl font-bold text-gray-900">{stats.cancelledAppointments}</p>
               </div>
               <XCircle className="w-8 h-8 text-red-500" />
-            </div>
-          </div>
-        </div>
-
-        {/* Priority Level Analysis Cards with Title */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Priority Level Analysis</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Emergency Cases */}
-            <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-red-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Emergency</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.emergencyCases}</p>
-                </div>
-                <AlertTriangle className="w-8 h-8 text-red-500" />
-              </div>
-            </div>
-
-            {/* Urgent Cases */}
-            <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Urgent</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.urgentCases}</p>
-                </div>
-                <Clock className="w-8 h-8 text-orange-500" />
-              </div>
-            </div>
-
-            {/* Normal Cases */}
-            <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Normal</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.normalCases}</p>
-                </div>
-                <Users className="w-8 h-8 text-green-500" />
-              </div>
             </div>
           </div>
         </div>
@@ -643,7 +673,7 @@ useEffect(() => {
                       <span className="text-xs text-green-600 font-medium w-20">Completed</span>
                       <div className="flex-1 bg-gray-200 rounded-full h-2">
                         <div 
-                          className="bg-green-400 h-2 rounded-full transition-all duration-300"
+                          className="bg-green-400 h-2 rounded-full"
                           style={{ width: `${calculateStatusPercentage(doctor, 'completed')}%` }}
                         />
                       </div>
@@ -657,7 +687,7 @@ useEffect(() => {
                       <span className="text-xs text-green-500 font-medium w-20">Confirmed</span>
                       <div className="flex-1 bg-gray-200 rounded-full h-2">
                         <div 
-                          className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                          className="bg-green-600 h-2 rounded-full"
                           style={{ width: `${calculateStatusPercentage(doctor, 'confirmed')}%` }}
                         />
                       </div>
@@ -671,7 +701,7 @@ useEffect(() => {
                       <span className="text-xs text-yellow-600 font-medium w-20">Pending</span>
                       <div className="flex-1 bg-gray-200 rounded-full h-2">
                         <div 
-                          className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
+                          className="bg-green-600 h-2 rounded-full"
                           style={{ width: `${calculateStatusPercentage(doctor, 'pending')}%` }}
                         />
                       </div>

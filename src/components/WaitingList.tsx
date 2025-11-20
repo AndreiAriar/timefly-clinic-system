@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, query, getDocs, doc, updateDoc, deleteDoc, addDoc, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { Clock, User, Calendar, Trash2, CheckCircle, AlertCircle, X } from 'lucide-react';
@@ -95,56 +95,55 @@ const WaitingList = () => {
 
     return () => clearInterval(interval);
   }, [waitingList]);
-
-  const checkSlotAvailability = async (doctorName: string, appointmentDate: string): Promise<boolean> => {
-    try {
-      // Get doctor data
-      const doctorsRef = collection(db, 'doctors');
-      const doctorQuery = query(doctorsRef, where('name', '==', doctorName));
-      const doctorSnapshot = await getDocs(doctorQuery);
-      
-      if (doctorSnapshot.empty) return false;
-      
-      const doctorData = doctorSnapshot.docs[0].data() as Doctor;
-      
-      // Check if doctor is unavailable on this date
-      const unavailableDates = doctorData.unavailableDates || {};
-      if (unavailableDates[appointmentDate]) {
-        return false;
-      }
-      
-      // Get max slots for this date
-      const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-      const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
-      const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : (doctorData.maxSlots || 10);
-      
-      // Get unavailable time slots
-      const unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
-      const totalAvailableSlots = maxSlots - unavailableTimeSlots.length;
-      
-      // Get current bookings
-      const appointmentsRef = collection(db, 'appointments');
-      const appointmentsQuery = query(
-        appointmentsRef,
-        where('doctor', '==', doctorName),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const appointmentsSnapshot = await getDocs(appointmentsQuery);
-      const bookedCount = appointmentsSnapshot.size;
-      
-      console.log(`📊 Slot check for ${doctorName} on ${appointmentDate}:`);
-      console.log(`   Total available slots: ${totalAvailableSlots}`);
-      console.log(`   Booked: ${bookedCount}`);
-      console.log(`   Has availability: ${bookedCount < totalAvailableSlots}`);
-      
-      return bookedCount < totalAvailableSlots;
-    } catch (error) {
-      console.error('Error checking slot availability:', error);
+const checkSlotAvailability = useCallback(async (doctorName: string, appointmentDate: string): Promise<boolean> => {
+  try {
+    // Get doctor data
+    const doctorsRef = collection(db, 'doctors');
+    const doctorQuery = query(doctorsRef, where('name', '==', doctorName));
+    const doctorSnapshot = await getDocs(doctorQuery);
+    
+    if (doctorSnapshot.empty) return false;
+    
+    const doctorData = doctorSnapshot.docs[0].data() as Doctor;
+    
+    // Check if doctor is unavailable on this date
+    const unavailableDates = doctorData.unavailableDates || {};
+    if (unavailableDates[appointmentDate]) {
       return false;
     }
-  };
+    
+    // Get max slots for this date
+    const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+    const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
+    const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : (doctorData.maxSlots || 10);
+    
+    // Get unavailable time slots
+    const unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
+    const totalAvailableSlots = maxSlots - unavailableTimeSlots.length;
+    
+    // Get current bookings
+    const appointmentsRef = collection(db, 'appointments');
+    const appointmentsQuery = query(
+      appointmentsRef,
+      where('doctor', '==', doctorName),
+      where('appointmentDate', '==', appointmentDate),
+      where('status', '!=', 'cancelled')
+    );
+    
+    const appointmentsSnapshot = await getDocs(appointmentsQuery);
+    const bookedCount = appointmentsSnapshot.size;
+    
+    console.log(`📊 Slot check for ${doctorName} on ${appointmentDate}:`);
+    console.log(`   Total available slots: ${totalAvailableSlots}`);
+    console.log(`   Booked: ${bookedCount}`);
+    console.log(`   Has availability: ${bookedCount < totalAvailableSlots}`);
+    
+    return bookedCount < totalAvailableSlots;
+  } catch (error) {
+    console.error('Error checking slot availability:', error);
+    return false;
+  }
+}, []);
 
   const getAvailableTimeSlot = async (
     doctorName: string, 
@@ -250,56 +249,56 @@ const WaitingList = () => {
       console.error('Error recalculating queue numbers:', error);
     }
   };
-
-  const autoAssignToAppointment = async (entry: WaitingListEntry) => {
-    try {
-      console.log('🔄 Auto-assigning', entry.fullName, 'to appointment...');
-      
-      // Get available time slot
-      const timeSlot = await getAvailableTimeSlot(entry.doctor, entry.appointmentDate, entry.priorityLevel);
-      
-      if (!timeSlot) {
-        console.log('❌ No available time slot found');
-        return;
-      }
-      
-      // Create appointment
-      const appointmentsRef = collection(db, 'appointments');
-      await addDoc(appointmentsRef, {
-        fullName: entry.fullName,
-        age: entry.age,
-        photo: entry.photo,
-        doctor: entry.doctor,
-        appointmentDate: entry.appointmentDate,
-        gender: entry.gender,
-        medicalCondition: entry.medicalCondition,
-        phone: entry.phone,
-        priorityLevel: entry.priorityLevel,
-        timeSlot: timeSlot,
-        queueNumber: 0, // Will be recalculated
-        status: 'confirmed',
-        createdAt: new Date().toISOString(),
-        autoAssignedFromWaitingList: true
-      });
-      
-      // Recalculate queue numbers
-      await recalculateQueueNumbers(entry.appointmentDate);
-      
-      // Remove from waiting list
-      const waitingListRef = doc(db, 'waitingList', entry.id);
-      await deleteDoc(waitingListRef);
-      
-      toast.success(`✅ ${entry.fullName} has been automatically assigned to ${timeSlot}`, {
-        autoClose: 5000,
-        position: 'top-right'
-      });
-      
-      console.log('✅ Successfully auto-assigned patient to appointment');
-    } catch (error) {
-      console.error('❌ Error auto-assigning to appointment:', error);
-      toast.error('Failed to auto-assign patient');
+  
+  const autoAssignToAppointment = useCallback(async (entry: WaitingListEntry) => {
+  try {
+    console.log('🔄 Auto-assigning', entry.fullName, 'to appointment...');
+    
+    // Get available time slot
+    const timeSlot = await getAvailableTimeSlot(entry.doctor, entry.appointmentDate, entry.priorityLevel);
+    
+    if (!timeSlot) {
+      console.log('❌ No available time slot found');
+      return;
     }
-  };
+    
+    // Create appointment
+    const appointmentsRef = collection(db, 'appointments');
+    await addDoc(appointmentsRef, {
+      fullName: entry.fullName,
+      age: entry.age,
+      photo: entry.photo,
+      doctor: entry.doctor,
+      appointmentDate: entry.appointmentDate,
+      gender: entry.gender,
+      medicalCondition: entry.medicalCondition,
+      phone: entry.phone,
+      priorityLevel: entry.priorityLevel,
+      timeSlot: timeSlot,
+      queueNumber: 0, // Will be recalculated
+      status: 'confirmed',
+      createdAt: new Date().toISOString(),
+      autoAssignedFromWaitingList: true
+    });
+    
+    // Recalculate queue numbers
+    await recalculateQueueNumbers(entry.appointmentDate);
+    
+    // Remove from waiting list
+    const waitingListRef = doc(db, 'waitingList', entry.id);
+    await deleteDoc(waitingListRef);
+    
+    toast.success(`✅ ${entry.fullName} has been automatically assigned to ${timeSlot}`, {
+      autoClose: 5000,
+      position: 'top-right'
+    });
+    
+    console.log('✅ Successfully auto-assigned patient to appointment');
+  } catch (error) {
+    console.error('❌ Error auto-assigning to appointment:', error);
+    toast.error('Failed to auto-assign patient');
+  }
+}, []);
 
   const handleManualAssign = async () => {
     if (!selectedEntry) return;
@@ -366,20 +365,19 @@ const WaitingList = () => {
       </span>
     );
   };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading waiting list...</p>
-        </div>
-      </div>
-    );
-  }
-
+if (isLoading) {
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading waiting list...</p>
+      </div>
+    </div>
+  );
+}
+
+return (
+  <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
@@ -425,7 +423,7 @@ const WaitingList = () => {
             {waitingList.map((entry) => (
               <div
                 key={entry.id}
-                className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow"
+                className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4 flex-1">
@@ -488,14 +486,14 @@ const WaitingList = () => {
                         setSelectedEntry(entry);
                         setIsModalOpen(true);
                       }}
-                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium text-sm flex items-center gap-2"
+                    className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm flex items-center gap-2"
                     >
                       <CheckCircle className="w-4 h-4" />
                       Assign Now
                     </button>
                     <button
                       onClick={() => handleRemoveFromWaitingList(entry.id)}
-                      className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition font-medium text-sm flex items-center gap-2"
+                      className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100  font-medium text-sm flex items-center gap-2"
                     >
                       <Trash2 className="w-4 h-4" />
                       Remove
@@ -519,7 +517,7 @@ const WaitingList = () => {
                   setIsModalOpen(false);
                   setSelectedEntry(null);
                 }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
+                className="p-2 hover:bg-gray-100 rounded-lg"
               >
                 <X className="w-5 h-5 text-gray-600" />
               </button>
@@ -545,14 +543,14 @@ const WaitingList = () => {
                     setSelectedEntry(null);
                   }}
                   disabled={isProcessing}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50  font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleManualAssign}
                   disabled={isProcessing}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700  font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isProcessing ? 'Assigning...' : 'Confirm Assignment'}
                 </button>

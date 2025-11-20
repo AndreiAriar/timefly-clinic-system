@@ -6,6 +6,7 @@ import { Timestamp } from 'firebase/firestore';
 
 interface Feedback {
   id: string;
+  userId: string;
   userName: string;
   userEmail: string;
   message: string;
@@ -33,6 +34,7 @@ const DisplayFeedback = () => {
         ...doc.data()
       })) as Feedback[];
       
+      console.log('Fetched feedbacks:', feedbacksData); // Debug log
       setFeedbacks(feedbacksData);
       setFilteredFeedbacks(feedbacksData);
     }, (error) => {

@@ -12,8 +12,13 @@ interface FeedbackItem {
   createdAt: Timestamp;
 }
 
+interface PatientFeedbackProps {
+  currentUserName?: string;
+  currentUserPhoto?: string;
+  currentUserEmail?: string;
+}
 
-const PatientFeedback = () => {
+const PatientFeedback = ({ currentUserName, currentUserPhoto, currentUserEmail }: PatientFeedbackProps) => {
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
 
   useEffect(() => {
@@ -27,8 +32,8 @@ const PatientFeedback = () => {
           const data = doc.data();
           return {
             id: doc.id,
-            name: data.name || '',
-            email: data.email || '',
+            name: data.userName || data.name || '',
+            email: data.userEmail || data.email || '',
             message: data.message || '',
             rating: data.rating || 0,
             createdAt: data.createdAt
@@ -63,7 +68,14 @@ const PatientFeedback = () => {
   };
 
   if (showFeedbackForm) {
-    return <FeedbackForm onBack={handleBackToFeedback} />;
+    return (
+      <FeedbackForm 
+        onBack={handleBackToFeedback}
+        currentUserName={currentUserName}
+        currentUserPhoto={currentUserPhoto}
+        currentUserEmail={currentUserEmail}
+      />
+    );
   }
 
   return (

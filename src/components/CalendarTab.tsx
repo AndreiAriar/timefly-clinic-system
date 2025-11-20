@@ -171,7 +171,7 @@ if (maxSlotsNumber < 1) {
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white hover:bg-opacity-10 rounded-lg transition text-white hover:text-gray-200"
+            className="p-2 hover:bg-white hover:bg-opacity-10 rounded-lg  text-white hover:text-gray-200"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
@@ -251,13 +251,13 @@ if (maxSlotsNumber < 1) {
                 </span>
                 <button
                   onClick={() => setIsAvailableForDate(!isAvailableForDate)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
                     isAvailableForDate ? 'bg-green-500' : 'bg-red-500'
                   }`}
                   aria-label={isAvailableForDate ? 'Mark as unavailable' : 'Mark as available'}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white ${
                       isAvailableForDate ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
@@ -290,7 +290,7 @@ if (maxSlotsNumber < 1) {
                     <button
                       key={timeSlot}
                       onClick={() => toggleTimeSlot(timeSlot)}
-                      className={`p-3 rounded-lg text-sm font-medium transition-all border-2 ${
+                      className={`p-3 rounded-lg text-sm font-medium border-2 ${
                         isSlotUnavailable
                           ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100'
                           : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-300 hover:bg-gray-50'
@@ -317,7 +317,7 @@ if (maxSlotsNumber < 1) {
         <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
           <button
             onClick={onBackToDoctors}
-            className="px-6 py-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition font-medium flex items-center gap-2"
+            className="px-6 py-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg font-medium flex items-center gap-2"
             disabled={isLoading}
           >
             <ArrowLeft className="w-4 h-4" />
@@ -326,7 +326,7 @@ if (maxSlotsNumber < 1) {
           <div className="flex items-center gap-3">
             <button
               onClick={onClose}
-              className="px-6 py-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition font-medium"
+              className="px-6 py-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg font-medium"
               disabled={isLoading}
             >
               Cancel
@@ -334,7 +334,7 @@ if (maxSlotsNumber < 1) {
             <button
               onClick={handleSave}
               disabled={isLoading}
-              className="px-6 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <>
@@ -568,19 +568,19 @@ const CalendarTab = () => {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading calendar...</p>
-        </div>
-      </div>
-    );
-  }
-
+ if (isLoading) {
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading calendar...</p>
+      </div>
+    </div>
+  );
+}
+
+return (
+  <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
@@ -598,7 +598,7 @@ const CalendarTab = () => {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigateMonth('prev')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
+               className="p-2 hover:bg-gray-100 rounded-lg"
                 aria-label="Previous month"
               >
                 <ChevronLeft className="w-5 h-5 text-gray-600" />
@@ -610,7 +610,7 @@ const CalendarTab = () => {
               
               <button
                 onClick={() => navigateMonth('next')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
+                className="p-2 hover:bg-gray-100 rounded-lg "
                 aria-label="Next month"
               >
                 <ChevronRight className="w-5 h-5 text-gray-600" />
@@ -643,7 +643,7 @@ const CalendarTab = () => {
               return (
                 <div
                   key={date}
-                  className={`p-1.5 rounded-lg border transition cursor-pointer min-h-[60px] flex flex-col ${
+                  className={`p-1.5 rounded-lg border cursor-pointer min-h-[60px] flex-col ${
                     isToday
                       ? 'border-indigo-500 bg-indigo-50'
                       : isPast
@@ -651,7 +651,7 @@ const CalendarTab = () => {
                       : 'border-gray-200 bg-white hover:border-indigo-300 hover:shadow-sm'
                   }`}
                   onClick={() => handleDateClick(date)}
-                >
+>
                   <div className="flex flex-col items-center justify-between flex-1">
                     <span className={`text-xs font-medium ${
                       isToday ? 'text-indigo-700' : isPast ? 'text-gray-400' : 'text-gray-700'
@@ -700,7 +700,7 @@ const CalendarTab = () => {
               </div>
               <button
                 onClick={handleCloseDoctorSelector}
-                className="p-2 hover:bg-white hover:bg-opacity-10 rounded-lg transition text-white hover:text-gray-200"
+                className="p-2 hover:bg-white hover:bg-opacity-10 rounded-lg text-white hover:text-gray-200"
                 aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
@@ -713,7 +713,7 @@ const CalendarTab = () => {
                   <button
                     key={doctor.id}
                     onClick={() => handleDoctorSelect(doctor)}
-                    className="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left w-full"
+                    className="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50  text-left w-full"
                   >
                     {doctor.photo ? (
                       <img

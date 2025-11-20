@@ -293,12 +293,11 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
     console.log('🚫 DOCTOR IS UNAVAILABLE - No slots available');
     setAvailableTimeSlots([]);
     setHasAvailableSlots(false);
-    setIsDoctorUnavailable(true); // ✅ ADD THIS LINE
+    setIsDoctorUnavailable(true);
     setIsCheckingAvailability(false);
     return;
   }
   
-  // ✅ ADD THIS LINE - Reset unavailable state if doctor is available
   setIsDoctorUnavailable(false);
   
   if (isFullyBooked) {
@@ -437,7 +436,7 @@ useEffect(() => {
   } else {
     setAvailableTimeSlots([]);
     setHasAvailableSlots(true);
-    setIsDoctorUnavailable(false); // ✅ ADD THIS LINE - Reset when clearing form
+    setIsDoctorUnavailable(false);
   }
 }, [formData.doctor, formData.appointmentDate, formData.priorityLevel, generateTimeSlots]);
 
@@ -452,90 +451,117 @@ useEffect(() => {
   };
 }, [isOpen]);
 
-// ✅ UPDATED: Enhanced photo upload with drag-and-drop support
-const handlePhotoUpload = (file: File) => {
-  if (file) {
-    // ✅ REMOVED FILE SIZE LIMIT - Only validate file type
-    const validTypes = [
-      'image/jpeg', 
-      'image/jpg', 
-      'image/png', 
-      'image/gif', 
-      'image/webp',
-      'image/bmp',
-      'image/tiff',
-      'image/svg+xml'
-    ];
+// Function to compress image for optimal display
+const compressImageForDisplay = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
     
-    if (!validTypes.includes(file.type)) {
-      showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
-      return;
-    }
-
-    const reader = new FileReader();
-    
-    reader.onloadend = () => {
-      const img = new Image();
-      img.onload = () => {
-        // ✅ KEPT DIMENSION CONSTRAINTS for display optimization
-        const maxWidth = 2048;
-        const maxHeight = 2048;
-        
-        let width = img.width;
-        let height = img.height;
-
-        // Only scale if necessary for display
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height);
-          width = Math.floor(width * ratio);
-          height = Math.floor(height * ratio);
-        }
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        ctx?.drawImage(img, 0, 0, width, height);
-        
-        // Convert to base64 for display (not stored in database)
+    img.onload = () => {
+      const MAX_WIDTH = 800;
+      const MAX_HEIGHT = 800;
+      
+      let { width, height } = img;
+      
+      // Calculate new dimensions while maintaining aspect ratio
+      const scale = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height, 1);
+      width = Math.floor(width * scale);
+      height = Math.floor(height * scale);
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      ctx?.drawImage(img, 0, 0, width, height);
+      
+      // Start with good quality and reduce if needed
+      let quality = 0.8;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      const tryCompression = () => {
         let processedDataUrl;
         if (file.type === 'image/png' || file.type === 'image/gif') {
           processedDataUrl = canvas.toDataURL('image/png');
         } else if (file.type === 'image/webp') {
-          processedDataUrl = canvas.toDataURL('image/webp', 0.95);
+          processedDataUrl = canvas.toDataURL('image/webp', quality);
         } else {
-          processedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+          processedDataUrl = canvas.toDataURL('image/jpeg', quality);
         }
         
-        setFormData(prev => ({ ...prev, photo: processedDataUrl }));
+        const sizeInKB = (processedDataUrl.length - 'data:image/jpeg;base64,'.length) * 0.75 / 1024;
         
-        console.log('🖼️ Image processed for display:', {
-          originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-          originalDimensions: `${img.width}x${img.height}`,
-          displayDimensions: `${width}x${height}`,
-          format: file.type
-        });
+        console.log(`Image compression attempt ${attempts + 1}: Quality ${quality}, Size ${sizeInKB.toFixed(2)}KB`);
+        
+        if (sizeInKB < 2000 || attempts >= maxAttempts) { // Target under 2MB
+          resolve(processedDataUrl);
+        } else {
+          quality -= 0.2;
+          attempts++;
+          setTimeout(tryCompression, 0);
+        }
       };
       
-      img.src = reader.result as string;
+      tryCompression();
     };
     
-    reader.onerror = () => {
-      showToast('Error reading file. Please try again.', 'error');
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = URL.createObjectURL(file);
+  });
+};
+
+// Enhanced photo upload with drag-and-drop support and no file size limits
+const handlePhotoUpload = async (file: File) => {
+  if (!file) return;
+
+  // Only validate file type - NO FILE SIZE LIMITS
+  const validTypes = [
+    'image/jpeg', 
+    'image/jpg', 
+    'image/png', 
+    'image/gif', 
+    'image/webp',
+    'image/bmp',
+    'image/tiff',
+    'image/svg+xml'
+  ];
+  
+  if (!validTypes.includes(file.type)) {
+    showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
+    return;
+  }
+
+  console.log('🖼️ Processing image:', {
+    name: file.name,
+    type: file.type,
+    size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+    dimensions: 'Processing...'
+  });
+
+  try {
+    // Show temporary preview immediately
+    const tempReader = new FileReader();
+    tempReader.onloadend = () => {
+      const tempPhotoUrl = tempReader.result as string;
+      setFormData(prev => ({ ...prev, photo: tempPhotoUrl }));
     };
+    tempReader.readAsDataURL(file);
+
+    // Compress image for optimal display
+    const compressedBase64 = await compressImageForDisplay(file);
     
-    reader.readAsDataURL(file);
+    // Update with compressed version
+    setFormData(prev => ({ ...prev, photo: compressedBase64 }));
+    
+    console.log('✅ Image processed successfully for display');
+    
+  } catch (error) {
+    console.error('Error processing image:', error);
+    showToast('Error processing image. Please try again.', 'error');
   }
 };
 
-// ✅ NEW: Drag and drop event handlers
+// Drag and drop event handlers
 const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
   e.preventDefault();
   setIsDragOver(true);
@@ -557,7 +583,7 @@ const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
   }
 };
 
-// ✅ UPDATED: File input change handler
+// File input change handler
 const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   if (file) {
@@ -913,7 +939,7 @@ const handleSubmit = async () => {
                   </div>
                 </div>
 
-                {/* ✅ UPDATED: Photo upload section with drag-and-drop */}
+                {/* Enhanced Photo upload section with drag-and-drop and no file size limits */}
                 <div>
                   <label htmlFor="photo" className="block text-sm font-medium text-gray-700 mb-2">
                     Upload Photo (Optional)
@@ -981,7 +1007,7 @@ const handleSubmit = async () => {
                     aria-label="Photo upload input"
                   />
                   <p className="text-xs text-gray-500 mt-2 text-center">
-                    Click to browse or drag and drop an image file
+                    Click to browse or drag and drop an image 
                   </p>
                 </div>
 
@@ -1090,13 +1116,13 @@ const handleSubmit = async () => {
                   />
                 </div>
 
-                {/* ✅ UPDATED TIME SLOT SECTION - Moved Warning to Top */}
+                {/* Time Slot Section */}
                 <div>
                   <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
                     Select Time Slot <span className="text-red-500" aria-label="required">*</span>
                   </label>
                   
-                  {/* ✅ MOVE WARNING TO TOP - Show before time slot grid */}
+                  {/* Warning at top for doctor unavailability or full booking */}
                   {formData.doctor && formData.appointmentDate && formData.priorityLevel && !isCheckingAvailability && (
                     (() => {
                       const availableSlotsCount = availableTimeSlots.filter(slot => 
@@ -1235,7 +1261,7 @@ const handleSubmit = async () => {
                         );
                       }
 
-                      // ✅ Don't show the inline warnings - they're now at the top
+                      // Don't show the inline warnings - they're now at the top
                       if (isDoctorUnavailable || (!hasAvailableSlots && !hasSlots)) {
                         return (
                           <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
@@ -1396,7 +1422,7 @@ const handleSubmit = async () => {
         </div>
       </div>
 
-      {/* ✅ UPDATED: Toast Notification positioned on the right side */}
+      {/* Toast Notification positioned on the right side */}
       {toast && toast.show && (
         <div className="fixed top-4 right-4 z-[200] max-w-md w-full">
           <div className={`
