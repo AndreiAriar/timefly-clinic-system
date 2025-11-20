@@ -65,36 +65,36 @@ const WaitingList = () => {
     };
   }, []);
 
-  // Auto-assign patients when slots become available
-  useEffect(() => {
-    const checkAndAutoAssign = async () => {
-      if (waitingList.length === 0) return;
+  // Auto-assign patients when slots become available// Auto-assign patients when slots become available
+useEffect(() => {
+  const checkAndAutoAssign = async () => {
+    if (waitingList.length === 0) return;
 
-      console.log('🔍 Checking for available slots for', waitingList.length, 'waiting patients...');
+    console.log('🔍 Checking for available slots for', waitingList.length, 'waiting patients...');
 
-      for (const entry of waitingList) {
-        try {
-          const hasAvailableSlot = await checkSlotAvailability(entry.doctor, entry.appointmentDate);
-          
-          if (hasAvailableSlot) {
-            console.log('✅ Found available slot for', entry.fullName);
-            await autoAssignToAppointment(entry);
-            break; // Assign one at a time
-          }
-        } catch (error) {
-          console.error('❌ Error checking availability for', entry.fullName, error);
+    for (const entry of waitingList) {
+      try {
+        const hasAvailableSlot = await checkSlotAvailability(entry.doctor, entry.appointmentDate);
+        
+        if (hasAvailableSlot) {
+          console.log('✅ Found available slot for', entry.fullName);
+          await autoAssignToAppointment(entry);
+          break; // Assign one at a time
         }
+      } catch (error) {
+        console.error('❌ Error checking availability for', entry.fullName, error);
       }
-    };
+    }
+  };
 
-    // Check every 30 seconds
-    const interval = setInterval(checkAndAutoAssign, 30000);
-    
-    // Also check immediately when list changes
-    checkAndAutoAssign();
+  // Check every 30 seconds
+  const interval = setInterval(checkAndAutoAssign, 30000);
+  
+  // Also check immediately when list changes
+  checkAndAutoAssign();
 
-    return () => clearInterval(interval);
-  }, [waitingList]);
+  return () => clearInterval(interval);
+}, [waitingList, checkSlotAvailability, autoAssignToAppointment]);
 const checkSlotAvailability = useCallback(async (doctorName: string, appointmentDate: string): Promise<boolean> => {
   try {
     // Get doctor data

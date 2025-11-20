@@ -327,9 +327,10 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
     console.log('⛔ Unavailable time slots:', unavailableTimeSlots);
   }
 
-  if (priorityLevel === 'normal') {
+if (priorityLevel === 'normal') {
+    // Generate 1-hour interval slots (8:00, 9:00, 10:00, 11:00, 1:00, 2:00, 3:00, 4:00)
     for (let hour = startHour; hour < endHour; hour++) {
-      if (hour === 12) continue;
+      if (hour === 12) continue; // Skip lunch hour
       
       const timeString = `${hour.toString().padStart(2, '0')}:00`;
       const isBooked = bookedSlots.includes(timeString);
@@ -346,7 +347,9 @@ const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: stri
       
       console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
     }
-  } else if (priorityLevel === 'urgent') {
+  }
+  
+  else if (priorityLevel === 'urgent') {
     for (let hour = startHour; hour < endHour; hour++) {
       if (hour === 12) continue;
       
