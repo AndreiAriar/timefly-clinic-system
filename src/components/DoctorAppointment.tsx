@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Filter, Clock, User } from 'lucide-react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface Appointment {
@@ -29,35 +29,47 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const loadAppointments = async () => {
-      setIsLoading(true);
-      try {
-        const appointmentsRef = collection(db, 'appointments');
-        const q = query(
-          appointmentsRef,
-          where('doctor', '==', doctorName),
-          orderBy('appointmentDate', 'desc'),
-          orderBy('timeSlot', 'asc')
-        );
+useEffect(() => {
+    console.log('🔥 Setting up real-time listener for doctor appointments...');
+    
+    setIsLoading(true);
+    
+    const appointmentsRef = collection(db, 'appointments');
+    const q = query(
+      appointmentsRef,
+      where('doctor', '==', doctorName),
+      orderBy('appointmentDate', 'desc'),
+      orderBy('timeSlot', 'asc')
+    );
+    
+    // Real-time listener for appointments
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        // Filter out appointments deleted by staff or patient
+        const appointmentsData = snapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Appointment))
+          .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
         
-        const querySnapshot = await getDocs(q);
-        const appointmentsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Appointment[];
-        
+        console.log('📊 Real-time update - Doctor Appointments:', appointmentsData.length);
         setAppointments(appointmentsData);
         setFilteredAppointments(appointmentsData);
-      } catch (error) {
-        console.error('Error loading appointments:', error);
-      } finally {
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error('❌ Error in appointments listener:', error);
         setIsLoading(false);
       }
-    };
+    );
 
-    loadAppointments();
+    // Cleanup function
+    return () => {
+      console.log('🔌 Cleaning up doctor appointments listener');
+      unsubscribe();
+    };
   }, [doctorName]);
 
   useEffect(() => {
