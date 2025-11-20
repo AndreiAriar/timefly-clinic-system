@@ -65,85 +65,55 @@ const WaitingList = () => {
     };
   }, []);
 
-  // Auto-assign patients when slots become available// Auto-assign patients when slots become available
-useEffect(() => {
-  const checkAndAutoAssign = async () => {
-    if (waitingList.length === 0) return;
-
-    console.log('🔍 Checking for available slots for', waitingList.length, 'waiting patients...');
-
-    for (const entry of waitingList) {
-      try {
-        const hasAvailableSlot = await checkSlotAvailability(entry.doctor, entry.appointmentDate);
-        
-        if (hasAvailableSlot) {
-          console.log('✅ Found available slot for', entry.fullName);
-          await autoAssignToAppointment(entry);
-          break; // Assign one at a time
-        }
-      } catch (error) {
-        console.error('❌ Error checking availability for', entry.fullName, error);
+  const checkSlotAvailability = useCallback(async (doctorName: string, appointmentDate: string): Promise<boolean> => {
+    try {
+      // Get doctor data
+      const doctorsRef = collection(db, 'doctors');
+      const doctorQuery = query(doctorsRef, where('name', '==', doctorName));
+      const doctorSnapshot = await getDocs(doctorQuery);
+      
+      if (doctorSnapshot.empty) return false;
+      
+      const doctorData = doctorSnapshot.docs[0].data() as Doctor;
+      
+      // Check if doctor is unavailable on this date
+      const unavailableDates = doctorData.unavailableDates || {};
+      if (unavailableDates[appointmentDate]) {
+        return false;
       }
-    }
-  };
-
-  // Check every 30 seconds
-  const interval = setInterval(checkAndAutoAssign, 30000);
-  
-  // Also check immediately when list changes
-  checkAndAutoAssign();
-
-  return () => clearInterval(interval);
-}, [waitingList, checkSlotAvailability, autoAssignToAppointment]);
-const checkSlotAvailability = useCallback(async (doctorName: string, appointmentDate: string): Promise<boolean> => {
-  try {
-    // Get doctor data
-    const doctorsRef = collection(db, 'doctors');
-    const doctorQuery = query(doctorsRef, where('name', '==', doctorName));
-    const doctorSnapshot = await getDocs(doctorQuery);
-    
-    if (doctorSnapshot.empty) return false;
-    
-    const doctorData = doctorSnapshot.docs[0].data() as Doctor;
-    
-    // Check if doctor is unavailable on this date
-    const unavailableDates = doctorData.unavailableDates || {};
-    if (unavailableDates[appointmentDate]) {
+      
+      // Get max slots for this date
+      const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+      const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
+      const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : (doctorData.maxSlots || 10);
+      
+      // Get unavailable time slots
+      const unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
+      const totalAvailableSlots = maxSlots - unavailableTimeSlots.length;
+      
+      // Get current bookings
+      const appointmentsRef = collection(db, 'appointments');
+      const appointmentsQuery = query(
+        appointmentsRef,
+        where('doctor', '==', doctorName),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const appointmentsSnapshot = await getDocs(appointmentsQuery);
+      const bookedCount = appointmentsSnapshot.size;
+      
+      console.log(`📊 Slot check for ${doctorName} on ${appointmentDate}:`);
+      console.log(`   Total available slots: ${totalAvailableSlots}`);
+      console.log(`   Booked: ${bookedCount}`);
+      console.log(`   Has availability: ${bookedCount < totalAvailableSlots}`);
+      
+      return bookedCount < totalAvailableSlots;
+    } catch (error) {
+      console.error('Error checking slot availability:', error);
       return false;
     }
-    
-    // Get max slots for this date
-    const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-    const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
-    const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : (doctorData.maxSlots || 10);
-    
-    // Get unavailable time slots
-    const unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
-    const totalAvailableSlots = maxSlots - unavailableTimeSlots.length;
-    
-    // Get current bookings
-    const appointmentsRef = collection(db, 'appointments');
-    const appointmentsQuery = query(
-      appointmentsRef,
-      where('doctor', '==', doctorName),
-      where('appointmentDate', '==', appointmentDate),
-      where('status', '!=', 'cancelled')
-    );
-    
-    const appointmentsSnapshot = await getDocs(appointmentsQuery);
-    const bookedCount = appointmentsSnapshot.size;
-    
-    console.log(`📊 Slot check for ${doctorName} on ${appointmentDate}:`);
-    console.log(`   Total available slots: ${totalAvailableSlots}`);
-    console.log(`   Booked: ${bookedCount}`);
-    console.log(`   Has availability: ${bookedCount < totalAvailableSlots}`);
-    
-    return bookedCount < totalAvailableSlots;
-  } catch (error) {
-    console.error('Error checking slot availability:', error);
-    return false;
-  }
-}, []);
+  }, []);
 
   const getAvailableTimeSlot = async (
     doctorName: string, 
@@ -251,54 +221,85 @@ const checkSlotAvailability = useCallback(async (doctorName: string, appointment
   };
   
   const autoAssignToAppointment = useCallback(async (entry: WaitingListEntry) => {
-  try {
-    console.log('🔄 Auto-assigning', entry.fullName, 'to appointment...');
-    
-    // Get available time slot
-    const timeSlot = await getAvailableTimeSlot(entry.doctor, entry.appointmentDate, entry.priorityLevel);
-    
-    if (!timeSlot) {
-      console.log('❌ No available time slot found');
-      return;
+    try {
+      console.log('🔄 Auto-assigning', entry.fullName, 'to appointment...');
+      
+      // Get available time slot
+      const timeSlot = await getAvailableTimeSlot(entry.doctor, entry.appointmentDate, entry.priorityLevel);
+      
+      if (!timeSlot) {
+        console.log('❌ No available time slot found');
+        return;
+      }
+      
+      // Create appointment
+      const appointmentsRef = collection(db, 'appointments');
+      await addDoc(appointmentsRef, {
+        fullName: entry.fullName,
+        age: entry.age,
+        photo: entry.photo,
+        doctor: entry.doctor,
+        appointmentDate: entry.appointmentDate,
+        gender: entry.gender,
+        medicalCondition: entry.medicalCondition,
+        phone: entry.phone,
+        priorityLevel: entry.priorityLevel,
+        timeSlot: timeSlot,
+        queueNumber: 0, // Will be recalculated
+        status: 'confirmed',
+        createdAt: new Date().toISOString(),
+        autoAssignedFromWaitingList: true
+      });
+      
+      // Recalculate queue numbers
+      await recalculateQueueNumbers(entry.appointmentDate);
+      
+      // Remove from waiting list
+      const waitingListRef = doc(db, 'waitingList', entry.id);
+      await deleteDoc(waitingListRef);
+      
+      toast.success(`✅ ${entry.fullName} has been automatically assigned to ${timeSlot}`, {
+        autoClose: 5000,
+        position: 'top-right'
+      });
+      
+      console.log('✅ Successfully auto-assigned patient to appointment');
+    } catch (error) {
+      console.error('❌ Error auto-assigning to appointment:', error);
+      toast.error('Failed to auto-assign patient');
     }
+  }, []);
+
+  // Auto-assign patients when slots become available
+  useEffect(() => {
+    const checkAndAutoAssign = async () => {
+      if (waitingList.length === 0) return;
+
+      console.log('🔍 Checking for available slots for', waitingList.length, 'waiting patients...');
+
+      for (const entry of waitingList) {
+        try {
+          const hasAvailableSlot = await checkSlotAvailability(entry.doctor, entry.appointmentDate);
+          
+          if (hasAvailableSlot) {
+            console.log('✅ Found available slot for', entry.fullName);
+            await autoAssignToAppointment(entry);
+            break; // Assign one at a time
+          }
+        } catch (error) {
+          console.error('❌ Error checking availability for', entry.fullName, error);
+        }
+      }
+    };
+
+    // Check every 30 seconds
+    const interval = setInterval(checkAndAutoAssign, 30000);
     
-    // Create appointment
-    const appointmentsRef = collection(db, 'appointments');
-    await addDoc(appointmentsRef, {
-      fullName: entry.fullName,
-      age: entry.age,
-      photo: entry.photo,
-      doctor: entry.doctor,
-      appointmentDate: entry.appointmentDate,
-      gender: entry.gender,
-      medicalCondition: entry.medicalCondition,
-      phone: entry.phone,
-      priorityLevel: entry.priorityLevel,
-      timeSlot: timeSlot,
-      queueNumber: 0, // Will be recalculated
-      status: 'confirmed',
-      createdAt: new Date().toISOString(),
-      autoAssignedFromWaitingList: true
-    });
-    
-    // Recalculate queue numbers
-    await recalculateQueueNumbers(entry.appointmentDate);
-    
-    // Remove from waiting list
-    const waitingListRef = doc(db, 'waitingList', entry.id);
-    await deleteDoc(waitingListRef);
-    
-    toast.success(`✅ ${entry.fullName} has been automatically assigned to ${timeSlot}`, {
-      autoClose: 5000,
-      position: 'top-right'
-    });
-    
-    console.log('✅ Successfully auto-assigned patient to appointment');
-  } catch (error) {
-    console.error('❌ Error auto-assigning to appointment:', error);
-    toast.error('Failed to auto-assign patient');
-  }
-}, []);
+    // Also check immediately when list changes
+    checkAndAutoAssign();
+
+    return () => clearInterval(interval);
+  }, [waitingList, checkSlotAvailability, autoAssignToAppointment]);
 
   const handleManualAssign = async () => {
     if (!selectedEntry) return;
@@ -365,19 +366,20 @@ const checkSlotAvailability = useCallback(async (doctorName: string, appointment
       </span>
     );
   };
-if (isLoading) {
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading waiting list...</p>
-      </div>
-    </div>
-  );
-}
 
-return (
-  <div className="min-h-screen bg-gray-50 py-8">
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading waiting list...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
@@ -486,7 +488,7 @@ return (
                         setSelectedEntry(entry);
                         setIsModalOpen(true);
                       }}
-                    className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm flex items-center gap-2"
+                      className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-100 font-medium text-sm flex items-center gap-2"
                     >
                       <CheckCircle className="w-4 h-4" />
                       Assign Now
