@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Clock, User } from 'lucide-react';
-import { collection, query, where, getDocs, orderBy, onSnapshot } from 'firebase/firestore';
+import { Search, Clock, User } from 'lucide-react';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface Appointment {
@@ -16,6 +16,8 @@ interface Appointment {
   timeSlot: string;
   queueNumber: number;
   status: string;
+  deletedByStaff?: boolean;
+  deletedByPatient?: boolean;
 }
 
 interface DoctorAppointmentsProps {
@@ -29,17 +31,25 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
-useEffect(() => {
+
+  // Real-time listener for appointments
+  useEffect(() => {
     console.log('🔥 Setting up real-time listener for doctor appointments...');
+    console.log('Doctor Name:', doctorName);
     
+    if (!doctorName) {
+      console.warn('No doctor name provided');
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     
     const appointmentsRef = collection(db, 'appointments');
     const q = query(
       appointmentsRef,
       where('doctor', '==', doctorName),
-      orderBy('appointmentDate', 'desc'),
-      orderBy('timeSlot', 'asc')
+      orderBy('appointmentDate', 'desc')
     );
     
     // Real-time listener for appointments
@@ -54,9 +64,19 @@ useEffect(() => {
           } as Appointment))
           .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
         
+        // Sort by date and time
+        appointmentsData.sort((a, b) => {
+          const dateCompare = new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime();
+          if (dateCompare !== 0) return dateCompare;
+          
+          // If same date, sort by time slot
+          const timeA = a.timeSlot || '00:00';
+          const timeB = b.timeSlot || '00:00';
+          return timeA.localeCompare(timeB);
+        });
+        
         console.log('📊 Real-time update - Doctor Appointments:', appointmentsData.length);
         setAppointments(appointmentsData);
-        setFilteredAppointments(appointmentsData);
         setIsLoading(false);
       },
       (error) => {
@@ -72,16 +92,26 @@ useEffect(() => {
     };
   }, [doctorName]);
 
+  // Filter appointments based on search and filters
   useEffect(() => {
-    let filtered = appointments.filter(apt => 
-      apt.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      apt.medicalCondition.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    let filtered = [...appointments];
 
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(apt => 
+        apt.fullName.toLowerCase().includes(query) ||
+        apt.medicalCondition.toLowerCase().includes(query) ||
+        apt.phone.includes(query)
+      );
+    }
+
+    // Status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter(apt => apt.status === statusFilter);
     }
 
+    // Priority filter
     if (priorityFilter !== 'all') {
       filtered = filtered.filter(apt => apt.priorityLevel === priorityFilter);
     }
@@ -102,7 +132,10 @@ useEffect(() => {
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'confirmed': return 'bg-green-100 text-green-800';
       case 'scheduled': return 'bg-blue-100 text-blue-800';
+      case 'rescheduled': return 'bg-purple-100 text-purple-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
       case 'completed': return 'bg-gray-100 text-gray-800';
+      case 'missed': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -118,6 +151,7 @@ useEffect(() => {
   };
 
   const convertTo12Hour = (time24: string): string => {
+    if (!time24) return 'N/A';
     const [hours, minutes] = time24.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';
     const hours12 = hours % 12 || 12;
@@ -141,7 +175,9 @@ useEffect(() => {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">My Appointments</h1>
-          <p className="text-gray-600 mt-2">Manage your patient appointments and schedule</p>
+          <p className="text-gray-600 mt-2">
+            Manage your patient appointments and schedule ({filteredAppointments.length} appointments)
+          </p>
         </div>
 
         {/* Search and Filter Section */}
@@ -173,7 +209,9 @@ useEffect(() => {
                   <option value="pending">Pending</option>
                   <option value="confirmed">Confirmed</option>
                   <option value="scheduled">Scheduled</option>
+                  <option value="rescheduled">Rescheduled</option>
                   <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
 
@@ -192,6 +230,38 @@ useEffect(() => {
               </div>
             </div>
           </div>
+
+          {/* Active Filters Display */}
+          {(searchQuery || statusFilter !== 'all' || priorityFilter !== 'all') && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="text-sm text-gray-600">Active filters:</span>
+              {searchQuery && (
+                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                  Search: "{searchQuery}"
+                </span>
+              )}
+              {statusFilter !== 'all' && (
+                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                  Status: {statusFilter}
+                </span>
+              )}
+              {priorityFilter !== 'all' && (
+                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                  Priority: {priorityFilter}
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setStatusFilter('all');
+                  setPriorityFilter('all');
+                }}
+                className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
 
         {/* List View */}

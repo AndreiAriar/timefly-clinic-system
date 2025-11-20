@@ -55,7 +55,7 @@ export default async function handler(req, res) {
             <h3 style="color: #4F46E5; margin-top: 0;">Appointment Details:</h3>
             ${queueNumber ? `<p><strong>Queue Number:</strong> ${queueNumber}</p>` : ''}
             ${appointmentTime ? `<p><strong>Time:</strong> ${appointmentTime}</p>` : ''}
-            <p><strong>Status:</strong> Please arrive 10 minutes early</p>
+            <p><strong>Status:</strong> Please arrive 30 minutes early</p>
           </div>
           
           <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #ffeaa7;">

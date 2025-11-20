@@ -46,7 +46,6 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments }: DoctorHomeProps) =
     completedToday: 0,
     availableSlots: 0
   });
-  const [isLoading, setIsLoading] = useState(true);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [greeting, setGreeting] = useState({ text: '', icon: <Sun className="h-8 w-8" /> });
 
@@ -270,12 +269,9 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments }: DoctorHomeProps) =
             completed: completedToday,
             available: availableSlots
           });
-
-          setIsLoading(false);
         },
         (error) => {
           console.error('❌ Error in doctor stats listener:', error);
-          setIsLoading(false);
         }
       );
     };
@@ -290,17 +286,6 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments }: DoctorHomeProps) =
       }
     };
   }, [doctorName]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>

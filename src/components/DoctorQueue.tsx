@@ -19,8 +19,8 @@ interface Appointment {
   queueNumber: number;
   status: string;
   createdAt: string;
-  deletedByStaff?: boolean;  // Add this
-  deletedByPatient?: boolean; // Add this
+  deletedByStaff?: boolean;
+  deletedByPatient?: boolean;
 }
 
 interface DoctorQueueProps {
@@ -30,34 +30,57 @@ interface DoctorQueueProps {
 const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [nowServing, setNowServing] = useState<Appointment | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Get today's date in Philippine timezone (UTC+8)
   const getTodayDatePH = (): string => {
-    const now = new Date();
-    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    const year = phTime.getFullYear();
-    const month = String(phTime.getMonth() + 1).padStart(2, '0');
-    const day = String(phTime.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    try {
+      const now = new Date();
+      const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+      const year = phTime.getFullYear();
+      const month = String(phTime.getMonth() + 1).padStart(2, '0');
+      const day = String(phTime.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch (err) {
+      console.error('Error getting today date:', err);
+      // Fallback to current date without timezone conversion
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
   };
 
   // Format date for display
   const formatDateDisplay = (dateString: string): string => {
-    const [year, month, day] = dateString.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    const options: Intl.DateTimeFormatOptions = { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    };
-    return date.toLocaleDateString('en-US', options);
+    try {
+      const [year, month, day] = dateString.split('-').map(Number);
+      const date = new Date(year, month - 1, day);
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      const options: Intl.DateTimeFormatOptions = { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      };
+      return date.toLocaleDateString('en-US', options);
+    } catch (error) {
+      console.error('Error formatting date display:', error);
+      return 'Invalid Date';
+    }
   };
 
   useEffect(() => {
-    setIsLoading(true);
     setError(null);
+
+    if (!doctorName) {
+      console.warn('No doctor name provided');
+      setAppointments([]);
+      setNowServing(null);
+      return;
+    }
 
     const today = getTodayDatePH();
     const appointmentsRef = collection(db, 'appointments');
@@ -76,12 +99,30 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
       (querySnapshot) => {
         try {
           const appointmentsData = querySnapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            })) as Appointment[];
+            .map(doc => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                fullName: data.fullName || '',
+                age: data.age || '',
+                photo: data.photo || '',
+                doctor: data.doctor || '',
+                appointmentDate: data.appointmentDate || '',
+                gender: data.gender || '',
+                medicalCondition: data.medicalCondition || '',
+                phone: data.phone || '',
+                email: data.email || '',
+                priorityLevel: data.priorityLevel || 'normal',
+                timeSlot: data.timeSlot || '',
+                queueNumber: data.queueNumber || 0,
+                status: data.status || 'pending',
+                createdAt: data.createdAt || '',
+                deletedByStaff: data.deletedByStaff || false,
+                deletedByPatient: data.deletedByPatient || false
+              } as Appointment;
+            });
           
-         // Filter out cancelled, completed, missed appointments AND deleted appointments
+          // Filter out cancelled, completed, missed appointments AND deleted appointments
           const filteredAppointments = appointmentsData.filter(apt => 
             apt.status !== 'cancelled' && 
             apt.status !== 'completed' && 
@@ -98,17 +139,18 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
           );
           
           setNowServing(currentlyServing || null);
-          setIsLoading(false);
         } catch (err) {
           console.error('Error processing queue data:', err);
           setError('Failed to process queue data');
-          setIsLoading(false);
+          setAppointments([]);
+          setNowServing(null);
         }
       },
       (error) => {
         console.error('Error listening to queue:', error);
         setError('Failed to load queue. Please try again.');
-        setIsLoading(false);
+        setAppointments([]);
+        setNowServing(null);
       }
     );
 
@@ -119,6 +161,7 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
   const getUpNextAppointments = () => {
     if (!nowServing) return appointments.slice(0, 3);
     const currentIndex = appointments.findIndex(apt => apt.id === nowServing.id);
+    if (currentIndex === -1) return appointments.slice(0, 3);
     return appointments.slice(currentIndex + 1, currentIndex + 4);
   };
 
@@ -141,61 +184,71 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
   };
 
   const convertTo12Hour = (time24: string): string => {
-    const [hours, minutes] = time24.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hours12 = hours % 12 || 12;
-    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
-
-  const calculateWaitingTime = (timeSlot: string): string => {
-    const now = new Date();
-    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    if (!time24) return 'N/A';
     
-    const [hours, minutes] = timeSlot.split(':').map(Number);
-    const appointmentTime = new Date(phTime);
-    appointmentTime.setHours(hours, minutes, 0, 0);
-    
-    const diffMs = appointmentTime.getTime() - phTime.getTime();
-    const diffMinutes = Math.floor(diffMs / 60000);
-    
-    if (diffMinutes > 0) {
-      if (diffMinutes < 60) {
-        return `${diffMinutes} min remaining`;
-      } else {
-        const hrs = Math.floor(diffMinutes / 60);
-        const mins = diffMinutes % 60;
-        if (mins === 0) {
-          return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} remaining`;
-        }
-        return `${hrs}h ${mins}m remaining`;
+    try {
+      const [hours, minutes] = time24.split(':').map(Number);
+      if (isNaN(hours) || isNaN(minutes)) {
+        return 'Invalid Time';
       }
-    } else if (diffMinutes === 0) {
-      return 'Starting now';
-    } else {
-      const waitingMinutes = Math.abs(diffMinutes);
-      if (waitingMinutes < 60) {
-        return `Waiting ${waitingMinutes} min`;
-      } else {
-        const hrs = Math.floor(waitingMinutes / 60);
-        const mins = waitingMinutes % 60;
-        if (mins === 0) {
-          return `Waiting ${hrs}h`;
-        }
-        return `Waiting ${hrs}h ${mins}m`;
-      }
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const hours12 = hours % 12 || 12;
+      return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+    } catch (error) {
+      console.error('Error converting time:', error);
+      return 'Invalid Time';
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading queue...</p>
-        </div>
-      </div>
-    );
-  }
+  const calculateWaitingTime = (timeSlot: string): string => {
+    if (!timeSlot) return 'Time not set';
+    
+    try {
+      const now = new Date();
+      const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+      
+      const [hours, minutes] = timeSlot.split(':').map(Number);
+      if (isNaN(hours) || isNaN(minutes)) {
+        return 'Invalid Time';
+      }
+      
+      const appointmentTime = new Date(phTime);
+      appointmentTime.setHours(hours, minutes, 0, 0);
+      
+      const diffMs = appointmentTime.getTime() - phTime.getTime();
+      const diffMinutes = Math.floor(diffMs / 60000);
+      
+      if (diffMinutes > 0) {
+        if (diffMinutes < 60) {
+          return `${diffMinutes} min remaining`;
+        } else {
+          const hrs = Math.floor(diffMinutes / 60);
+          const mins = diffMinutes % 60;
+          if (mins === 0) {
+            return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} remaining`;
+          }
+          return `${hrs}h ${mins}m remaining`;
+        }
+      } else if (diffMinutes === 0) {
+        return 'Starting now';
+      } else {
+        const waitingMinutes = Math.abs(diffMinutes);
+        if (waitingMinutes < 60) {
+          return `Waiting ${waitingMinutes} min`;
+        } else {
+          const hrs = Math.floor(waitingMinutes / 60);
+          const mins = waitingMinutes % 60;
+          if (mins === 0) {
+            return `Waiting ${hrs}h`;
+          }
+          return `Waiting ${hrs}h ${mins}m`;
+        }
+      }
+    } catch (error) {
+      console.error('Error calculating waiting time:', error);
+      return 'Time calculation error';
+    }
+  };
 
   if (error) {
     return (
@@ -223,7 +276,7 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
           <h1 className="text-3xl font-bold text-gray-900">My Patient Queue</h1>
           <p className="text-gray-600 mt-2">View today's patient queue in real-time</p>
           <p className="text-sm text-indigo-600 font-medium mt-1">
-            {formatDateDisplay(getTodayDatePH())} • Dr. {doctorName}
+            {formatDateDisplay(getTodayDatePH())} • Dr. {doctorName || 'Unknown'}
           </p>
         </div>
 
@@ -239,15 +292,15 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
                   </div>
                   <div>
                     <p className="text-sm opacity-90">Currently Serving</p>
-                    <h3 className="text-3xl font-bold">{nowServing.fullName}</h3>
-                    <p className="text-lg opacity-90">Queue #{nowServing.queueNumber}</p>
+                    <h3 className="text-3xl font-bold">{nowServing.fullName || 'Unknown Patient'}</h3>
+                    <p className="text-lg opacity-90">Queue #{nowServing.queueNumber || 'N/A'}</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-sm opacity-90">Appointment Time</p>
                   <p className="text-xl font-semibold">{convertTo12Hour(nowServing.timeSlot)}</p>
                   <p className="text-sm opacity-90 mt-1">
-                    {nowServing.age} years • {nowServing.gender}
+                    {nowServing.age || 'N/A'} years • {nowServing.gender || 'N/A'}
                   </p>
                 </div>
               </div>
@@ -257,11 +310,11 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4 opacity-80" />
-                    <span>{nowServing.phone}</span>
+                    <span>{nowServing.phone || 'No phone number'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 opacity-80" />
-                    <span>{nowServing.medicalCondition}</span>
+                    <span>{nowServing.medicalCondition || 'No condition specified'}</span>
                   </div>
                 </div>
               </div>
@@ -270,7 +323,11 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
             <div className="bg-gray-200 rounded-2xl p-8 text-center">
               <Clock className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-600 mb-2">No Patient Currently Being Served</h3>
-              <p className="text-gray-500">Patients will appear here when they are being served</p>
+              <p className="text-gray-500">
+                {appointments.length > 0 
+                  ? 'Select a patient to start serving' 
+                  : 'No patients in queue for today'}
+              </p>
             </div>
           )}
         </div>
@@ -282,14 +339,14 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
             {getUpNextAppointments().map((appointment) => (
               <div key={appointment.id} className="bg-white rounded-xl p-4 shadow-md border-l-4 border-yellow-500">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold text-yellow-600">#{appointment.queueNumber}</span>
+                  <span className="text-sm font-semibold text-yellow-600">#{appointment.queueNumber || 'N/A'}</span>
                   <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getPriorityColor(appointment.priorityLevel)}`}>
-                    {appointment.priorityLevel}
+                    {appointment.priorityLevel || 'normal'}
                   </span>
                 </div>
-                <h4 className="font-semibold text-gray-900 mb-1">{appointment.fullName}</h4>
+                <h4 className="font-semibold text-gray-900 mb-1">{appointment.fullName || 'Unknown Patient'}</h4>
                 <p className="text-sm text-gray-600 mb-2">
-                  {appointment.age} years • {appointment.gender}
+                  {appointment.age || 'N/A'} years • {appointment.gender || 'N/A'}
                 </p>
                 <p className="text-sm text-gray-500">{convertTo12Hour(appointment.timeSlot)}</p>
                 
@@ -302,14 +359,19 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
                 {/* Status Display */}
                 <div className="mt-3">
                   <span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
-                    {appointment.status}
+                    {appointment.status || 'pending'}
                   </span>
                 </div>
               </div>
             ))}
-            {getUpNextAppointments().length === 0 && (
+            {getUpNextAppointments().length === 0 && appointments.length > 0 && (
               <div className="col-span-3 text-center py-8 text-gray-500">
                 No more patients in queue
+              </div>
+            )}
+            {appointments.length === 0 && (
+              <div className="col-span-3 text-center py-8 text-gray-500">
+                No patients scheduled for today
               </div>
             )}
           </div>
@@ -332,19 +394,19 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4">
                         <div className="flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-full">
-                          <span className="text-lg font-bold text-indigo-600">#{appointment.queueNumber}</span>
+                          <span className="text-lg font-bold text-indigo-600">#{appointment.queueNumber || 'N/A'}</span>
                         </div>
                         <div>
-                          <h4 className="font-semibold text-gray-900">{appointment.fullName}</h4>
+                          <h4 className="font-semibold text-gray-900">{appointment.fullName || 'Unknown Patient'}</h4>
                           <p className="text-sm text-gray-600">
-                            {appointment.age} years • {appointment.gender}
+                            {appointment.age || 'N/A'} years • {appointment.gender || 'N/A'}
                           </p>
                           <p className="text-sm text-gray-500">{convertTo12Hour(appointment.timeSlot)}</p>
                           
                           {/* Status and Waiting Time */}
                           <div className="flex items-center gap-2 mt-1">
                             <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
-                              {appointment.status}
+                              {appointment.status || 'pending'}
                             </span>
                             <span className="text-xs text-gray-300">•</span>
                             <div className="flex items-center gap-1 text-orange-600">
@@ -357,7 +419,7 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
                       
                       <div className="flex items-center space-x-3">
                         <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${getPriorityColor(appointment.priorityLevel)}`}>
-                          {appointment.priorityLevel}
+                          {appointment.priorityLevel || 'normal'}
                         </span>
                         
                         {(nowServing?.id === appointment.id) && (
@@ -373,11 +435,11 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
                       <div className="flex items-center gap-4">
                         <span className="flex items-center gap-1">
                           <Phone className="w-4 h-4" />
-                          {appointment.phone}
+                          {appointment.phone || 'No phone number'}
                         </span>
                         <span className="flex items-center gap-1">
                           <AlertCircle className="w-4 h-4" />
-                          {appointment.medicalCondition}
+                          {appointment.medicalCondition || 'No condition specified'}
                         </span>
                       </div>
                     </div>

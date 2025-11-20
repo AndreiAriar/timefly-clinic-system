@@ -1,5 +1,5 @@
-import { X, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
@@ -39,13 +39,7 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    if (isOpen) {
-      loadDoctorAndAppointments();
-    }
-  }, [isOpen, doctorName, currentMonth]);
-
-  const loadDoctorAndAppointments = async () => {
+  const loadDoctorAndAppointments = useCallback(async () => {
     setIsLoading(true);
     try {
       console.log('🔍 Loading doctor data for:', doctorName);
@@ -110,7 +104,13 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [doctorName]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadDoctorAndAppointments();
+    }
+  }, [isOpen, doctorName, loadDoctorAndAppointments]);
 
   const getDaysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
