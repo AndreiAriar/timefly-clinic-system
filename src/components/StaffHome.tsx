@@ -203,8 +203,8 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="py-20 bg-white">
+      {/* Stats Section - Updated Design */}
+      <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -215,73 +215,128 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Today's Patients */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-blue-100 p-3 rounded-full">
-                  <Calendar className="w-8 h-8 text-blue-600" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+            {/* Today's Patients Card */}
+            <div className="bg-blue-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+              <div className="flex flex-col items-center text-center mb-4">
+                <div className="mb-4">
+                  <Calendar className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm font-medium text-gray-500">Today</span>
+                <span className="text-sm font-medium text-white opacity-90">Today</span>
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">
+              <h3 className="text-3xl font-bold text-white text-center mb-2">
                 {stats.todayPatients}
               </h3>
-              <p className="text-sm text-gray-600">Today's Patients</p>
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500">Scheduled appointments</p>
+              <p className="text-sm text-white text-center opacity-90">Today's Patients</p>
+              <div className="mt-4 pt-4 border-t border-white/30">
+                <p className="text-xs text-white opacity-100 text-center">Scheduled appointments</p>
               </div>
             </div>
 
-            {/* In Progress */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-yellow-100 p-3 rounded-full">
-                  <Users className="w-8 h-8 text-yellow-600" />
+            {/* In Progress Card */}
+            <div className="bg-yellow-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+              <div className="flex flex-col items-center text-center mb-4">
+                <div className="mb-4">
+                  <Users className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm font-medium text-gray-500">Active</span>
+                <span className="text-sm font-medium text-white opacity-90">Active</span>
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">
+              <h3 className="text-3xl font-bold text-white text-center mb-2">
                 {stats.inProgress}
               </h3>
-              <p className="text-sm text-gray-600">In Progress</p>
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500">Currently consulting</p>
+              <p className="text-sm text-white text-center opacity-90">In Progress</p>
+              <div className="mt-4 pt-4 border-t border-white/30">
+                <p className="text-xs text-white opacity-100 text-center">Currently consulting</p>
               </div>
             </div>
 
-            {/* Upcoming */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-orange-100 p-3 rounded-full">
-                  <Clock className="w-8 h-8 text-orange-600" />
+            {/* Upcoming Card */}
+            <div className="bg-orange-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+              <div className="flex flex-col items-center text-center mb-4">
+                <div className="mb-4">
+                  <Clock className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm font-medium text-gray-500">Pending</span>
+                <span className="text-sm font-medium text-white opacity-90">Pending</span>
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">
+              <h3 className="text-3xl font-bold text-white text-center mb-2">
                 {stats.upcoming}
               </h3>
-              <p className="text-sm text-gray-600">Upcoming</p>
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500">Future appointments</p>
+              <p className="text-sm text-white text-center opacity-90">Upcoming</p>
+              <div className="mt-4 pt-4 border-t border-white/30">
+                <p className="text-xs text-white opacity-100 text-center">Future appointments</p>
               </div>
             </div>
 
-            {/* Completed */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-green-100 p-3 rounded-full">
-                  <FileText className="w-8 h-8 text-green-600" />
+            {/* Completed Card */}
+            <div className="bg-green-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+              <div className="flex flex-col items-center text-center mb-4">
+                <div className="mb-4">
+                  <FileText className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm font-medium text-gray-500">Done</span>
+                <span className="text-sm font-medium text-white opacity-90">Done</span>
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">
+              <h3 className="text-3xl font-bold text-white text-center mb-2">
                 {stats.completed}
               </h3>
-              <p className="text-sm text-gray-600">Completed</p>
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500">Total consultations</p>
+              <p className="text-sm text-white text-center opacity-90">Completed</p>
+              <div className="mt-4 pt-4 border-t border-white/30">
+                <p className="text-xs text-white opacity-100 text-center">Total consultations</p>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Staff Management Tools
+            </h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Powerful features to streamline your healthcare operations
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Feature 1 */}
+            <div className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-6">
+                <Users className="w-8 h-8 text-blue-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                Queue Management
+              </h3>
+              <p className="text-gray-600">
+                Monitor and manage patient queues in real-time. Prioritize cases and optimize patient flow.
+              </p>
+            </div>
+
+            {/* Feature 2 */}
+            <div className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-6">
+                <Calendar className="w-8 h-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                Appointment Scheduling
+              </h3>
+              <p className="text-gray-600">
+                Book, reschedule, and manage appointments efficiently with our intuitive calendar system.
+              </p>
+            </div>
+
+            {/* Feature 3 */}
+            <div className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-6">
+                <FileText className="w-8 h-8 text-purple-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                Patient Records
+              </h3>
+              <p className="text-gray-600">
+                Access comprehensive patient information and medical history for better care decisions.
+              </p>
             </div>
           </div>
         </div>

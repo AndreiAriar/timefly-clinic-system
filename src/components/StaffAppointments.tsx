@@ -8,6 +8,7 @@ import StaffCancel from './StaffCancel';
 import ToastNotification from './ToastNotification';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
+
 interface Appointment {
   id: string;
   fullName: string;
@@ -44,10 +45,10 @@ const StaffAppointments = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [doctorFilter, setDoctorFilter] = useState('all');
+  const [isLoading, setIsLoading] = useState(true);
   const [doctors, setDoctors] = useState<string[]>([]);
   const [sortField, setSortField] = useState<SortField>('appointmentDate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
     message: '',
     type: 'info',
@@ -59,54 +60,46 @@ const StaffAppointments = () => {
     setToast({ message, type, isVisible: true });
   };
 
-useEffect(() => {
-  console.log('🔥 Setting up real-time listeners for staff...');
-  
-  // Reset state when component mounts
-  setAppointments([]);
-  setFilteredAppointments([]);
-  setHasLoadedOnce(false);
-  
-  // Get current user's email
-  const userEmail = auth.currentUser?.email;
-  
-  if (!userEmail) {
-  console.error('No user email found');
-  setHasLoadedOnce(true);  // Changed from setIsLoading(false)
-  return;
-}
+  useEffect(() => {
+    console.log('🔥 Setting up real-time listeners for staff...');
+    
+    // Get current user's email
+    const userEmail = auth.currentUser?.email;
+    
+    if (!userEmail) {
+      console.error('No user email found');
+      setIsLoading(false);
+      return;
+    }
 
-  let unsubscribeAppointments: (() => void) | undefined;
+    let unsubscribeAppointments: (() => void) | undefined;
 
-  // Load user role and setup appointments listener
-  const setupListeners = async () => {
-    try {
-      // Get user role from Firestore
-      const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-      const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+    // Load user role and setup appointments listener
+    const setupListeners = async () => {
+      try {
+        // Get user role from Firestore
+        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+        const userRole = userDoc.docs[0]?.data()?.role || 'patient';
 
-      const appointmentsRef = collection(db, 'appointments');
-      let appointmentsQuery;
-      
-      // If staff or doctor, show all appointments
-      if (userRole === 'staff' || userRole === 'doctor') {
-        appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
-      } else {
-        // If patient, show only their appointments
-        appointmentsQuery = query(
-          appointmentsRef, 
-          where('email', '==', userEmail),
-          orderBy('createdAt', 'desc')
-        );
-      }
-      
-      // Real-time listener for appointments
-     unsubscribeAppointments = onSnapshot(
-        appointmentsQuery,
-        { includeMetadataChanges: false }, // Only trigger on actual server data changes
-        (snapshot) => {
-          // Only process if data is from server, not from cache
-          if (!snapshot.metadata.fromCache) {
+        const appointmentsRef = collection(db, 'appointments');
+        let appointmentsQuery;
+        
+        // If staff or doctor, show all appointments
+        if (userRole === 'staff' || userRole === 'doctor') {
+          appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
+        } else {
+          // If patient, show only their appointments
+          appointmentsQuery = query(
+            appointmentsRef, 
+            where('email', '==', userEmail),
+            orderBy('createdAt', 'desc')
+          );
+        }
+        
+        // Real-time listener for appointments
+        unsubscribeAppointments = onSnapshot(
+          appointmentsQuery,
+          (snapshot) => {
             // Filter out appointments deleted by staff
             const appointmentsData = snapshot.docs
               .map(doc => ({
@@ -115,56 +108,50 @@ useEffect(() => {
               } as Appointment))
               .filter(apt => !apt.deletedByStaff);
             
-            console.log('📊 Real-time update - Staff Appointments (from server):', appointmentsData.length);
-            console.log('📡 Data source: Server');
+            console.log('📊 Real-time update - Staff Appointments:', appointmentsData.length);
             setAppointments(appointmentsData);
-            setHasLoadedOnce(true); 
-            setHasLoadedOnce(true);
-          } else {
-            console.log('⚠️ Ignoring cached data, waiting for server data...');
+            setIsLoading(false);
+          },
+          (error) => {
+            console.error('❌ Error in appointments listener:', error);
+            showToast('Failed to load appointments. Please try again.', 'error');
+            setIsLoading(false);
           }
-        },
-        (error) => {
-          console.error('❌ Error in appointments listener:', error);
-          showToast('Failed to load appointments. Please try again.', 'error');
-          setHasLoadedOnce(true);
-          setHasLoadedOnce(true);
-        }
-      );
-    } catch (error) {
-      console.error('Error setting up listeners:', error);
-      showToast('Failed to load appointments. Please try again.', 'error');
-      setHasLoadedOnce(true);
-    }
-  };
+        );
+      } catch (error) {
+        console.error('Error setting up listeners:', error);
+        showToast('Failed to load appointments. Please try again.', 'error');
+        setIsLoading(false);
+      }
+    };
 
-  setupListeners();
+    setupListeners();
 
-  // Load doctors
-  const loadDoctors = async () => {
-    try {
-      const doctorsRef = collection(db, 'doctors');
-      const q = query(doctorsRef, where('isActive', '==', true));
-      const querySnapshot = await getDocs(q);
-      
-      const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
-      setDoctors(doctorsData);
-    } catch (error) {
-      console.error('Error loading doctors:', error);
-      showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-    }
-  };
+    // Load doctors
+    const loadDoctors = async () => {
+      try {
+        const doctorsRef = collection(db, 'doctors');
+        const q = query(doctorsRef, where('isActive', '==', true));
+        const querySnapshot = await getDocs(q);
+        
+        const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
+        setDoctors(doctorsData);
+      } catch (error) {
+        console.error('Error loading doctors:', error);
+        showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+      }
+    };
 
-  loadDoctors();
+    loadDoctors();
 
-  // Cleanup function
-  return () => {
-    console.log('🔌 Cleaning up staff appointments listener');
-    if (unsubscribeAppointments) {
-      unsubscribeAppointments();
-    }
-  };
-}, []);
+    // Cleanup function
+    return () => {
+      console.log('🔌 Cleaning up staff appointments listener');
+      if (unsubscribeAppointments) {
+        unsubscribeAppointments();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let filtered = [...appointments];
@@ -254,55 +241,55 @@ useEffect(() => {
     setShowRescheduleModal(true);
   };
 
- const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
-  if (!selectedAppointment) return;
+  const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
+    if (!selectedAppointment) return;
 
-  try {
-    // First update Firebase
-    const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-    await updateDoc(appointmentRef, {
-      appointmentDate: updatedData.appointmentDate,
-      timeSlot: updatedData.timeSlot,
-      status: 'rescheduled',
-      rescheduledAt: new Date().toISOString()
-    });
-
-    console.log('✅ Firebase updated for reschedule');
-
-    // Then send email notification
-    const response = await fetch('/api/reschedule-appointment', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        appointmentId: selectedAppointment.id,
+    try {
+      // First update Firebase
+      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
+      await updateDoc(appointmentRef, {
         appointmentDate: updatedData.appointmentDate,
         timeSlot: updatedData.timeSlot,
-        patientEmail: selectedAppointment.email,
-        patientName: selectedAppointment.fullName,
-        doctor: selectedAppointment.doctor,
-        queueNumber: selectedAppointment.queueNumber,
-        oldDate: selectedAppointment.appointmentDate,
-        oldTimeSlot: selectedAppointment.timeSlot,
-      }),
-    });
+        status: 'rescheduled',
+        rescheduledAt: new Date().toISOString()
+      });
 
-    const data = await response.json();
+      console.log('✅ Firebase updated for reschedule');
 
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Failed to send reschedule email');
+      // Then send email notification
+      const response = await fetch('/api/reschedule-appointment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appointmentId: selectedAppointment.id,
+          appointmentDate: updatedData.appointmentDate,
+          timeSlot: updatedData.timeSlot,
+          patientEmail: selectedAppointment.email,
+          patientName: selectedAppointment.fullName,
+          doctor: selectedAppointment.doctor,
+          queueNumber: selectedAppointment.queueNumber,
+          oldDate: selectedAppointment.appointmentDate,
+          oldTimeSlot: selectedAppointment.timeSlot,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send reschedule email');
+      }
+
+      // Real-time listener will auto-update appointments
+      setShowRescheduleModal(false);
+      setSelectedAppointment(null);
+      showToast('Appointment rescheduled successfully! Email notification sent.', 'success');
+    } catch (error) {
+      console.error('Error rescheduling appointment:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
     }
-
-    // Real-time listener will auto-update appointments
-    setShowRescheduleModal(false);
-    setSelectedAppointment(null);
-    showToast('Appointment rescheduled successfully! Email notification sent.', 'success');
-  } catch (error) {
-    console.error('Error rescheduling appointment:', error);
-    showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
-  }
-};
+  };
 
   const handleCancel = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
@@ -489,6 +476,17 @@ useEffect(() => {
       </div>
     </th>
   );
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading appointments...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -754,9 +752,8 @@ useEffect(() => {
               </tbody>
             </table>
           </div>
-        {!hasLoadedOnce ? (
-            <div className="py-12"></div>
-          ) : filteredAppointments.length === 0 ? (
+
+          {filteredAppointments.length === 0 && (
             <div className="text-center py-12">
               <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
@@ -766,14 +763,12 @@ useEffect(() => {
                   : 'No appointments have been booked yet.'}
               </p>
             </div>
-          ) : null}
+          )}
         </div>
 
         {/* Mobile Card View */}
-          <div className="lg:hidden space-y-4">
-          {!hasLoadedOnce ? (
-            <div className="py-12"></div>
-          ) : filteredAppointments.length === 0 ? (
+        <div className="lg:hidden space-y-4">
+          {filteredAppointments.length === 0 ? (
             <div className="bg-white rounded-lg shadow-md p-8 text-center">
               <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
