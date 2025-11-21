@@ -619,87 +619,48 @@ const handleSubmit = async () => {
         ? formData.customCondition 
         : formData.medicalCondition;
 
-      // 🔒 TRANSACTION: Atomic check and book operation with queue number generation
+      // ⚡ PRE-FETCH: Get doctor data BEFORE transaction (cached from doctors state)
+      const selectedDoctor = doctors.find(d => d.name === formData.doctor);
+      
+      // ⚡ PRE-CALCULATE: Check doctor availability from cached data
+      if (selectedDoctor) {
+        const unavailableDates = selectedDoctor.unavailableDates || {};
+        if (unavailableDates[formData.appointmentDate] === true) {
+          throw new Error('DOCTOR_UNAVAILABLE');
+        }
+      }
+      
+      // ⚡ PRE-CALCULATE: Get max slots from cached doctor data
+      const maxSlotsPerDate = selectedDoctor?.maxSlotsPerDate || {};
+      const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
+      const globalMaxSlots = selectedDoctor?.maxSlots || 10;
+      const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+
+      // 🔒 OPTIMIZED TRANSACTION: Minimal reads, fast writes
       const appointmentData = await runTransaction(db, async (transaction) => {
-        // ✅ Step 1: Create unique slot document reference for atomic locking
+        // ⚡ Step 1: Only check slot lock (single read)
         const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
-        
-        // Try to read the slot lock - this will fail if slot is taken
         const slotLockDoc = await transaction.get(slotLockRef);
         
         if (slotLockDoc.exists()) {
           throw new Error('SLOT_TAKEN');
         }
         
-        // ✅ Step 2: Check doctor availability and capacity
-        const doctorsRef = collection(db, 'doctors');
-        const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
-        const doctorSnapshot = await getDocs(doctorQuery);
+        // ⚡ Step 2: Get booking count from a counter document (single read instead of query)
+        const counterRef = doc(db, 'booking_counters', `${formData.doctor}_${formData.appointmentDate}`);
+        const counterDoc = await transaction.get(counterRef);
+        const counterData = counterDoc.data();
+        const currentCount = counterData?.count || 0;
         
-        let maxSlots = 10;
-        
-        if (!doctorSnapshot.empty) {
-          const doctorDocRef = doc(db, 'doctors', doctorSnapshot.docs[0].id);
-          const doctorDoc = await transaction.get(doctorDocRef);
-          const doctorData = doctorDoc.data();
-          
-          if (doctorData) {
-            // Check unavailable dates
-            const unavailableDates = doctorData.unavailableDates || {};
-            if (unavailableDates[formData.appointmentDate] === true) {
-              throw new Error('DOCTOR_UNAVAILABLE');
-            }
-            
-            // Get max slots
-            const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-            const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
-            const globalMaxSlots = doctorData.maxSlots || 10;
-            maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
-          }
-        }
-        
-        // ✅ Step 3: Get all appointments for queue number calculation (read within transaction)
-        const appointmentsRef = collection(db, 'appointments');
-        const appointmentsQuery = query(
-          appointmentsRef,
-          where('doctor', '==', formData.doctor),
-          where('appointmentDate', '==', formData.appointmentDate),
-          where('status', '!=', 'cancelled')
-        );
-        
-        const appointmentsSnapshot = await getDocs(appointmentsQuery);
-        const activeBookingsCount = appointmentsSnapshot.size;
-        
-        // Check if doctor is fully booked
-        if (activeBookingsCount >= maxSlots) {
+        // Check capacity
+        if (currentCount >= maxSlots) {
           throw new Error('DOCTOR_FULLY_BOOKED');
         }
         
-        // ✅ Step 4: Calculate queue number based on time slot order
-        const existingAppointments = appointmentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          timeSlot: doc.data().timeSlot as string
-        }));
+        // Simple queue number: use timestamp-based for now, recalculate later if needed
+        const queueNumber = currentCount + 1;
         
-        // Add current time slot to the list for proper sorting
-        existingAppointments.push({
-          id: 'current',
-          timeSlot: formData.timeSlot
-        });
-        
-        // Sort by time slot
-        existingAppointments.sort((a, b) => {
-          const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
-          const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
-          const timeA = hoursA * 60 + minutesA;
-          const timeB = hoursB * 60 + minutesB;
-          return timeA - timeB;
-        });
-        
-        // Find the queue number for current appointment
-        const queueNumber = existingAppointments.findIndex(apt => apt.id === 'current') + 1;
-        
-        // ✅ Step 5: Create the appointment with correct queue number
+        // ⚡ Step 4: Create appointment
         const appointment: Appointment = {
           fullName: formData.fullName,
           age: formData.age,
@@ -717,13 +678,11 @@ const handleSubmit = async () => {
           createdAt: new Date().toISOString()
         };
 
-        // Create new document reference
         const newAppointmentRef = doc(collection(db, 'appointments'));
         
-        // Set the appointment document in the transaction
+        // ⚡ Step 5: Write all documents atomically
         transaction.set(newAppointmentRef, appointment);
         
-        // Set the slot lock in the transaction to prevent concurrent bookings
         transaction.set(slotLockRef, {
           doctor: formData.doctor,
           appointmentDate: formData.appointmentDate,
@@ -732,56 +691,50 @@ const handleSubmit = async () => {
           bookedAt: new Date().toISOString()
         });
         
+        // ⚡ Update or create counter
+        if (counterDoc.exists()) {
+          transaction.update(counterRef, { count: currentCount + 1 });
+        } else {
+          transaction.set(counterRef, { 
+            doctor: formData.doctor,
+            date: formData.appointmentDate,
+            count: 1 
+          });
+        }
+        
         return { appointmentId: newAppointmentRef.id, appointment, queueNumber };
       });
 
-      console.log('✅ Appointment booked successfully via transaction:', appointmentData.appointmentId);
-      console.log('✅ Queue number assigned:', appointmentData.queueNumber);
+      console.log('✅ Appointment booked successfully:', appointmentData.appointmentId);
 
-      // Recalculate queue numbers for all other appointments on this date
-      await recalculateQueueNumbers(formData.appointmentDate);
-
-      // Send email notification to clinic
-      try {
-        const response = await fetch('/api/send-booking-notification', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            patientName: formData.fullName,
-            patientEmail: userEmail,
-            doctor: formData.doctor,
-            appointmentDate: formData.appointmentDate,
-            timeSlot: formData.timeSlot,
-            queueNumber: appointmentData.queueNumber,
-            priorityLevel: formData.priorityLevel
-          }),
-        });
-
-        const data = await response.json();
-        
-        if (!response.ok || !data.success) {
-          console.error('Failed to send booking notification:', data.error);
-          // Don't fail the booking if email fails
-        } else {
-          console.log('✅ Booking notification sent to clinic');
-        }
-      } catch (emailError) {
-        console.error('Error sending booking notification:', emailError);
-        // Don't fail the booking if email fails
-      }
-
-      // Set the queue number for display
+      // ⚡ INSTANT UI UPDATE: Show success immediately
       setQueueNumber(appointmentData.queueNumber);
-
-      // Show success toast notification
       showToast('🎉 Appointment booked successfully!', 'success');
 
-      // Call onBookingComplete if provided
       if (onBookingComplete) {
         onBookingComplete();
       }
+
+      // ⚡ BACKGROUND TASKS: Run these after UI updates (non-blocking)
+      // Queue recalculation in background (don't await)
+      recalculateQueueNumbers(formData.appointmentDate).catch(err => 
+        console.error('Background queue recalculation failed:', err)
+      );
+
+      // Send email in background (don't await)
+      fetch('/api/send-booking-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: formData.fullName,
+          patientEmail: userEmail,
+          doctor: formData.doctor,
+          appointmentDate: formData.appointmentDate,
+          timeSlot: formData.timeSlot,
+          queueNumber: appointmentData.queueNumber,
+          priorityLevel: formData.priorityLevel
+        }),
+      }).catch(err => console.error('Background email failed:', err));
 
       setTimeout(() => {
         handleClose();
@@ -790,21 +743,18 @@ const handleSubmit = async () => {
     } catch (error: unknown) {
       console.error('Error booking appointment:', error);
       
-      // Handle specific error cases with toast notifications
       if (error instanceof Error) {
         if (error.message === 'SLOT_TAKEN') {
           showToast('⚠️ This time slot was just booked by another user. Please refresh and choose another time.', 'warning');
-          // Refresh available slots
           if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-            await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+            generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
           }
         } else if (error.message === 'DOCTOR_UNAVAILABLE') {
           showToast('⚠️ This doctor is no longer available on the selected date. Please choose another date.', 'warning');
         } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
           showToast('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.', 'warning');
-          // Refresh available slots
           if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-            await generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+            generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
           }
         } else {
           showToast('Failed to book appointment. Please try again.', 'error');
