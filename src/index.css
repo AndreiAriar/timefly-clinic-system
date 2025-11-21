@@ -14,12 +14,14 @@ html {
   margin: 0;
   padding: 0;
 }
+
 body {
   background-color: #f9fafb;
   margin: 0;
   padding: 0;
   font-family: system-ui, -apple-system, sans-serif;
 }
+
 #root {
   min-height: 100vh;
   background: transparent;
@@ -29,9 +31,11 @@ body {
 .hero-section {
   background-image: url(/timefly_bg.jpg);
 }
+
 .staff-hero-section {
   background-image: url(/timefly_staff_bg.png);
 }
+
 /* Optimize background image loading */
 .hero-section,
 .staff-hero-section {
@@ -39,15 +43,7 @@ body {
   background-position: center;
   background-repeat: no-repeat;
 }
-/* Basic autofill styles */
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus,
-input:-webkit-autofill:active {
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: white;
-  box-shadow: inset 0 0 20px 20px rgba(255, 255, 255, 0.1);
-}
+
 /* Performance optimizations */
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -56,6 +52,7 @@ input:-webkit-autofill:active {
     transition-duration: 0.01ms !important;
   }
 }
+
 /* Mobile optimizations */
 @media (max-width: 768px) {
   .hero-section,
@@ -63,6 +60,7 @@ input:-webkit-autofill:active {
     background-attachment: scroll;
   }
 }
+
 /* Ensure images maintain aspect ratio and clarity */
 .patient-profile-image, 
 .appointment-card-image {
@@ -72,6 +70,7 @@ input:-webkit-autofill:active {
   image-rendering: crisp-edges;
   image-rendering: auto;
 }
+
 /* High-quality image rendering */
 .high-quality-image {
   max-width: 100%;
@@ -84,41 +83,10 @@ input:-webkit-autofill:active {
   background-size: 20px 20px;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
-/* Fix autofill white background issue */
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus,
-input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px white inset !important;
-  -webkit-text-fill-color: #374151 !important;
-}
-/* For dark mode support if needed */
-@media (prefers-color-scheme: dark) {
-  input:-webkit-autofill,
-  input:-webkit-autofill:hover,
-  input:-webkit-autofill:focus,
-  input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 30px #1f2937 inset !important;
-    -webkit-text-fill-color: #f9fafb !important;
-  }
-}
 
-/* FORCE remove all focus rings that might cause blue flash */
-*:focus,
-*:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-/* Disable default browser focus indicators */
-button:focus,
-a:focus,
-input:focus,
-select:focus,
-textarea:focus {
-  outline: none !important;
-  box-shadow: none !important;
-}
+/* =================================================================
+   INPUT FIELDS STYLING - Fix for borders and visibility
+   ================================================================= */
 
 /* Force visible borders on all input fields at all times */
 input[type="text"],
@@ -128,13 +96,25 @@ input[type="number"],
 input[type="tel"],
 input[type="url"],
 input[type="search"],
-input[type="date"],
 input[type="time"],
 input[type="datetime-local"],
 textarea,
 select {
-  border: 1px solid #d1d5db !important; /* Gray border */
-  border-radius: 0.375rem !important; /* Rounded corners */
+  border: 1px solid #d1d5db !important;
+  border-radius: 0.375rem !important;
+  background-color: #ffffff !important;
+  color: #374151 !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 16px !important;
+}
+
+/* Textarea needs auto height */
+textarea {
+  height: auto !important;
+  min-height: 80px !important;
+  padding: 0.75rem 1rem !important;
 }
 
 /* Keep borders visible when focused/typing */
@@ -145,14 +125,13 @@ input[type="number"]:focus,
 input[type="tel"]:focus,
 input[type="url"]:focus,
 input[type="search"]:focus,
-input[type="date"]:focus,
 input[type="time"]:focus,
 input[type="datetime-local"]:focus,
 textarea:focus,
 select:focus {
-  border: 1px solid #3b82f6 !important; /* Blue border when focused */
-  outline: 2px solid transparent !important;
-  outline-offset: 2px !important;
+  border: 1px solid #3b82f6 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
 }
 
 /* Override any Tailwind classes that might be removing borders */
@@ -161,7 +140,10 @@ select:focus {
   border: 1px solid #d1d5db !important;
 }
 
-/* CRITICAL FIX: Force date input to be visible on mobile */
+/* =================================================================
+   DATE INPUT SPECIAL STYLING - Mobile-friendly with visible picker
+   ================================================================= */
+
 input[type="date"] {
   -webkit-appearance: none !important;
   -moz-appearance: none !important;
@@ -171,68 +153,69 @@ input[type="date"] {
   background-repeat: no-repeat !important;
   background-position: right 0.75rem center !important;
   background-size: 1.25rem !important;
-  border: 2px solid #d1d5db !important;
-  border-radius: 0.5rem !important;
-  padding: 0.75rem 3rem 0.75rem 1rem !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 0.375rem !important;
+  padding: 0.5rem 2.5rem 0.5rem 1rem !important;
   font-size: 16px !important;
   color: #1f2937 !important;
-  min-height: 48px !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
   width: 100% !important;
-  display: block !important;
-  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
 }
 
-/* Force the native calendar icon to be visible and clickable */
+/* Native calendar icon - invisible but clickable */
 input[type="date"]::-webkit-calendar-picker-indicator {
   position: absolute !important;
-  right: 0 !important;
-  top: 0 !important;
-  bottom: 0 !important;
-  width: 3rem !important;
-  height: 100% !important;
-  opacity: 1 !important;
+  right: 0.5rem !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  opacity: 0 !important;
   cursor: pointer !important;
-  background: transparent !important;
-  color: transparent !important;
   z-index: 2 !important;
 }
 
-/* Make sure date text is visible when selected */
+/* Make date text visible and properly aligned */
 input[type="date"]::-webkit-datetime-edit {
   color: #1f2937 !important;
-  font-weight: 500 !important;
+  font-weight: 400 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 0 !important;
+  line-height: 1.5 !important;
 }
 
 input[type="date"]::-webkit-datetime-edit-fields-wrapper {
   color: #1f2937 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 0 !important;
 }
 
 input[type="date"]::-webkit-datetime-edit-text {
   color: #6b7280 !important;
-  padding: 0 0.25rem !important;
+  padding: 0 0.125rem !important;
 }
 
 input[type="date"]::-webkit-datetime-edit-month-field,
 input[type="date"]::-webkit-datetime-edit-day-field,
 input[type="date"]::-webkit-datetime-edit-year-field {
   color: #1f2937 !important;
-  font-weight: 500 !important;
-  padding: 0 0.125rem !important;
+  font-weight: 400 !important;
+  padding: 0.125rem !important;
+  background: transparent !important;
 }
 
-/* Placeholder styling when empty */
-input[type="date"]:not(:valid):before {
-  content: attr(placeholder) !important;
-  color: #9ca3af !important;
-  margin-right: 0.5rem !important;
+/* When date input is empty - hide placeholder elements */
+input[type="date"]:not(:focus):invalid::-webkit-datetime-edit {
+  color: transparent !important;
 }
 
-input[type="date"]:focus:before,
-input[type="date"]:valid:before {
-  content: "" !important;
-}
-
-/* Focus state */
+/* Date input focus state */
 input[type="date"]:focus {
   border-color: #3b82f6 !important;
   outline: none !important;
@@ -240,32 +223,78 @@ input[type="date"]:focus {
   background-color: #ffffff !important;
 }
 
-/* Active/selected state */
-input[type="date"]:valid {
-  background-color: #ffffff !important;
+/* =================================================================
+   AUTOFILL STYLING - Fix autofill white background
+   ================================================================= */
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px white inset !important;
+  -webkit-text-fill-color: #374151 !important;
+  transition: background-color 5000s ease-in-out 0s !important;
 }
 
-/* iOS/Safari specific fixes */
-@supports (-webkit-touch-callout: none) {
+/* Dark mode autofill support */
+@media (prefers-color-scheme: dark) {
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #1f2937 inset !important;
+    -webkit-text-fill-color: #f9fafb !important;
+  }
+}
+
+/* =================================================================
+   FOCUS STATES - Remove default browser outlines
+   ================================================================= */
+
+/* Remove focus rings globally but allow custom focus styles */
+*:focus:not(input):not(textarea):not(select):not(button) {
+  outline: none !important;
+}
+
+/* Buttons, links focus - remove default outline */
+button:focus,
+a:focus {
+  outline: none !important;
+}
+
+/* =================================================================
+   MOBILE RESPONSIVE ADJUSTMENTS
+   ================================================================= */
+
+@media (max-width: 768px) {
+  /* All inputs slightly taller on mobile for better touch targets */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  input[type="time"],
+  input[type="datetime-local"],
+  select {
+    height: 44px !important;
+    min-height: 44px !important;
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+  }
+
+  /* Date input mobile adjustments */
   input[type="date"] {
-    min-height: 50px !important;
-    line-height: 50px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    max-height: 44px !important;
     font-size: 16px !important;
+    padding: 0.625rem 2.5rem 0.625rem 1rem !important;
   }
   
-  input[type="date"]::-webkit-datetime-edit {
-    line-height: normal !important;
-    display: inline-flex !important;
-    align-items: center !important;
-  }
-}
-
-/* Mobile responsive adjustments */
-@media (max-width: 768px) {
-  input[type="date"] {
-    font-size: 16px !important;
-    min-height: 50px !important;
-    padding: 0.875rem 3.5rem 0.875rem 1rem !important;
-    background-size: 1.5rem !important;
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    right: 0.75rem !important;
+    width: 2rem !important;
+    height: 2rem !important;
   }
 }
