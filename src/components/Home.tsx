@@ -36,27 +36,20 @@ const Home = () => {
 
   useEffect(() => {
     console.log('🔥 Setting up real-time listener for home stats...');
-
-    // Real-time listener for appointments
     const appointmentsRef = collection(db, 'appointments');
     const q = query(appointmentsRef);
-    
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        // Filter out deleted appointments
         const appointments = snapshot.docs
           .map(doc => ({
             id: doc.id,
             ...doc.data()
           } as Appointment))
           .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
-
         console.log('📊 Total appointments (after filtering):', appointments.length);
-
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
         const upcomingCount = appointments.filter((apt: Appointment) => {
           const aptDate = new Date(apt.appointmentDate);
           aptDate.setHours(0, 0, 0, 0);
@@ -66,17 +59,14 @@ const Home = () => {
                             apt.status !== 'missed';
           return isUpcoming;
         }).length;
-        
         const pendingCount = appointments.filter((apt: Appointment) => 
           apt.status === 'pending'
         ).length;
-
         setStats({
           upcomingAppointments: upcomingCount,
           pendingAppointments: pendingCount,
           totalAppointments: appointments.length
         });
-
         console.log('✅ Real-time stats update:', {
           upcoming: upcomingCount,
           pending: pendingCount,
@@ -87,8 +77,6 @@ const Home = () => {
         console.error('❌ Error in stats listener:', error);
       }
     );
-
-    // Cleanup function
     return () => {
       console.log('🔌 Cleaning up home stats listener');
       unsubscribe();
@@ -97,21 +85,17 @@ const Home = () => {
 
   return (
     <div className="min-h-screen">
-     {/* Hero Section */}
       <section 
         className="hero-section relative flex items-center justify-center overflow-hidden min-h-screen bg-cover bg-center bg-no-repeat bg-fixed"
       >
         <div className="absolute inset-0 bg-black/20"></div>
-
         <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto py-20">
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight drop-shadow-lg">
             Welcome to <span className="text-white drop-shadow-none">TimeFly</span>
           </h1>
-          
           <p className="text-xl sm:text-3xl text-white mb-12 max-w-3xl mx-auto leading-relaxed drop-shadow-md">
             Manage your eye care appointments and checkups with real-time queue updates.
           </p>
-
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
               onClick={() => setIsModalOpen(true)}
@@ -119,7 +103,6 @@ const Home = () => {
             >
               Book an Appointment
             </button>
-            
             <button 
               onClick={() => setIsCalendarWizardOpen(true)}
               className="bg-green-600 hover:bg-green-700 text-white font-semibold px-10 py-4 rounded-lg text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition duration-200 flex items-center justify-center gap-2"
@@ -130,22 +113,18 @@ const Home = () => {
           </div>
         </div>
       </section>
-
-     {/* Stats Section - UPDATED WITH DARK MODE */}
-      <section className="py-20 bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800">
+      <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Your Healthcare Dashboard
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-300">
+            <p className="text-xl text-gray-600">
               Track your appointments and healthcare journey
             </p>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {/* Upcoming Appointments Card */}
-            <div className="bg-blue-500 dark:bg-blue-600 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+            <div className="bg-blue-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
               <div className="flex flex-col items-center text-center mb-4">
                 <div className="mb-4">
                   <Calendar className="w-8 h-8 text-white" />
@@ -160,9 +139,7 @@ const Home = () => {
                 <p className="text-xs text-white opacity-100 text-center">Scheduled future visits</p>
               </div>
             </div>
-
-            {/* Pending Appointments Card */}
-            <div className="bg-yellow-500 dark:bg-yellow-600 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+            <div className="bg-yellow-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
               <div className="flex flex-col items-center text-center mb-4">
                 <div className="mb-4">
                   <Clock className="w-8 h-8 text-white" />
@@ -177,9 +154,7 @@ const Home = () => {
                 <p className="text-xs text-white opacity-100 text-center">Awaiting confirmation</p>
               </div>
             </div>
-
-            {/* Total Appointments Card */}
-            <div className="bg-green-500 dark:bg-green-600 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+            <div className="bg-green-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
               <div className="flex flex-col items-center text-center mb-4">
                 <div className="mb-4">
                   <Users className="w-8 h-8 text-white" />
@@ -197,69 +172,57 @@ const Home = () => {
           </div>
         </div>
       </section>
-
-      {/* Features Section */}
-      <section className="py-20 bg-white dark:bg-gray-900">
+      <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Why Choose TimeFly?
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
               Experience seamless healthcare management with our innovative features
             </p>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Feature 1 */}
-            <div className="text-center p-8 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-300">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 dark:bg-indigo-900 rounded-full mb-6">
-                <Calendar className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+            <div className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-6">
+                <Calendar className="w-8 h-8 text-indigo-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Easy Scheduling
               </h3>
-              <p className="text-gray-600 dark:text-gray-300">
+              <p className="text-gray-600">
                 Book appointments in seconds with our intuitive interface. Choose your preferred time slot and doctor.
               </p>
             </div>
-
-            {/* Feature 2 */}
-            <div className="text-center p-8 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-300">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full mb-6">
-                <Clock className="w-8 h-8 text-green-600 dark:text-green-400" />
+            <div className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-6">
+                <Clock className="w-8 h-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Real-Time Updates
               </h3>
-              <p className="text-gray-600 dark:text-gray-300">
+              <p className="text-gray-600">
                 Stay informed with live queue updates and appointment reminders. Never miss an appointment.
               </p>
             </div>
-
-            {/* Feature 3 */}
-            <div className="text-center p-8 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-300">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 dark:bg-purple-900 rounded-full mb-6">
-                <Users className="w-8 h-8 text-purple-600 dark:text-purple-400" />
+            <div className="text-center p-8 rounded-xl hover:bg-gray-50 transition-colors duration-300">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-6">
+                <Users className="w-8 h-8 text-purple-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Priority System
               </h3>
-              <p className="text-gray-600 dark:text-gray-300">
+              <p className="text-gray-600">
                 Our queue has special slots for urgent and emergency cases. They get quick attention without affecting other patients, so everyone still keeps their spot.
               </p>
             </div>
           </div>
         </div>
       </section>
-
-      {/* Appointment Modal */}
       <AppointmentModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
       />
-
-      {/* Calendar Wizard Modal */}
       <CalendarWizardModal 
         isOpen={isCalendarWizardOpen} 
         onClose={() => setIsCalendarWizardOpen(false)} 
@@ -267,5 +230,4 @@ const Home = () => {
     </div>
   );
 };
-
 export default Home;

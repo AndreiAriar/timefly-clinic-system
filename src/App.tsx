@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import type { User } from 'firebase/auth';
@@ -6,7 +7,6 @@ import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase/config';
 import TermsOfUse from './components/TermsOfUse';
 import PrivacyPolicy from './components/PrivacyPolicy';
-import { DarkModeProvider } from './components/DarkModeProvider'; // Add this import
 
 // Lazy load components for better performance
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -32,17 +32,17 @@ interface ToastType {
 
 // Fast-loading authentication spinner
 const AuthSpinner = () => (
-  <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center transition-colors duration-300">
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center">
     <div className="text-center">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-      <p className="text-gray-600 dark:text-gray-300 font-medium">Authenticating...</p>
+      <p className="text-gray-600 font-medium">Authenticating...</p>
     </div>
   </div>
 );
 
 // Ultra-minimal loading component - just a subtle background
 const MinimalLoader = () => (
-  <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300" />
+  <div className="min-h-screen bg-gray-50 transition-opacity duration-200" />
 );
 
 function AppContent() {
@@ -231,14 +231,15 @@ function AppContent() {
     }
   }, [isSigningUp, setupUserDataListener, showToast]);
 
-  useEffect(() => {
-    // Disable all transitions on mount
-    document.body.style.transition = 'none';
-    document.documentElement.style.transition = 'none';
-    
-    // Force repaint
-    void document.body.offsetHeight;
-  }, []);
+
+useEffect(() => {
+  // Disable all transitions on mount
+  document.body.style.transition = 'none';
+  document.documentElement.style.transition = 'none';
+  
+  // Force repaint
+  void document.body.offsetHeight;
+}, []);
 
   // Optimized auth state subscription
   useEffect(() => {
@@ -514,11 +515,9 @@ function AppContent() {
 
 function App() {
   return (
-    <DarkModeProvider> {/* Wrap entire app with DarkModeProvider */}
-      <Router>
-        <AppContent />
-      </Router>
-    </DarkModeProvider>
+    <Router>
+      <AppContent />
+    </Router>
   );
 }
 

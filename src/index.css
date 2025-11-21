@@ -27,21 +27,14 @@ body {
   background: transparent;
 }
 
-/* Global Dark Mode Transition */
-* {
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease !important;
-}
-
-/* Critical Dark Mode Base Styles */
+/* Dark mode styles */
 .dark {
-  color-scheme: dark;
-}
-
-.dark html,
-.dark body,
-.dark #root {
   background-color: #111827;
   color: #f9fafb;
+}
+
+.dark body {
+  background-color: #111827;
 }
 
 /* Background images */
@@ -101,6 +94,15 @@ body {
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
 
+.dark .high-quality-image {
+  background: linear-gradient(45deg, #374151 25%, transparent 25%), 
+              linear-gradient(-45deg, #374151 25%, transparent 25%), 
+              linear-gradient(45deg, transparent 75%, #374151 75%), 
+              linear-gradient(-45deg, transparent 75%, #374151 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
 /* Fix autofill white background issue */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -109,6 +111,14 @@ input:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 30px white inset !important;
   -webkit-text-fill-color: #374151 !important;
   transition: background-color 5000s ease-in-out 0s !important;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #1f2937 inset !important;
+  -webkit-text-fill-color: #f9fafb !important;
 }
 
 /* Transparent input autofill - use on login/signup forms */
@@ -162,6 +172,22 @@ select {
   color: #374151;
 }
 
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="password"],
+.dark input[type="number"],
+.dark input[type="tel"],
+.dark input[type="url"],
+.dark input[type="search"],
+.dark input[type="time"],
+.dark input[type="datetime-local"],
+.dark textarea,
+.dark select {
+  border: 1px solid #4b5563;
+  color: #f9fafb;
+  background-color: #1f2937;
+}
+
 /* Keep borders visible when focused/typing */
 input[type="text"]:focus,
 input[type="email"]:focus,
@@ -177,6 +203,22 @@ select:focus {
   border: 1px solid #3b82f6;
   outline: none;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.dark input[type="text"]:focus,
+.dark input[type="email"]:focus,
+.dark input[type="password"]:focus,
+.dark input[type="number"]:focus,
+.dark input[type="tel"]:focus,
+.dark input[type="url"]:focus,
+.dark input[type="search"]:focus,
+.dark input[type="time"]:focus,
+.dark input[type="datetime-local"]:focus,
+.dark textarea:focus,
+.dark select:focus {
+  border: 1px solid #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
 /* =================================================================
@@ -207,12 +249,41 @@ select:focus {
   -webkit-backdrop-filter: blur(4px);
 }
 
+.dark .hero-section input[type="text"],
+.dark .hero-section input[type="email"],
+.dark .hero-section input[type="password"],
+.dark .hero-section input[type="number"],
+.dark .hero-section input[type="tel"],
+.dark .hero-section textarea,
+.dark .hero-section select,
+.dark .staff-hero-section input[type="text"],
+.dark .staff-hero-section input[type="email"],
+.dark .staff-hero-section input[type="password"],
+.dark .staff-hero-section input[type="number"],
+.dark .staff-hero-section input[type="tel"],
+.dark .staff-hero-section textarea,
+.dark .staff-hero-section select {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #f9fafb !important;
+  -webkit-text-fill-color: #f9fafb !important;
+}
+
 .hero-section input::placeholder,
 .staff-hero-section input::placeholder,
 .hero-section textarea::placeholder,
 .staff-hero-section textarea::placeholder {
   color: rgba(55, 65, 81, 0.7) !important;
   -webkit-text-fill-color: rgba(55, 65, 81, 0.7) !important;
+}
+
+.dark .hero-section input::placeholder,
+.dark .staff-hero-section input::placeholder,
+.dark .hero-section textarea::placeholder,
+.dark .staff-hero-section textarea::placeholder {
+  color: rgba(249, 250, 251, 0.6) !important;
+  -webkit-text-fill-color: rgba(249, 250, 251, 0.6) !important;
 }
 
 .hero-section input:focus,
@@ -228,6 +299,18 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15) !important;
 }
 
+.dark .hero-section input:focus,
+.dark .hero-section textarea:focus,
+.dark .hero-section select:focus,
+.dark .staff-hero-section input:focus,
+.dark .staff-hero-section textarea:focus,
+.dark .staff-hero-section select:focus {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
+}
+
 /* Autofill fix for hero section inputs */
 .hero-section input:-webkit-autofill,
 .hero-section input:-webkit-autofill:hover,
@@ -239,6 +322,17 @@ select:focus {
   -webkit-text-fill-color: #1f2937 !important;
   border: 1px solid rgba(255, 255, 255, 0.3) !important;
   transition: background-color 5000s ease-in-out 0s !important;
+}
+
+.dark .hero-section input:-webkit-autofill,
+.dark .hero-section input:-webkit-autofill:hover,
+.dark .hero-section input:-webkit-autofill:focus,
+.dark .staff-hero-section input:-webkit-autofill,
+.dark .staff-hero-section input:-webkit-autofill:hover,
+.dark .staff-hero-section input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 30px rgba(0, 0, 0, 0.3) inset !important;
+  -webkit-text-fill-color: #f9fafb !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
 /* =================================================================
@@ -255,9 +349,22 @@ select:focus {
   -webkit-backdrop-filter: blur(4px);
 }
 
+.dark .input-transparent {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #f9fafb !important;
+  -webkit-text-fill-color: #f9fafb !important;
+}
+
 .input-transparent::placeholder {
   color: rgba(55, 65, 81, 0.6) !important;
   -webkit-text-fill-color: rgba(55, 65, 81, 0.6) !important;
+}
+
+.dark .input-transparent::placeholder {
+  color: rgba(249, 250, 251, 0.6) !important;
+  -webkit-text-fill-color: rgba(249, 250, 251, 0.6) !important;
 }
 
 .input-transparent:focus {
@@ -266,6 +373,13 @@ select:focus {
   border: 1px solid rgba(255, 255, 255, 0.5) !important;
   outline: none !important;
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15) !important;
+}
+
+.dark .input-transparent:focus {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
 }
 
 /* =================================================================
@@ -278,10 +392,21 @@ select:focus {
   color: #374151 !important;
 }
 
+.dark .input-white {
+  background-color: #1f2937 !important;
+  border: 1px solid #4b5563 !important;
+  color: #f9fafb !important;
+}
+
 .input-white:focus {
   border: 1px solid #3b82f6 !important;
   outline: none !important;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+.dark .input-white:focus {
+  border: 1px solid #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
 }
 
 /* =================================================================
@@ -300,11 +425,22 @@ input[type="date"] {
   -webkit-text-fill-color: #1f2937;
 }
 
+.dark input[type="date"] {
+  border: 1px solid #4b5563;
+  color: #f9fafb;
+  background-color: #1f2937;
+  -webkit-text-fill-color: #f9fafb;
+}
+
 /* Make the native calendar icon visible */
 input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
   opacity: 1;
   filter: invert(0.5);
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
 }
 
 /* Make date text visible */
@@ -313,15 +449,30 @@ input[type="date"]::-webkit-datetime-edit {
   -webkit-text-fill-color: #1f2937;
 }
 
+.dark input[type="date"]::-webkit-datetime-edit {
+  color: #f9fafb;
+  -webkit-text-fill-color: #f9fafb;
+}
+
 input[type="date"]::-webkit-datetime-edit-fields-wrapper {
   color: #1f2937;
   -webkit-text-fill-color: #1f2937;
+}
+
+.dark input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  color: #f9fafb;
+  -webkit-text-fill-color: #f9fafb;
 }
 
 input[type="date"]::-webkit-datetime-edit-text {
   color: #6b7280;
   -webkit-text-fill-color: #6b7280;
   padding: 0 0.125rem;
+}
+
+.dark input[type="date"]::-webkit-datetime-edit-text {
+  color: #9ca3af;
+  -webkit-text-fill-color: #9ca3af;
 }
 
 input[type="date"]::-webkit-datetime-edit-month-field,
@@ -332,8 +483,20 @@ input[type="date"]::-webkit-datetime-edit-year-field {
   background: transparent;
 }
 
+.dark input[type="date"]::-webkit-datetime-edit-month-field,
+.dark input[type="date"]::-webkit-datetime-edit-day-field,
+.dark input[type="date"]::-webkit-datetime-edit-year-field {
+  color: #f9fafb;
+  -webkit-text-fill-color: #f9fafb;
+}
+
 /* Hide placeholder when empty */
 input[type="date"]:not(:focus):invalid::-webkit-datetime-edit {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark input[type="date"]:not(:focus):invalid::-webkit-datetime-edit {
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
@@ -345,8 +508,20 @@ input[type="date"]:focus {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+.dark input[type="date"]:focus {
+  border: 1px solid #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
 /* Transparent date input variant */
 input[type="date"].input-transparent {
+  background-color: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.dark input[type="date"].input-transparent {
   background-color: transparent !important;
   border: 1px solid rgba(255, 255, 255, 0.3) !important;
   color: #ffffff !important;
@@ -381,315 +556,8 @@ input[type="date"].input-transparent::-webkit-datetime-edit-text {
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(0.4);
   }
-}
 
-/* =================================================================
-   DARK MODE STYLES - Comprehensive dark mode support
-   ================================================================= */
-
-/* Dark mode root variables and base styles */
-.dark {
-  color-scheme: dark;
-}
-
-.dark html,
-.dark body,
-.dark #root {
-  background-color: #111827;
-  color: #f9fafb;
-}
-
-/* Dark mode text colors */
-.dark h1,
-.dark h2,
-.dark h3,
-.dark h4,
-.dark h5,
-.dark h6 {
-  color: #f9fafb;
-}
-
-.dark p,
-.dark span,
-.dark div {
-  color: #e5e7eb;
-}
-
-/* Dark mode cards and containers */
-.dark .bg-white {
-  background-color: #1f2937 !important;
-}
-
-.dark .bg-gray-50 {
-  background-color: #111827 !important;
-}
-
-.dark .bg-gray-100 {
-  background-color: #1f2937 !important;
-}
-
-.dark .bg-gray-200 {
-  background-color: #374151 !important;
-}
-
-/* Dark mode borders */
-.dark .border-gray-200 {
-  border-color: #374151 !important;
-}
-
-.dark .border-gray-300 {
-  border-color: #4b5563 !important;
-}
-
-/* Dark mode text colors */
-.dark .text-gray-600 {
-  color: #9ca3af !important;
-}
-
-.dark .text-gray-700 {
-  color: #d1d5db !important;
-}
-
-.dark .text-gray-800 {
-  color: #e5e7eb !important;
-}
-
-.dark .text-gray-900 {
-  color: #f9fafb !important;
-}
-
-/* Dark mode shadows */
-.dark .shadow,
-.dark .shadow-sm,
-.dark .shadow-md,
-.dark .shadow-lg,
-.dark .shadow-xl {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 
-              0 4px 6px -1px rgba(0, 0, 0, 0.5), 
-              0 2px 4px -1px rgba(0, 0, 0, 0.3);
-}
-
-/* Dark mode form inputs */
-.dark input[type="text"],
-.dark input[type="email"],
-.dark input[type="password"],
-.dark input[type="number"],
-.dark input[type="tel"],
-.dark input[type="url"],
-.dark input[type="search"],
-.dark input[type="time"],
-.dark input[type="date"],
-.dark input[type="datetime-local"],
-.dark textarea,
-.dark select {
-  background-color: #374151 !important;
-  border-color: #4b5563 !important;
-  color: #f9fafb !important;
-  -webkit-text-fill-color: #f9fafb !important;
-}
-
-.dark input::placeholder,
-.dark textarea::placeholder {
-  color: #9ca3af !important;
-  -webkit-text-fill-color: #9ca3af !important;
-}
-
-.dark input:focus,
-.dark textarea:focus,
-.dark select:focus {
-  border-color: #3b82f6 !important;
-  background-color: #1f2937 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
-}
-
-/* Dark mode buttons */
-.dark button:not(.bg-indigo-600):not(.bg-blue-600):not(.bg-red-600):not(.bg-green-600) {
-  color: #e5e7eb;
-}
-
-.dark .hover\:bg-gray-100:hover {
-  background-color: #374151 !important;
-}
-
-.dark .hover\:bg-gray-50:hover {
-  background-color: #1f2937 !important;
-}
-
-/* Dark mode navigation */
-.dark nav {
-  background-color: #1f2937 !important;
-  border-bottom: 1px solid #374151;
-}
-
-/* Dark mode footer */
-.dark footer {
-  background-color: #0f172a !important;
-}
-
-/* Dark mode date picker */
-.dark input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1) !important;
-}
-
-.dark input[type="date"]::-webkit-datetime-edit,
-.dark input[type="date"]::-webkit-datetime-edit-fields-wrapper,
-.dark input[type="date"]::-webkit-datetime-edit-month-field,
-.dark input[type="date"]::-webkit-datetime-edit-day-field,
-.dark input[type="date"]::-webkit-datetime-edit-year-field {
-  color: #f9fafb !important;
-  -webkit-text-fill-color: #f9fafb !important;
-}
-
-.dark input[type="date"]::-webkit-datetime-edit-text {
-  color: #9ca3af !important;
-  -webkit-text-fill-color: #9ca3af !important;
-}
-
-/* Dark mode autofill */
-.dark input:-webkit-autofill,
-.dark input:-webkit-autofill:hover,
-.dark input:-webkit-autofill:focus,
-.dark input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px #374151 inset !important;
-  -webkit-text-fill-color: #f9fafb !important;
-}
-
-/* Dark mode hero sections - keep glassmorphism effect */
-.dark .hero-section input,
-.dark .staff-hero-section input,
-.dark .hero-section textarea,
-.dark .staff-hero-section textarea {
-  background-color: rgba(31, 41, 55, 0.5) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  color: #f9fafb !important;
-}
-
-/* Dark mode tables */
-.dark table {
-  color: #e5e7eb;
-}
-
-.dark thead {
-  background-color: #374151 !important;
-  color: #f9fafb !important;
-}
-
-.dark tbody tr {
-  border-color: #374151 !important;
-}
-
-.dark tbody tr:hover {
-  background-color: #374151 !important;
-}
-
-/* Dark mode modals and dropdowns */
-.dark .rounded-lg,
-.dark .rounded-xl {
-  background-color: #1f2937;
-}
-
-/* Dark mode hover states */
-.dark .hover\:text-indigo-600:hover {
-  color: #818cf8 !important;
-}
-
-/* Dark mode scrollbar */
-.dark ::-webkit-scrollbar {
-  width: 12px;
-}
-
-.dark ::-webkit-scrollbar-track {
-  background: #1f2937;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 6px;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
-}
-
-/* Enhanced dark mode for stats cards */
-.dark .bg-blue-500 {
-  background-color: #1d4ed8 !important;
-}
-
-.dark .bg-yellow-500 {
-  background-color: #d97706 !important;
-}
-
-.dark .bg-green-500 {
-  background-color: #059669 !important;
-}
-
-/* Dark mode for queue section */
-.dark .bg-indigo-50 {
-  background-color: #1e1b4b !important;
-}
-
-.dark .bg-purple-50 {
-  background-color: #1e1b4b !important;
-}
-
-.dark .bg-pink-50 {
-  background-color: #1e1b4b !important;
-}
-
-/* Dark mode for status pills - ensure white text */
-.dark .bg-red-100,
-.dark .bg-orange-100,
-.dark .bg-blue-100,
-.dark .bg-green-100,
-.dark .bg-yellow-100,
-.dark .bg-gray-100 {
-  color: #ffffff !important;
-}
-
-/* Ensure all status pills have white text in dark mode */
-.dark .text-red-800,
-.dark .text-orange-800,
-.dark .text-blue-800,
-.dark .text-green-800,
-.dark .text-yellow-800,
-.dark .text-gray-800 {
-  color: #ffffff !important;
-}
-
-/* Status pills with white text for both modes */
-.bg-red-500,
-.bg-orange-500, 
-.bg-blue-500,
-.bg-green-500,
-.bg-yellow-500,
-.bg-gray-500 {
-  color: white !important;
-}
-
-/* Global dark mode transitions */
-.dark .transition-colors {
-  transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease !important;
-}
-
-/* Ensure smooth dark mode switching */
-.dark .min-h-screen {
-  background-color: #111827 !important;
-}
-
-/* Fix for hero section overlay in dark mode */
-.dark .hero-section::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 1;
-}
-
-.dark .hero-section > * {
-  position: relative;
-  z-index: 2;
+  .dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+  }
 }
