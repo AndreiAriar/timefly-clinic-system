@@ -454,12 +454,6 @@ return (
                       </div>
                     </div>
 
-                    {/* Status Indicator */}
-                    <div className="flex justify-between items-center pt-2">
-                      <span className="text-xs text-gray-500">
-                        {doctor.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
                   {/* Action Buttons */}
                   <div className="flex justify-center items-center gap-4 pt-3">
                     <button

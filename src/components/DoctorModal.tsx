@@ -93,7 +93,7 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     try {
       console.log('📧 Sending invitation to:', doctorEmail);
       
-      const response = await fetch('http://localhost:3001/send-doctor-invitation', {
+      const response = await fetch('/api/send-doctor-invitation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
