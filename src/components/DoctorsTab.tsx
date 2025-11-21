@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Filter, Plus, Edit2, Trash2, User, Mail, Phone, Stethoscope, Calendar, X } from 'lucide-react';
-import { collection, query, getDocs, onSnapshot, deleteDoc, doc, orderBy, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, deleteDoc, doc, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import DoctorModal from './DoctorModal';
 import { toast } from 'react-toastify';
@@ -53,9 +53,19 @@ const DoctorsTab = () => {
     'Neuro-ophthalmology'
   ];
 
+  // Helper function to get today's date in Philippine timezone
+  const getTodayPH = () => {
+    const now = new Date();
+    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const year = phTime.getFullYear();
+    const month = String(phTime.getMonth() + 1).padStart(2, '0');
+    const day = String(phTime.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   useEffect(() => {
-  loadDoctors();
-}, []);
+    loadDoctors();
+  }, []);
 
   useEffect(() => {
     let filtered = [...doctors];
@@ -85,88 +95,96 @@ const DoctorsTab = () => {
     setFilteredDoctors(filtered);
   }, [doctors, searchQuery, specialtyFilter, statusFilter]);
 
-  const loadDoctors = async () => {
+  const loadDoctors = () => {
     setIsLoading(true);
     try {
       const doctorsRef = collection(db, 'doctors');
       const q = query(doctorsRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
       
-      const doctorsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Doctor[];
-      
-      setDoctors(doctorsData);
+      // Real-time listener for doctors
+      const unsubscribe = onSnapshot(
+        q,
+        (querySnapshot) => {
+          const doctorsData = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Doctor[];
+          
+          setDoctors(doctorsData);
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error('Error loading doctors:', error);
+          toast.error('Failed to load doctors. Please try again.');
+          setIsLoading(false);
+        }
+      );
+
+      return unsubscribe;
     } catch (error) {
-      console.error('Error loading doctors:', error);
+      console.error('Error setting up doctors listener:', error);
       toast.error('Failed to load doctors. Please try again.');
-    } finally {
       setIsLoading(false);
     }
   };
-// Real-time appointments listener
-useEffect(() => {
-  const today = new Date();
-  const phTime = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-  const year = phTime.getFullYear();
-  const month = String(phTime.getMonth() + 1).padStart(2, '0');
-  const day = String(phTime.getDate()).padStart(2, '0');
-  const todayPH = `${year}-${month}-${day}`;
-  
-  const appointmentsRef = collection(db, 'appointments');
-  const q = query(
-    appointmentsRef,
-    where('appointmentDate', '==', todayPH)
-  );
-  
-  // Subscribe to real-time updates
-  const unsubscribe = onSnapshot(
-    q,
-    (querySnapshot) => {
-      const appointmentsData = querySnapshot.docs
-        .map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            doctorId: data.doctor || '',
-            status: data.status,
-            date: data.appointmentDate,
-            time: data.timeSlot
-          };
-        })
-        .filter(apt => 
-          apt.status !== 'cancelled' && 
-          apt.status !== 'completed' && 
-          apt.status !== 'missed'
-        ) as Appointment[];
-      
-      console.log('📊 Real-time appointments update:', appointmentsData.length);
-      setAppointments(appointmentsData);
-    },
-    (error) => {
-      console.error('Error listening to appointments:', error);
-    }
-  );
-  
-  return () => unsubscribe();
-}, []);
 
- const getDoctorAppointments = (doctorName: string) => {
-  const filtered = appointments.filter(appointment => 
-    appointment.doctorId === doctorName || 
-    appointment.doctorId === `Dr. ${doctorName}`
-  );
-  return filtered;
-};
+  // Real-time appointments listener
+  useEffect(() => {
+    const todayPH = getTodayPH();
+    
+    const appointmentsRef = collection(db, 'appointments');
+    const q = query(
+      appointmentsRef,
+      where('appointmentDate', '==', todayPH)
+    );
+    
+    // Subscribe to real-time updates
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const appointmentsData = querySnapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              doctorId: data.doctor || '',
+              status: data.status,
+              date: data.appointmentDate,
+              time: data.timeSlot
+            };
+          })
+          .filter(apt => 
+            apt.status !== 'cancelled' && 
+            apt.status !== 'completed' && 
+            apt.status !== 'missed'
+          ) as Appointment[];
+        
+        console.log('📊 Real-time appointments update:', appointmentsData.length);
+        setAppointments(appointmentsData);
+      },
+      (error) => {
+        console.error('Error listening to appointments:', error);
+      }
+    );
+    
+    return () => unsubscribe();
+  }, []);
 
-const getDoctorSlotCount = (doctorName: string) => {
-  const doctorAppointments = getDoctorAppointments(doctorName);
-  return doctorAppointments.length;
-};
+  const getDoctorAppointments = (doctorName: string) => {
+    const filtered = appointments.filter(appointment => 
+      appointment.doctorId === doctorName || 
+      appointment.doctorId === `Dr. ${doctorName}`
+    );
+    return filtered;
+  };
+
+  const getDoctorSlotCount = (doctorName: string) => {
+    const doctorAppointments = getDoctorAppointments(doctorName);
+    return doctorAppointments.length;
+  };
 
   const getDoctorTotalSlots = (doctor: Doctor) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayPH();
     
     // Check if doctor is completely unavailable today
     if (doctor.unavailableDates?.[today]) {
@@ -185,13 +203,13 @@ const getDoctorSlotCount = (doctorName: string) => {
     return availableSlots;
   };
 
-const isDoctorAvailable = (doctor: Doctor) => {
-  const slotCount = getDoctorSlotCount(doctor.name);
-  const totalSlots = getDoctorTotalSlots(doctor);
-  const active = doctor.isActive === undefined ? true : doctor.isActive;
-  
-  return active && totalSlots > 0 && slotCount < totalSlots;
-};
+  const isDoctorAvailable = (doctor: Doctor) => {
+    const slotCount = getDoctorSlotCount(doctor.name);
+    const totalSlots = getDoctorTotalSlots(doctor);
+    const active = doctor.isActive === undefined ? true : doctor.isActive;
+    
+    return active && totalSlots > 0 && slotCount < totalSlots;
+  };
 
   const handleAddDoctor = () => {
     setSelectedDoctor(null);
@@ -213,7 +231,6 @@ const isDoctorAvailable = (doctor: Doctor) => {
 
     try {
       await deleteDoc(doc(db, 'doctors', doctorToDelete.id));
-      await loadDoctors();
       toast.success('Doctor deleted successfully!');
       setShowDeleteModal(false);
       setDoctorToDelete(null);
@@ -233,19 +250,19 @@ const isDoctorAvailable = (doctor: Doctor) => {
     setSelectedDoctor(null);
   };
 
- if (isLoading) {
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading doctors...</p>
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading doctors...</p>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-return (
-  <div className="min-h-screen bg-gray-50 py-8">
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -373,7 +390,7 @@ return (
               const available = isDoctorAvailable(doctor);
 
               return (
-               <div key={doctor.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg relative">
+                <div key={doctor.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg relative">
                   <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-medium z-10 ${
                     available 
                       ? 'bg-green-100 text-green-800 border border-green-200' 
@@ -381,7 +398,7 @@ return (
                   }`}>
                     {available ? 'Available' : 'Unavailable'}
                   </div>
-                    <div className="bg-blue-500 px-4 py-3">
+                  <div className="bg-blue-500 px-4 py-3">
                     <div className="text-white">
                       <p className="text-sm font-medium">Doctor</p>
                       <p className="text-lg font-bold">Dr. {doctor.name.split(' ')[0]}</p>
@@ -436,11 +453,11 @@ return (
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                    <div 
-                      className="bg-indigo-600 h-2 rounded-full"
-                      style={{ width: `${totalSlots > 0 ? (slotCount / totalSlots) * 100 : 0}%` }}
-                    />
-                  </div>
+                        <div 
+                          className="bg-indigo-600 h-2 rounded-full"
+                          style={{ width: `${totalSlots > 0 ? (slotCount / totalSlots) * 100 : 0}%` }}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-2 pt-2 border-t">
@@ -454,22 +471,22 @@ return (
                       </div>
                     </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex justify-center items-center gap-4 pt-3">
-                    <button
-                      onClick={() => handleEditDoctor(doctor)}
-                     className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteDoctor(doctor)}
-                      className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </button>
+                    {/* Action Buttons */}
+                    <div className="flex justify-center items-center gap-4 pt-3">
+                      <button
+                        onClick={() => handleEditDoctor(doctor)}
+                        className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDoctor(doctor)}
+                        className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -488,7 +505,7 @@ return (
       />
 
       {/* Delete Confirmation Modal */}
-        {showDeleteModal && doctorToDelete && (
+      {showDeleteModal && doctorToDelete && (
         <div className="fixed inset-0 z-[100] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
           <div className="flex items-center justify-center min-h-screen px-4 text-center sm:block sm:p-0">
             <div 
@@ -499,8 +516,7 @@ return (
 
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform  sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[101]">
-              {/* Modal content remains exactly the same here */}
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[101]">
               <div className="bg-white px-6 py-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 id="delete-modal-title" className="text-2xl font-bold text-gray-900">
@@ -530,7 +546,7 @@ return (
                   <button
                     type="button"
                     onClick={cancelDeleteDoctor}
-                   className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
+                    className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
                   >
                     Cancel
                   </button>

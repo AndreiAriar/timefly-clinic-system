@@ -12,10 +12,10 @@ interface Doctor {
   phone: string;
   photo: string;
   isActive: boolean;
-  maxSlots: number; // Global default max slots
-  maxSlotsPerDate?: { [date: string]: number }; // Per-date max slots override
-  availableSlots: { [date: string]: string[] }; // Stores UNAVAILABLE time slots per date
-  unavailableDates?: { [date: string]: boolean }; // Dates when doctor is completely unavailable
+  maxSlots: number;
+  maxSlotsPerDate?: { [date: string]: number };
+  availableSlots: { [date: string]: string[] };
+  unavailableDates?: { [date: string]: boolean };
   createdAt: string;
 }
 
@@ -32,6 +32,16 @@ const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoc
   const [isAvailableForDate, setIsAvailableForDate] = useState<boolean>(true);
   const [unavailableSlots, setUnavailableSlots] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Helper function to get date in Philippine timezone
+  const getTodayPH = () => {
+    const now = new Date();
+    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const year = phTime.getFullYear();
+    const month = String(phTime.getMonth() + 1).padStart(2, '0');
+    const day = String(phTime.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const formatTo12Hour = (time24: string) => {
     const [hours, minutes] = time24.split(':');
@@ -54,7 +64,8 @@ const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoc
   };
 
   const timeSlots = generateTimeSlots();
-useEffect(() => {
+
+  useEffect(() => {
     const loadDoctorData = async () => {
       try {
         const doctorRef = doc(db, 'doctors', doctor.id);
@@ -94,119 +105,124 @@ useEffect(() => {
       }
     });
   };
-const handleMaxSlotsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const value = e.target.value;
-  // Only allow numbers
-  if (/^\d*$/.test(value)) {
-    setMaxSlots(value === '' ? '' : parseInt(value));
-  }
-};
 
-const handleSave = async (): Promise<void> => {
-  const maxSlotsNumber = typeof maxSlots === 'string' ? parseInt(maxSlots) || 0 : maxSlots;
-  
-  if (maxSlotsNumber < 1) {
-    toast.error('Please enter a valid number of slots (minimum 1)');
-    return;
-  }
-
-  setIsLoading(true);
-  try {
-    const doctorRef = doc(db, 'doctors', doctor.id);
-
-    // Get current doctor data to merge with
-    const doctorDoc = await getDoc(doctorRef);
-    if (!doctorDoc.exists()) {
-      throw new Error('Doctor document not found');
+  const handleMaxSlotsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Only allow numbers
+    if (/^\d*$/.test(value)) {
+      setMaxSlots(value === '' ? '' : parseInt(value));
     }
+  };
+
+  const handleSave = async (): Promise<void> => {
+    const maxSlotsNumber = typeof maxSlots === 'string' ? parseInt(maxSlots) || 0 : maxSlots;
     
-    const currentData = doctorDoc.data();
-    console.log('=== BEFORE SAVE ===');
-    console.log('Current maxSlotsPerDate:', currentData?.maxSlotsPerDate);
-    console.log('Current globalMaxSlots:', currentData?.maxSlots);
-    console.log('Date being configured:', date);
-    console.log('New value for this date:', maxSlotsNumber);
-
-    // ✅ Handle unavailable dates
-    const unavailableDates = { ...(currentData?.unavailableDates || {}) };
-    if (!isAvailableForDate) {
-      unavailableDates[date] = true;
-    } else {
-      delete unavailableDates[date];
+    if (maxSlotsNumber < 1) {
+      toast.error('Please enter a valid number of slots (minimum 1)');
+      return;
     }
 
-    // ✅ Handle unavailable time slots (stored in availableSlots field)
-    const availableSlots = { ...(currentData?.availableSlots || {}) };
-    if (unavailableSlots.length > 0) {
-      availableSlots[date] = [...unavailableSlots];
-    } else {
-      delete availableSlots[date];
-    }
+    setIsLoading(true);
+    try {
+      const doctorRef = doc(db, 'doctors', doctor.id);
 
-    // ✅ FIXED: Store per-date max slots properly
-    const maxSlotsPerDate = { ...(currentData?.maxSlotsPerDate || {}) };
-    maxSlotsPerDate[date] = maxSlotsNumber;
-
-    console.log('=== SAVING ===');
-    console.log('Update payload:');
-    console.log('  - maxSlotsPerDate:', maxSlotsPerDate);
-    console.log('  - unavailableDates:', unavailableDates);
-    console.log('  - availableSlots (unavailable time slots):', availableSlots);
-
-    // ✅ Save per-date configuration (does NOT affect global maxSlots)
-    await updateDoc(doctorRef, {
-      maxSlotsPerDate, // Per-date max slots
-      unavailableDates, // Per-date availability
-      availableSlots, // Per-date unavailable time slots
-      updatedAt: new Date().toISOString()
-    });
-
-    // Verify the save worked
-    const verifyDoc = await getDoc(doctorRef);
-    const verifyData = verifyDoc.data();
-    console.log('=== AFTER SAVE (VERIFICATION) ===');
-    console.log('Saved maxSlotsPerDate:', verifyData?.maxSlotsPerDate);
-    console.log('Value for our date:', verifyData?.maxSlotsPerDate?.[date]);
-    console.log('Global maxSlots (should be unchanged):', verifyData?.maxSlots);
-    
-    if (verifyData?.maxSlotsPerDate?.[date] !== maxSlotsNumber) {
-      console.error('❌ SAVE VERIFICATION FAILED!');
-      console.error('Expected:', maxSlotsNumber);
-      console.error('Got:', verifyData?.maxSlotsPerDate?.[date]);
-      throw new Error('Save verification failed - data not persisted correctly');
-    }
-    
-    console.log('✅ Save verified successfully');
-    console.log('✅ Per-date configuration saved WITHOUT affecting other dates');
-
-   toast.success(`Doctor availability updated successfully for ${formatDate(date)}`, {
-    autoClose: 3000,
-    position: "top-right"
-    });
+      // Get current doctor data to merge with
+      const doctorDoc = await getDoc(doctorRef);
+      if (!doctorDoc.exists()) {
+        throw new Error('Doctor document not found');
+      }
       
-    // Call onUpdate to refresh the calendar
-    await onUpdate();
-    onClose();
-} catch (error) {
-  console.error('❌ Error updating doctor availability:', error);
-  
-  if (error instanceof Error) {
-    toast.error(`Failed to update: ${error.message}`);
-  } else {
-    toast.error('Failed to update doctor availability');
-    }
-  } finally {
-    setIsLoading(false);
-  }
-};
+      const currentData = doctorDoc.data();
+      console.log('=== BEFORE SAVE ===');
+      console.log('Current maxSlotsPerDate:', currentData?.maxSlotsPerDate);
+      console.log('Current globalMaxSlots:', currentData?.maxSlots);
+      console.log('Date being configured:', date);
+      console.log('New value for this date:', maxSlotsNumber);
 
-  const formatDate = (dateString: string) => {
-    const dateObj = new Date(dateString);
+      // Handle unavailable dates
+      const unavailableDates = { ...(currentData?.unavailableDates || {}) };
+      if (!isAvailableForDate) {
+        unavailableDates[date] = true;
+      } else {
+        delete unavailableDates[date];
+      }
+
+      // Handle unavailable time slots (stored in availableSlots field)
+      const availableSlots = { ...(currentData?.availableSlots || {}) };
+      if (unavailableSlots.length > 0) {
+        availableSlots[date] = [...unavailableSlots];
+      } else {
+        delete availableSlots[date];
+      }
+
+      // Store per-date max slots properly
+      const maxSlotsPerDate = { ...(currentData?.maxSlotsPerDate || {}) };
+      maxSlotsPerDate[date] = maxSlotsNumber;
+
+      console.log('=== SAVING ===');
+      console.log('Update payload:');
+      console.log('  - maxSlotsPerDate:', maxSlotsPerDate);
+      console.log('  - unavailableDates:', unavailableDates);
+      console.log('  - availableSlots (unavailable time slots):', availableSlots);
+
+      // Save per-date configuration (does NOT affect global maxSlots)
+      await updateDoc(doctorRef, {
+        maxSlotsPerDate,
+        unavailableDates,
+        availableSlots,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Verify the save worked
+      const verifyDoc = await getDoc(doctorRef);
+      const verifyData = verifyDoc.data();
+      console.log('=== AFTER SAVE (VERIFICATION) ===');
+      console.log('Saved maxSlotsPerDate:', verifyData?.maxSlotsPerDate);
+      console.log('Value for our date:', verifyData?.maxSlotsPerDate?.[date]);
+      console.log('Global maxSlots (should be unchanged):', verifyData?.maxSlots);
+      
+      if (verifyData?.maxSlotsPerDate?.[date] !== maxSlotsNumber) {
+        console.error('❌ SAVE VERIFICATION FAILED!');
+        console.error('Expected:', maxSlotsNumber);
+        console.error('Got:', verifyData?.maxSlotsPerDate?.[date]);
+        throw new Error('Save verification failed - data not persisted correctly');
+      }
+      
+      console.log('✅ Save verified successfully');
+      console.log('✅ Per-date configuration saved WITHOUT affecting other dates');
+
+      toast.success(`Doctor availability updated successfully for ${formatDatePH(date)}`, {
+        autoClose: 3000,
+        position: "top-right"
+      });
+      
+      // Call onUpdate to refresh the calendar
+      await onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('❌ Error updating doctor availability:', error);
+      
+      if (error instanceof Error) {
+        toast.error(`Failed to update: ${error.message}`);
+      } else {
+        toast.error('Failed to update doctor availability');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatDatePH = (dateString: string) => {
+    // Parse the date string as YYYY-MM-DD
+    const [year, month, day] = dateString.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    
     return dateObj.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Manila'
     });
   };
 
@@ -235,7 +251,7 @@ const handleSave = async (): Promise<void> => {
             <div className="flex items-center gap-2 text-indigo-700">
               <Calendar className="w-5 h-5" />
               <span className="font-semibold">Selected Date:</span>
-              <span>{formatDate(date)}</span>
+              <span>{formatDatePH(date)}</span>
             </div>
           </div>
 
@@ -302,20 +318,20 @@ const handleSave = async (): Promise<void> => {
                   {isAvailableForDate ? 'Available' : 'Unavailable'}
                 </span>
                 <button
-                    type="button"
-                    onClick={() => setIsAvailableForDate(!isAvailableForDate)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-                      isAvailableForDate ? 'bg-green-500' : 'bg-red-500'
+                  type="button"
+                  onClick={() => setIsAvailableForDate(!isAvailableForDate)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    isAvailableForDate ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                  aria-label={isAvailableForDate ? 'Mark as unavailable' : 'Mark as available'}
+                  title={isAvailableForDate ? 'Mark as unavailable' : 'Mark as available'}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      isAvailableForDate ? 'translate-x-6' : 'translate-x-1'
                     }`}
-                    aria-label={isAvailableForDate ? 'Mark as unavailable' : 'Mark as available'}
-                    title={isAvailableForDate ? 'Mark as unavailable' : 'Mark as available'}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        isAvailableForDate ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
+                  />
+                </button>
               </div>
               <p className="text-xs text-gray-500 mt-2">
                 {isAvailableForDate 

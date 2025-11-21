@@ -140,20 +140,20 @@ const Queue = () => {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'emergency': return 'bg-red-100 text-red-800 border-red-200';
-      case 'urgent': return 'bg-orange-100 text-orange-800 border-orange-200';
-      default: return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'emergency': return 'bg-red-500 text-white border-red-600';
+      case 'urgent': return 'bg-orange-500 text-white border-orange-600';
+      default: return 'bg-blue-500 text-white border-blue-600';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'serving': return 'bg-green-100 text-green-800';
-      case 'confirmed': return 'bg-green-100 text-green-800';
-      case 'scheduled': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'missed': return 'bg-red-100 text-red-800'; 
-      default: return 'bg-gray-100 text-gray-800';
+      case 'serving': return 'bg-green-500 text-white';
+      case 'confirmed': return 'bg-green-500 text-white';
+      case 'scheduled': return 'bg-green-500 text-white';
+      case 'pending': return 'bg-yellow-500 text-white';
+      case 'missed': return 'bg-red-500 text-white'; 
+      default: return 'bg-gray-500 text-white';
     }
   };
 
@@ -172,23 +172,23 @@ const Queue = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading queue...</p>
+          <p className="text-gray-600 dark:text-gray-300">Loading queue...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Current Queue</h1>
-          <p className="text-xl text-gray-600">Real-time queue status - All appointments for today</p>
-          <p className="text-lg text-indigo-600 font-medium mt-2">{formatDate(getTodayDatePH())}</p>
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Current Queue</h1>
+          <p className="text-xl text-gray-600 dark:text-gray-300">Real-time queue status - All appointments for today</p>
+          <p className="text-lg text-indigo-600 dark:text-indigo-400 font-medium mt-2">{formatDate(getTodayDatePH())}</p>
         </div>
 
         {/* Now Serving & Up Next Cards */}
@@ -241,13 +241,13 @@ const Queue = () => {
         </div>
 
         {/* Queue List */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-6">Full Queue ({appointments.length})</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Full Queue ({appointments.length})</h2>
           
           {appointments.length === 0 ? (
             <div className="text-center py-12">
               <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-xl text-gray-600">No appointments in queue today</p>
+              <p className="text-xl text-gray-600 dark:text-gray-300">No appointments in queue today</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -256,8 +256,8 @@ const Queue = () => {
                   key={appointment.id}
                   className={`relative border-2 rounded-xl p-6 transition-all ${
                     appointment.status === 'serving' || appointment.status === 'confirmed'
-                      ? 'bg-green-50 border-green-500 shadow-lg'
-                      : 'bg-gray-50 border-gray-200 hover:border-indigo-300 hover:shadow-md'
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-500 shadow-lg'
+                      : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:border-indigo-300 dark:hover:border-indigo-400 hover:shadow-md'
                   }`}
                 >
                   {/* Queue Number Badge */}
@@ -275,19 +275,19 @@ const Queue = () => {
                     {/* Patient Info - Anonymous */}
                     <div className="md:col-span-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                          <User className="w-5 h-5 text-indigo-600" />
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
+                          <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                         </div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">Patient #{appointment.queueNumber}</h3>
-                          <p className="text-sm text-gray-600">Appointment</p>
+                          <h3 className="font-semibold text-gray-900 dark:text-white">Patient #{appointment.queueNumber}</h3>
+                          <p className="text-sm text-gray-600 dark:text-gray-300">Appointment</p>
                         </div>
                       </div>
                     </div>
 
                     {/* Time */}
                     <div className="md:col-span-2">
-                      <div className="flex items-center gap-2 text-gray-700">
+                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
                         <Clock className="w-4 h-4" />
                         <span className="font-semibold">{convertTo12Hour(appointment.timeSlot)}</span>
                       </div>
@@ -296,10 +296,10 @@ const Queue = () => {
                     {/* Waiting Time */}
                     <div className="md:col-span-2">
                       <div className="flex flex-col">
-                        <span className="text-xs text-gray-500 mb-1">Waiting Time</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 mb-1">Waiting Time</span>
                         <div className="flex items-center gap-2">
                           <Clock className="w-4 h-4 text-orange-500" />
-                          <span className="font-bold text-orange-600">{calculateWaitingTime(appointment.timeSlot)}</span>
+                          <span className="font-bold text-orange-600 dark:text-orange-400">{calculateWaitingTime(appointment.timeSlot)}</span>
                         </div>
                       </div>
                     </div>
@@ -334,33 +334,33 @@ const Queue = () => {
         </div>
 
         {/* Legend */}
-        <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Queue Information</h3>
+        <div className="mt-8 bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Queue Information</h3>
           <div className="grid md:grid-cols-3 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 bg-red-500 rounded-full"></div>
               <div>
-                <p className="font-medium text-gray-900">Emergency</p>
-                <p className="text-sm text-gray-500">Immediate attention required</p>
+                <p className="font-medium text-gray-900 dark:text-white">Emergency</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Immediate attention required</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
               <div>
-                <p className="font-medium text-gray-900">Urgent</p>
-                <p className="text-sm text-gray-500">Priority service needed</p>
+                <p className="font-medium text-gray-900 dark:text-white">Urgent</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Priority service needed</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
               <div>
-                <p className="font-medium text-gray-900">Normal</p>
-                <p className="text-sm text-gray-500">Regular appointment</p>
+                <p className="font-medium text-gray-900 dark:text-white">Normal</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Regular appointment</p>
               </div>
             </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <p className="text-sm text-gray-600">
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               <strong>Note:</strong> Patients are only moved to "Now Serving" when confirmed by staff. 
               Your position in the queue is determined by your appointment time and priority level.
             </p>

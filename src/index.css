@@ -27,6 +27,23 @@ body {
   background: transparent;
 }
 
+/* Global Dark Mode Transition */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease !important;
+}
+
+/* Critical Dark Mode Base Styles */
+.dark {
+  color-scheme: dark;
+}
+
+.dark html,
+.dark body,
+.dark #root {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
 /* Background images */
 .hero-section {
   background-image: url(/timefly_bg.jpg);
@@ -364,4 +381,315 @@ input[type="date"].input-transparent::-webkit-datetime-edit-text {
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(0.4);
   }
+}
+
+/* =================================================================
+   DARK MODE STYLES - Comprehensive dark mode support
+   ================================================================= */
+
+/* Dark mode root variables and base styles */
+.dark {
+  color-scheme: dark;
+}
+
+.dark html,
+.dark body,
+.dark #root {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
+/* Dark mode text colors */
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6 {
+  color: #f9fafb;
+}
+
+.dark p,
+.dark span,
+.dark div {
+  color: #e5e7eb;
+}
+
+/* Dark mode cards and containers */
+.dark .bg-white {
+  background-color: #1f2937 !important;
+}
+
+.dark .bg-gray-50 {
+  background-color: #111827 !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: #1f2937 !important;
+}
+
+.dark .bg-gray-200 {
+  background-color: #374151 !important;
+}
+
+/* Dark mode borders */
+.dark .border-gray-200 {
+  border-color: #374151 !important;
+}
+
+.dark .border-gray-300 {
+  border-color: #4b5563 !important;
+}
+
+/* Dark mode text colors */
+.dark .text-gray-600 {
+  color: #9ca3af !important;
+}
+
+.dark .text-gray-700 {
+  color: #d1d5db !important;
+}
+
+.dark .text-gray-800 {
+  color: #e5e7eb !important;
+}
+
+.dark .text-gray-900 {
+  color: #f9fafb !important;
+}
+
+/* Dark mode shadows */
+.dark .shadow,
+.dark .shadow-sm,
+.dark .shadow-md,
+.dark .shadow-lg,
+.dark .shadow-xl {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 
+              0 4px 6px -1px rgba(0, 0, 0, 0.5), 
+              0 2px 4px -1px rgba(0, 0, 0, 0.3);
+}
+
+/* Dark mode form inputs */
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="password"],
+.dark input[type="number"],
+.dark input[type="tel"],
+.dark input[type="url"],
+.dark input[type="search"],
+.dark input[type="time"],
+.dark input[type="date"],
+.dark input[type="datetime-local"],
+.dark textarea,
+.dark select {
+  background-color: #374151 !important;
+  border-color: #4b5563 !important;
+  color: #f9fafb !important;
+  -webkit-text-fill-color: #f9fafb !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
+}
+
+.dark input:focus,
+.dark textarea:focus,
+.dark select:focus {
+  border-color: #3b82f6 !important;
+  background-color: #1f2937 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Dark mode buttons */
+.dark button:not(.bg-indigo-600):not(.bg-blue-600):not(.bg-red-600):not(.bg-green-600) {
+  color: #e5e7eb;
+}
+
+.dark .hover\:bg-gray-100:hover {
+  background-color: #374151 !important;
+}
+
+.dark .hover\:bg-gray-50:hover {
+  background-color: #1f2937 !important;
+}
+
+/* Dark mode navigation */
+.dark nav {
+  background-color: #1f2937 !important;
+  border-bottom: 1px solid #374151;
+}
+
+/* Dark mode footer */
+.dark footer {
+  background-color: #0f172a !important;
+}
+
+/* Dark mode date picker */
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) !important;
+}
+
+.dark input[type="date"]::-webkit-datetime-edit,
+.dark input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+.dark input[type="date"]::-webkit-datetime-edit-month-field,
+.dark input[type="date"]::-webkit-datetime-edit-day-field,
+.dark input[type="date"]::-webkit-datetime-edit-year-field {
+  color: #f9fafb !important;
+  -webkit-text-fill-color: #f9fafb !important;
+}
+
+.dark input[type="date"]::-webkit-datetime-edit-text {
+  color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
+}
+
+/* Dark mode autofill */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #374151 inset !important;
+  -webkit-text-fill-color: #f9fafb !important;
+}
+
+/* Dark mode hero sections - keep glassmorphism effect */
+.dark .hero-section input,
+.dark .staff-hero-section input,
+.dark .hero-section textarea,
+.dark .staff-hero-section textarea {
+  background-color: rgba(31, 41, 55, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #f9fafb !important;
+}
+
+/* Dark mode tables */
+.dark table {
+  color: #e5e7eb;
+}
+
+.dark thead {
+  background-color: #374151 !important;
+  color: #f9fafb !important;
+}
+
+.dark tbody tr {
+  border-color: #374151 !important;
+}
+
+.dark tbody tr:hover {
+  background-color: #374151 !important;
+}
+
+/* Dark mode modals and dropdowns */
+.dark .rounded-lg,
+.dark .rounded-xl {
+  background-color: #1f2937;
+}
+
+/* Dark mode hover states */
+.dark .hover\:text-indigo-600:hover {
+  color: #818cf8 !important;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar {
+  width: 12px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 6px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Enhanced dark mode for stats cards */
+.dark .bg-blue-500 {
+  background-color: #1d4ed8 !important;
+}
+
+.dark .bg-yellow-500 {
+  background-color: #d97706 !important;
+}
+
+.dark .bg-green-500 {
+  background-color: #059669 !important;
+}
+
+/* Dark mode for queue section */
+.dark .bg-indigo-50 {
+  background-color: #1e1b4b !important;
+}
+
+.dark .bg-purple-50 {
+  background-color: #1e1b4b !important;
+}
+
+.dark .bg-pink-50 {
+  background-color: #1e1b4b !important;
+}
+
+/* Dark mode for status pills - ensure white text */
+.dark .bg-red-100,
+.dark .bg-orange-100,
+.dark .bg-blue-100,
+.dark .bg-green-100,
+.dark .bg-yellow-100,
+.dark .bg-gray-100 {
+  color: #ffffff !important;
+}
+
+/* Ensure all status pills have white text in dark mode */
+.dark .text-red-800,
+.dark .text-orange-800,
+.dark .text-blue-800,
+.dark .text-green-800,
+.dark .text-yellow-800,
+.dark .text-gray-800 {
+  color: #ffffff !important;
+}
+
+/* Status pills with white text for both modes */
+.bg-red-500,
+.bg-orange-500, 
+.bg-blue-500,
+.bg-green-500,
+.bg-yellow-500,
+.bg-gray-500 {
+  color: white !important;
+}
+
+/* Global dark mode transitions */
+.dark .transition-colors {
+  transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease !important;
+}
+
+/* Ensure smooth dark mode switching */
+.dark .min-h-screen {
+  background-color: #111827 !important;
+}
+
+/* Fix for hero section overlay in dark mode */
+.dark .hero-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1;
+}
+
+.dark .hero-section > * {
+  position: relative;
+  z-index: 2;
 }

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Sun, Moon } from 'lucide-react';
 import Home from './Home';
 import AboutUs from './AboutUs';
 import OurDoctors from './OurDoctors';
@@ -34,6 +35,10 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
   const mobileDropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const hamburgerButtonRef = useRef<HTMLDivElement>(null);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved === 'true';
+  });
 
   useEffect(() => {
     if (userPhoto) {
@@ -43,6 +48,21 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
       setCurrentUserName(userName);
     }
   }, [userPhoto, userName]);
+
+  // Enhanced dark mode effect
+  useEffect(() => {
+    const html = document.documentElement;
+    if (isDarkMode) {
+      html.classList.add('dark');
+      localStorage.setItem('darkMode', 'true');
+    } else {
+      html.classList.remove('dark');
+      localStorage.setItem('darkMode', 'false');
+    }
+    
+    // Force a reflow to ensure styles are applied
+    void html.offsetHeight;
+  }, [isDarkMode]);
 
   // Function to compress image for Firestore
   const compressImageForFirestore = (file: File): Promise<string> => {
@@ -57,7 +77,6 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
         
         let { width, height } = img;
         
-        // Calculate new dimensions while maintaining aspect ratio
         const scale = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height, 1);
         width = Math.floor(width * scale);
         height = Math.floor(height * scale);
@@ -67,7 +86,6 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
         
         ctx?.drawImage(img, 0, 0, width, height);
         
-        // Start with moderate compression and reduce if needed
         let quality = 0.7;
         let attempts = 0;
         const maxAttempts = 5;
@@ -114,7 +132,6 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
       return;
     }
 
-    // NO FILE SIZE LIMIT - users can upload any size
     console.log('Original file size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
 
     setIsUploading(true);
@@ -128,7 +145,6 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
         return;
       }
 
-      // Show temporary preview immediately
       const tempReader = new FileReader();
       tempReader.onloadend = () => {
         const tempPhotoUrl = tempReader.result as string;
@@ -136,10 +152,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
       };
       tempReader.readAsDataURL(file);
 
-      // Compress image for Firestore storage
       const compressedBase64 = await compressImageForFirestore(file);
       
-      // Check final size after compression
       const sizeInKB = (compressedBase64.length - 'data:image/jpeg;base64,'.length) * 0.75 / 1024;
       console.log('Final compressed size:', sizeInKB.toFixed(2), 'KB');
       
@@ -148,13 +162,9 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
         return;
       }
 
-      // Update local state with compressed version
       setProfilePhoto(compressedBase64);
-      
-      // Store in localStorage for persistence
       localStorage.setItem('userProfilePhoto', compressedBase64);
       
-      // Update Firestore with compressed base64 string
       const userDocRef = doc(db, 'users', user.uid);
       await updateDoc(userDocRef, {
         photoURL: compressedBase64,
@@ -174,21 +184,18 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
         }
       }
       
-      // Revert to previous photo on error
       if (userPhoto) {
         setProfilePhoto(userPhoto);
         localStorage.setItem('userProfilePhoto', userPhoto);
       }
     } finally {
       setIsUploading(false);
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
   };
 
-  // Load profile photo from localStorage on component mount
   useEffect(() => {
     const savedPhoto = localStorage.getItem('userProfilePhoto');
     if (savedPhoto) {
@@ -255,6 +262,10 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
     setIsMobileDropdownOpen(false);
     onLogout();
   };
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+  };
   
   const renderPage = () => {
     switch (currentPage) {
@@ -286,9 +297,10 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md">
+    // UPDATED: Added dark mode background classes
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+      {/* Navigation - UPDATED with dark mode */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 shadow-md transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             {/* Logo */}
@@ -301,17 +313,17 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 alt="TimeFly Logo" 
                 className="h-12 w-auto"
               />
-              <span className="text-2xl font-bold text-blue-500">TimeFly</span>
+              <span className="text-2xl font-bold text-blue-500 dark:text-blue-400">TimeFly</span>
             </button>
 
-            {/* Desktop Navigation */}
+            {/* Desktop Navigation - UPDATED with dark mode */}
             <div className="hidden md:flex items-center space-x-8">
               <button
                 onClick={() => handleNavClick('appointments')}
                 className={`font-medium transition pb-2 ${
                   currentPage === 'appointments' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
+                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                    : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 Appointments
@@ -320,8 +332,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 onClick={() => handleNavClick('queue')}
                 className={`font-medium transition pb-2 ${
                   currentPage === 'queue' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
+                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                    : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 Queue
@@ -330,8 +342,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 onClick={() => handleNavClick('about')}
                 className={`font-medium transition pb-2 ${
                   currentPage === 'about' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
+                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                    : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 About Us
@@ -340,8 +352,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 onClick={() => handleNavClick('doctors')}
                 className={`font-medium transition pb-2 ${
                   currentPage === 'doctors' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
+                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                    : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 Our Doctors
@@ -350,8 +362,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 onClick={() => handleNavClick('faq')}
                 className={`font-medium transition pb-2 ${
                   currentPage === 'faq' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
+                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                    : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 FAQ
@@ -360,8 +372,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 onClick={() => handleNavClick('feedback')}
                 className={`font-medium transition pb-2 ${
                   currentPage === 'feedback' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
+                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                    : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 Feedback
@@ -370,14 +382,27 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 onClick={() => handleNavClick('contact')}
                 className={`font-medium transition pb-2 ${
                   currentPage === 'contact' 
-                    ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                    : 'text-gray-700 hover:text-indigo-600'
+                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                    : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 Contact Support
               </button>
+
+              {/* Dark Mode Toggle Button */}
+              <button
+                onClick={toggleDarkMode}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label="Toggle dark mode"
+              >
+                {isDarkMode ? (
+                  <Sun className="w-5 h-5 text-yellow-500" />
+                ) : (
+                  <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                )}
+              </button>
               
-              {/* Desktop Profile Dropdown */}
+              {/* Desktop Profile Dropdown - UPDATED with dark mode */}
               <div className="relative" ref={desktopDropdownRef}>
                 <button
                   onClick={() => setIsDesktopDropdownOpen(!isDesktopDropdownOpen)}
@@ -389,22 +414,21 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                       <img 
                         src={profilePhoto} 
                         alt="Profile" 
-                        className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600"
+                        className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600 dark:border-indigo-400"
                       />
-                      {/* IMPROVED: Better loading overlay */}
                       {isUploading && (
-                        <div className="absolute inset-0 bg-white bg-opacity-80 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        <div className="absolute inset-0 bg-white dark:bg-gray-800 bg-opacity-80 rounded-full flex items-center justify-center backdrop-blur-sm">
                           <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-200 border-t-blue-600"></div>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold border-2 border-indigo-600">
+                    <div className="h-10 w-10 rounded-full bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center text-white font-semibold border-2 border-indigo-600 dark:border-indigo-400">
                       {getInitials(userEmail, currentUserName)}
                     </div>
                   )}
                   <svg 
-                    className={`w-4 h-4 text-gray-700 transition-transform ${isDesktopDropdownOpen ? 'rotate-180' : ''} ${isUploading ? 'opacity-50' : ''}`}
+                    className={`w-4 h-4 text-gray-700 dark:text-gray-300 transition-transform ${isDesktopDropdownOpen ? 'rotate-180' : ''} ${isUploading ? 'opacity-50' : ''}`}
                     fill="none" 
                     stroke="currentColor" 
                     viewBox="0 0 24 24"
@@ -414,8 +438,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                 </button>
 
                 {isDesktopDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl overflow-hidden z-50">
-                    <div className="p-4 bg-blue-700 text-white">
+                  <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-700 rounded-lg shadow-xl overflow-hidden z-50 transition-colors duration-200">
+                    <div className="p-4 bg-blue-700 dark:bg-blue-600 text-white">
                       <div className="flex items-center space-x-3">
                         {profilePhoto ? (
                           <div className="relative">
@@ -424,7 +448,6 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                               alt="Profile" 
                               className="h-16 w-16 rounded-full object-cover border-2 border-white"
                             />
-                            {/* IMPROVED: Better loading overlay for large photo */}
                             {isUploading && (
                               <div className="absolute inset-0 bg-white bg-opacity-80 rounded-full flex items-center justify-center backdrop-blur-sm">
                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-200 border-t-blue-600"></div>
@@ -450,21 +473,21 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                       <button
                         onClick={handleChangePhotoClick}
                         disabled={isUploading}
-                        className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-100 flex items-center space-x-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center space-x-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                         <span>{isUploading ? 'Updating...' : 'Change Photo'}</span>
                       </button>
 
-                      <div className="border-t border-gray-200 my-2"></div>
+                      <div className="border-t border-gray-200 dark:border-gray-600 my-2"></div>
 
                       <button
                         onClick={handleLogout}
                         disabled={isUploading}
-                        className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 flex items-center space-x-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -477,8 +500,19 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
               </div>
             </div>
 
-            {/* Mobile Profile and Menu */}
+            {/* Mobile Profile and Menu - UPDATED with dark mode */}
             <div className="md:hidden flex items-center space-x-3">
+              <button
+                onClick={toggleDarkMode}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label="Toggle dark mode"
+              >
+                {isDarkMode ? (
+                  <Sun className="w-5 h-5 text-yellow-500" />
+                ) : (
+                  <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                )}
+              </button>
               <div className="relative" ref={mobileDropdownRef}>
                 <button
                   onClick={() => {
@@ -495,24 +529,23 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                       <img 
                         src={profilePhoto} 
                         alt="Profile" 
-                        className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600"
+                        className="h-10 w-10 rounded-full object-cover border-2 border-indigo-600 dark:border-indigo-400"
                       />
-                      {/* IMPROVED: Better loading overlay for mobile */}
                       {isUploading && (
-                        <div className="absolute inset-0 bg-white bg-opacity-80 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        <div className="absolute inset-0 bg-white dark:bg-gray-800 bg-opacity-80 rounded-full flex items-center justify-center backdrop-blur-sm">
                           <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-200 border-t-blue-600"></div>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold border-2 border-indigo-600">
+                    <div className="h-10 w-10 rounded-full bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center text-white font-semibold border-2 border-indigo-600 dark:border-indigo-400">
                       {getInitials(userEmail, currentUserName)}
                     </div>
                   )}
                 </button>
 
                 {isMobileDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl overflow-hidden z-50">
+                  <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-700 rounded-lg shadow-xl overflow-hidden z-50 transition-colors duration-200">
                     <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
                       <div className="flex items-center space-x-3">
                         {profilePhoto ? (
@@ -522,7 +555,6 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                               alt="Profile" 
                               className="h-16 w-16 rounded-full object-cover border-2 border-white"
                             />
-                            {/* IMPROVED: Better loading overlay for large mobile photo */}
                             {isUploading && (
                               <div className="absolute inset-0 bg-white bg-opacity-80 rounded-full flex items-center justify-center backdrop-blur-sm">
                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-200 border-t-blue-600"></div>
@@ -548,21 +580,21 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                       <button
                         onClick={handleChangePhotoClick}
                         disabled={isUploading}
-                        className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-100 flex items-center space-x-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center space-x-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                         <span>{isUploading ? 'Updating...' : 'Change Photo'}</span>
                       </button>
 
-                      <div className="border-t border-gray-200 my-2"></div>
+                      <div className="border-t border-gray-200 dark:border-gray-600 my-2"></div>
 
                       <button
                         onClick={handleLogout}
                         disabled={isUploading}
-                        className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 flex items-center space-x-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -589,12 +621,12 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                     setIsMobileMenuOpen(prev => !prev);
                     setIsMobileDropdownOpen(false);
                   }}
-                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200"
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200"
                   disabled={isUploading}
                 >
                   {isMobileMenuOpen ? (
                     <svg 
-                      className="w-6 h-6 text-gray-700" 
+                      className="w-6 h-6 text-gray-700 dark:text-gray-300" 
                       fill="none" 
                       stroke="currentColor" 
                       viewBox="0 0 24 24"
@@ -603,7 +635,7 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                     </svg>
                   ) : (
                     <svg 
-                      className="w-6 h-6 text-gray-700" 
+                      className="w-6 h-6 text-gray-700 dark:text-gray-300" 
                       fill="none" 
                       stroke="currentColor" 
                       viewBox="0 0 24 24"
@@ -616,16 +648,16 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
             </div>
           </div>
 
-          {/* Mobile Menu */}
+          {/* Mobile Menu - UPDATED with dark mode */}
           {isMobileMenuOpen && (
-            <div ref={mobileMenuRef} className="md:hidden pb-4 bg-white rounded-b-lg shadow-lg">
+            <div ref={mobileMenuRef} className="md:hidden pb-4 bg-white dark:bg-gray-800 rounded-b-lg shadow-lg transition-colors duration-200">
               <div className="flex flex-col space-y-1 p-2">
                 <button
                   onClick={() => handleNavClick('appointments')}
                   className={`font-medium transition py-3 px-4 text-left rounded ${
                     currentPage === 'appointments' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
                   Appointments
@@ -634,8 +666,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                   onClick={() => handleNavClick('queue')}
                   className={`font-medium transition py-3 px-4 text-left rounded ${
                     currentPage === 'queue' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
                   Queue
@@ -644,8 +676,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                   onClick={() => handleNavClick('about')}
                   className={`font-medium transition py-3 px-4 text-left rounded ${
                     currentPage === 'about' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
                   About Us
@@ -654,8 +686,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                   onClick={() => handleNavClick('doctors')}
                   className={`font-medium transition py-3 px-4 text-left rounded ${
                     currentPage === 'doctors' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
                   Our Doctors
@@ -664,8 +696,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                   onClick={() => handleNavClick('faq')}
                   className={`font-medium transition py-3 px-4 text-left rounded ${
                     currentPage === 'faq' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
                   FAQ
@@ -674,8 +706,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                   onClick={() => handleNavClick('feedback')}
                   className={`font-medium transition py-3 px-4 text-left rounded ${
                     currentPage === 'feedback' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
                   Feedback
@@ -684,8 +716,8 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
                   onClick={() => handleNavClick('contact')}
                   className={`font-medium transition py-3 px-4 text-left rounded ${
                     currentPage === 'contact' 
-                      ? 'text-indigo-600 bg-indigo-50' 
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
                   Contact Support
@@ -701,7 +733,7 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
         {renderPage()}
       </div>
 
-      {/* Footer */}
+      {/* Footer - UPDATED with dark mode */}
       <footer className="bg-gray-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
