@@ -47,6 +47,7 @@ const StaffAppointments = () => {
   const [doctors, setDoctors] = useState<string[]>([]);
   const [sortField, setSortField] = useState<SortField>('appointmentDate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
     message: '',
     type: 'info',
@@ -61,14 +62,19 @@ const StaffAppointments = () => {
 useEffect(() => {
   console.log('🔥 Setting up real-time listeners for staff...');
   
+  // Reset state when component mounts
+  setAppointments([]);
+  setFilteredAppointments([]);
+  setHasLoadedOnce(false);
+  
   // Get current user's email
   const userEmail = auth.currentUser?.email;
   
   if (!userEmail) {
-    console.error('No user email found');
-    setIsLoading(false);
-    return;
-  }
+  console.error('No user email found');
+  setHasLoadedOnce(true);  // Changed from setIsLoading(false)
+  return;
+}
 
   let unsubscribeAppointments: (() => void) | undefined;
 
@@ -95,31 +101,40 @@ useEffect(() => {
       }
       
       // Real-time listener for appointments
-      unsubscribeAppointments = onSnapshot(
+     unsubscribeAppointments = onSnapshot(
         appointmentsQuery,
+        { includeMetadataChanges: false }, // Only trigger on actual server data changes
         (snapshot) => {
-          // Filter out appointments deleted by staff
-          const appointmentsData = snapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            } as Appointment))
-            .filter(apt => !apt.deletedByStaff);
-          
-          console.log('📊 Real-time update - Staff Appointments:', appointmentsData.length);
-          setAppointments(appointmentsData);
-          setIsLoading(false);
+          // Only process if data is from server, not from cache
+          if (!snapshot.metadata.fromCache) {
+            // Filter out appointments deleted by staff
+            const appointmentsData = snapshot.docs
+              .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              } as Appointment))
+              .filter(apt => !apt.deletedByStaff);
+            
+            console.log('📊 Real-time update - Staff Appointments (from server):', appointmentsData.length);
+            console.log('📡 Data source: Server');
+            setAppointments(appointmentsData);
+            setHasLoadedOnce(true); 
+            setHasLoadedOnce(true);
+          } else {
+            console.log('⚠️ Ignoring cached data, waiting for server data...');
+          }
         },
         (error) => {
           console.error('❌ Error in appointments listener:', error);
           showToast('Failed to load appointments. Please try again.', 'error');
-          setIsLoading(false);
+          setHasLoadedOnce(true);
+          setHasLoadedOnce(true);
         }
       );
     } catch (error) {
       console.error('Error setting up listeners:', error);
       showToast('Failed to load appointments. Please try again.', 'error');
-      setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -739,8 +754,9 @@ useEffect(() => {
               </tbody>
             </table>
           </div>
-
-          {filteredAppointments.length === 0 && (
+        {!hasLoadedOnce ? (
+            <div className="py-12"></div>
+          ) : filteredAppointments.length === 0 ? (
             <div className="text-center py-12">
               <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
@@ -750,12 +766,14 @@ useEffect(() => {
                   : 'No appointments have been booked yet.'}
               </p>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Mobile Card View */}
-        <div className="lg:hidden space-y-4">
-          {filteredAppointments.length === 0 ? (
+          <div className="lg:hidden space-y-4">
+          {!hasLoadedOnce ? (
+            <div className="py-12"></div>
+          ) : filteredAppointments.length === 0 ? (
             <div className="bg-white rounded-lg shadow-md p-8 text-center">
               <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
