@@ -161,84 +161,111 @@ select:focus {
   border: 1px solid #d1d5db !important;
 }
 
-/* Fix date input visibility on all devices, especially mobile */
+/* CRITICAL FIX: Force date input to be visible on mobile */
 input[type="date"] {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  background-color: white !important;
-  border: 1px solid #d1d5db !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  background-color: #ffffff !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.75rem center !important;
+  background-size: 1.25rem !important;
+  border: 2px solid #d1d5db !important;
   border-radius: 0.5rem !important;
-  padding: 0.5rem 1rem !important;
-  font-size: 1rem !important;
-  color: #374151 !important;
-  min-height: 42px !important;
+  padding: 0.75rem 3rem 0.75rem 1rem !important;
+  font-size: 16px !important;
+  color: #1f2937 !important;
+  min-height: 48px !important;
+  width: 100% !important;
+  display: block !important;
+  position: relative !important;
 }
 
-/* Make the calendar icon visible on mobile */
+/* Force the native calendar icon to be visible and clickable */
 input[type="date"]::-webkit-calendar-picker-indicator {
-  background: transparent;
-  bottom: 0;
-  color: transparent;
-  cursor: pointer;
-  height: auto;
-  left: 0;
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: auto;
+  position: absolute !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 3rem !important;
+  height: 100% !important;
   opacity: 1 !important;
-  filter: invert(0.5);
+  cursor: pointer !important;
+  background: transparent !important;
+  color: transparent !important;
+  z-index: 2 !important;
 }
 
-/* Dark calendar icon for better visibility */
-input[type="date"]::-webkit-calendar-picker-indicator:hover {
-  filter: invert(0.3);
-}
-
-/* Ensure date input text is visible */
+/* Make sure date text is visible when selected */
 input[type="date"]::-webkit-datetime-edit {
-  color: #374151 !important;
-  padding: 0 !important;
+  color: #1f2937 !important;
+  font-weight: 500 !important;
 }
 
 input[type="date"]::-webkit-datetime-edit-fields-wrapper {
-  color: #374151 !important;
+  color: #1f2937 !important;
 }
 
 input[type="date"]::-webkit-datetime-edit-text {
-  color: #374151 !important;
+  color: #6b7280 !important;
+  padding: 0 0.25rem !important;
 }
 
 input[type="date"]::-webkit-datetime-edit-month-field,
 input[type="date"]::-webkit-datetime-edit-day-field,
 input[type="date"]::-webkit-datetime-edit-year-field {
-  color: #374151 !important;
+  color: #1f2937 !important;
+  font-weight: 500 !important;
+  padding: 0 0.125rem !important;
 }
 
-/* Placeholder/empty state styling */
-input[type="date"]:not(:focus):invalid {
+/* Placeholder styling when empty */
+input[type="date"]:not(:valid):before {
+  content: attr(placeholder) !important;
   color: #9ca3af !important;
+  margin-right: 0.5rem !important;
 }
 
-/* Focus state for date input */
+input[type="date"]:focus:before,
+input[type="date"]:valid:before {
+  content: "" !important;
+}
+
+/* Focus state */
 input[type="date"]:focus {
   border-color: #3b82f6 !important;
   outline: none !important;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+  background-color: #ffffff !important;
 }
 
-/* Mobile-specific improvements */
-@media (max-width: 768px) {
+/* Active/selected state */
+input[type="date"]:valid {
+  background-color: #ffffff !important;
+}
+
+/* iOS/Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
   input[type="date"] {
-    font-size: 16px !important; /* Prevents iOS zoom on focus */
-    min-height: 48px !important; /* Better touch target */
-    padding: 0.75rem 1rem !important;
+    min-height: 50px !important;
+    line-height: 50px !important;
+    font-size: 16px !important;
   }
   
-  /* Make calendar icon more prominent on mobile */
-  input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: invert(0.4);
-    padding: 8px;
+  input[type="date"]::-webkit-datetime-edit {
+    line-height: normal !important;
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  input[type="date"] {
+    font-size: 16px !important;
+    min-height: 50px !important;
+    padding: 0.875rem 3.5rem 0.875rem 1rem !important;
+    background-size: 1.5rem !important;
   }
 }

@@ -1114,6 +1114,7 @@ const handleSubmit = async () => {
                     value={formData.appointmentDate}
                     onChange={(e) => setFormData(prev => ({ ...prev, appointmentDate: e.target.value, timeSlot: '' }))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Select appointment date"
                     aria-required="true"
                     autoComplete="off"
                   />
