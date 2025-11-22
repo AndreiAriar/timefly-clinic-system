@@ -729,7 +729,7 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                           <button
                             key={date}
                             onClick={() => handleDateSelect(date)}
-                            disabled={isPast || !hasSlots || (bookingEligibility && !bookingEligibility.canBook)}
+                            disabled={isPast || !hasSlots || (bookingEligibility !== null && !bookingEligibility.canBook)}
                             className={`p-3 rounded-lg border-2 transition min-h-[70px] flex flex-col items-center justify-between ${
                               isToday
                                 ? 'border-blue-600 bg-blue-50'
@@ -796,7 +796,7 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                           <button
                             key={doctor.id}
                             onClick={() => handleDoctorSelect(doctor)}
-                            disabled={isUnavailable || (bookingEligibility && !bookingEligibility.canBook)}
+                            disabled={isUnavailable || (bookingEligibility !== null && !bookingEligibility.canBook)}
                             className={`flex items-center gap-4 p-4 rounded-lg border-2 transition text-left ${
                               isUnavailable || (bookingEligibility && !bookingEligibility.canBook)
                                 ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
@@ -888,7 +888,7 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                         value={priorityLevel}
                         onChange={(e) => setPriorityLevel(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        disabled={bookingEligibility && !bookingEligibility.canBook}
+                        disabled={bookingEligibility !== null && !bookingEligibility.canBook}
                       >
                         <option value="normal">Normal (1 hour slots)</option>
                         <option value="urgent">Urgent (30 minute buffer slots)</option>

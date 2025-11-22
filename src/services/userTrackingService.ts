@@ -1,5 +1,5 @@
 // src/services/userTrackingService.ts
-import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, getDocs, FieldValue } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 export interface UserBookingStats {
@@ -231,7 +231,7 @@ export const recordNoShow = async (userEmail: string): Promise<void> => {
     const stats = await getUserBookingStats(userEmail);
     const newNoShowCount = stats.noShowCount + 1;
     
-    const updateData: Record<string, unknown> = {
+    const updateData: { [key: string]: FieldValue | boolean | string } = {
       activeAppointments: increment(-1),
       noShowCount: increment(1)
     };
