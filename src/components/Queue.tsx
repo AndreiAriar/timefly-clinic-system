@@ -70,47 +70,47 @@ const Queue = () => {
     };
     return date.toLocaleDateString('en-US', options);
   };
-
   useEffect(() => {
-    setIsLoading(true);
-    const today = getTodayDatePH();
-    const appointmentsRef = collection(db, 'appointments');
-    const q = query(
-      appointmentsRef,
-      where('appointmentDate', '==', today)
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        try {
-          let appointmentsData = querySnapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            })) as Appointment[];
-          appointmentsData = appointmentsData.filter(apt => 
-            apt.status !== 'cancelled' && 
-            apt.status !== 'completed' && 
-            apt.status !== 'missed' &&
-            !apt.deletedByStaff &&
-            !apt.deletedByPatient
-          );
-          appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
-          setAppointments(appointmentsData);
-          setIsLoading(false);
-        } catch (error) {
-          console.error('Error processing appointments:', error);
-          setIsLoading(false);
-        }
-      },
-      (error) => {
-        console.error('Error loading appointments:', error);
+  setIsLoading(true);
+  const today = getTodayDatePH();
+  const appointmentsRef = collection(db, 'staff_appointments');
+  
+  // UPDATED: Only show active appointments in public queue
+  const q = query(
+    appointmentsRef,
+    where('appointmentDate', '==', today),
+    where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+  );
+  
+  const unsubscribe = onSnapshot(
+    q,
+    (querySnapshot) => {
+      try {
+        // FIXED: Changed from 'let' to 'const' since we're not reassigning
+        const appointmentsData = querySnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Appointment[];
+        
+        // Sort by queue number - using sort() which mutates the array in place
+        appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
+        
+        setAppointments(appointmentsData);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error processing appointments:', error);
         setIsLoading(false);
       }
-    );
-    return () => unsubscribe();
-  }, []);
-
+    },
+    (error) => {
+      console.error('Error loading appointments:', error);
+      setIsLoading(false);
+    }
+  );
+  
+  return () => unsubscribe();
+}, []);
   const convertTo12Hour = (time24: string): string => {
     const [hours, minutes] = time24.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';

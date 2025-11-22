@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Clock, User, Phone, AlertCircle } from 'lucide-react';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, QuerySnapshot, DocumentData } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface Appointment {
@@ -83,26 +83,53 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
     }
 
     const today = getTodayDatePH();
-    const appointmentsRef = collection(db, 'appointments');
+    const patientAppointmentsRef = collection(db, 'patient_appointments');
+    const staffAppointmentsRef = collection(db, 'staff_appointments');
     
-    // Query appointments for today and this specific doctor
-    const q = query(
-      appointmentsRef,
+    // Query appointments for today and this specific doctor from both collections
+    const patientQuery = query(
+      patientAppointmentsRef,
       where('appointmentDate', '==', today),
       where('doctor', '==', doctorName),
       orderBy('queueNumber', 'asc')
     );
 
-    // Subscribe to real-time updates
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
+    const staffQuery = query(
+      staffAppointmentsRef,
+      where('appointmentDate', '==', today),
+      where('doctor', '==', doctorName),
+      orderBy('queueNumber', 'asc')
+    );
+
+    let allAppointments: Appointment[] = [];
+
+    const updateQueueData = (appointments: Appointment[]) => {
+      // Filter out cancelled, completed, missed appointments AND deleted appointments
+      const filteredAppointments = appointments.filter(apt => 
+        apt.status !== 'cancelled' && 
+        apt.status !== 'completed' && 
+        apt.status !== 'missed' &&
+        !apt.deletedByStaff &&
+        !apt.deletedByPatient
+      );
+
+      setAppointments(filteredAppointments);
+      
+      // Find currently serving appointment
+      const currentlyServing = filteredAppointments.find(apt => 
+        apt.status === 'serving' || apt.status === 'confirmed'
+      );
+      
+      setNowServing(currentlyServing || null);
+    };
+      const handleAppointmentsUpdate = (snapshot: QuerySnapshot<DocumentData>, source: string) => {
         try {
-          const appointmentsData = querySnapshot.docs
-            .map(doc => {
+          const newAppointments = snapshot.docs
+            .map((doc) => {
               const data = doc.data();
               return {
-                id: doc.id,
+                id: `${source}_${doc.id}`,
+                originalId: doc.id, // Keep original ID for reference
                 fullName: data.fullName || '',
                 age: data.age || '',
                 photo: data.photo || '',
@@ -119,43 +146,72 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
                 createdAt: data.createdAt || '',
                 deletedByStaff: data.deletedByStaff || false,
                 deletedByPatient: data.deletedByPatient || false
-              } as Appointment;
+              } as Appointment & { originalId: string };
             });
-          
-          // Filter out cancelled, completed, missed appointments AND deleted appointments
-          const filteredAppointments = appointmentsData.filter(apt => 
-            apt.status !== 'cancelled' && 
-            apt.status !== 'completed' && 
-            apt.status !== 'missed' &&
-            !apt.deletedByStaff &&
-            !apt.deletedByPatient
-          );
 
-          setAppointments(filteredAppointments);
-          
-          // Find currently serving appointment
-          const currentlyServing = filteredAppointments.find(apt => 
-            apt.status === 'serving' || apt.status === 'confirmed'
-          );
-          
-          setNowServing(currentlyServing || null);
+          console.log(`📊 ${source} appointments received:`, newAppointments.length);
+
+          // Update the combined appointments array by filtering out old appointments from this source
+          allAppointments = allAppointments.filter(apt => !apt.id.startsWith(`${source}_`));
+          allAppointments = [...allAppointments, ...newAppointments];
+
+          // Deduplicate based on appointment details (same date, time, patient, doctor)
+          const uniqueAppointments = allAppointments.reduce((acc, current) => {
+            const key = `${current.appointmentDate}_${current.timeSlot}_${current.fullName}_${current.doctor}_${current.queueNumber}`;
+            
+            // If this appointment key doesn't exist yet, add it
+            if (!acc.has(key)) {
+              acc.set(key, current);
+            } else {
+              // If duplicate exists, prefer the one from patient_appointments
+              const existing = acc.get(key);
+              if (existing && current.id.startsWith('patient_')) {
+                acc.set(key, current);
+              }
+            }
+            
+            return acc;
+          }, new Map<string, Appointment>());
+
+          allAppointments = Array.from(uniqueAppointments.values());
+
+          updateQueueData(allAppointments);
         } catch (err) {
           console.error('Error processing queue data:', err);
           setError('Failed to process queue data');
           setAppointments([]);
           setNowServing(null);
         }
+      };
+
+    // Subscribe to real-time updates from both collections
+    const unsubscribePatient = onSnapshot(
+      patientQuery,
+      (querySnapshot) => {
+        handleAppointmentsUpdate(querySnapshot, 'patient');
       },
       (error) => {
-        console.error('Error listening to queue:', error);
+        console.error('Error listening to patient queue:', error);
         setError('Failed to load queue. Please try again.');
-        setAppointments([]);
-        setNowServing(null);
       }
     );
 
-    // Cleanup subscription on unmount
-    return () => unsubscribe();
+    const unsubscribeStaff = onSnapshot(
+      staffQuery,
+      (querySnapshot) => {
+        handleAppointmentsUpdate(querySnapshot, 'staff');
+      },
+      (error) => {
+        console.error('Error listening to staff queue:', error);
+        setError('Failed to load queue. Please try again.');
+      }
+    );
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      unsubscribePatient();
+      unsubscribeStaff();
+    };
   }, [doctorName]);
 
   const getUpNextAppointments = () => {

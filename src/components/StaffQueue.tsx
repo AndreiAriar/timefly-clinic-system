@@ -106,25 +106,25 @@ const StaffQueue = () => {
     };
     return date.toLocaleDateString('en-US', options);
   };
-
-
-useEffect(() => {
+  useEffect(() => {
   setIsLoading(true);
   
   const today = getTodayDatePH();
-  const appointmentsRef = collection(db, 'appointments');
+  const appointmentsRef = collection(db, 'staff_appointments');
   
+  // UPDATED: Only get active appointments for today
   const q = query(
     appointmentsRef,
-    where('appointmentDate', '==', today)
+    where('appointmentDate', '==', today),
+    where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
   );
   
-  // Subscribe to real-time updates
   const unsubscribe = onSnapshot(
     q,
     (querySnapshot) => {
       try {
-        let appointmentsData = querySnapshot.docs
+        // FIXED: Changed from 'let' to 'const' since we're not reassigning
+        const appointmentsData = querySnapshot.docs
           .map(doc => {
             const data = doc.data();
             console.log('Appointment data:', data);
@@ -133,17 +133,8 @@ useEffect(() => {
               ...data
             };
           }) as Appointment[];
-   
-      // Filter out cancelled, completed, missed appointments AND deleted appointments
-        appointmentsData = appointmentsData.filter(apt => 
-          apt.status !== 'cancelled' && 
-          apt.status !== 'completed' && 
-          apt.status !== 'missed' &&
-          !apt.deletedByStaff &&
-          !apt.deletedByPatient
-        );
         
-        // Sort by queue number
+        // Sort by queue number - using sort() which mutates the array in place
         appointmentsData.sort((a, b) => a.queueNumber - b.queueNumber);
         
         setAppointments(appointmentsData);
@@ -169,68 +160,88 @@ useEffect(() => {
   return () => unsubscribe();
 }, [addNotification]);
 
-  const handleStartServing = async (appointment: Appointment) => {
-    showConfirmDialog(
-      'Start Serving',
-      `Start serving ${appointment.fullName} (Queue #${appointment.queueNumber})?`,
-      async () => {
-        try {
-          // If there's already someone being served, update their status first
-          if (nowServing && nowServing.id !== appointment.id) {
-            const currentServingRef = doc(db, 'appointments', nowServing.id);
-            await updateDoc(currentServingRef, {
-              status: 'scheduled'
-            });
-            
-            // Update local state for previous patient
-            setAppointments(prev => 
-              prev.map(apt => 
-                apt.id === nowServing.id 
-                  ? { ...apt, status: 'scheduled' } 
-                  : apt
-              )
-            );
-          }
+const handleStartServing = async (appointment: Appointment) => {
+  showConfirmDialog(
+    'Start Serving',
+    `Start serving ${appointment.fullName} (Queue #${appointment.queueNumber})?`,
+    async () => {
+      try {
+        // If there's already someone being served, update their status first
+        if (nowServing && nowServing.id !== appointment.id) {
+          // UPDATED: Update both staff and patient collections
+          const staffCurrentServingRef = doc(db, 'staff_appointments', nowServing.id);
+          const patientCurrentServingRef = doc(db, 'patient_appointments', nowServing.id);
           
-          // Update the new appointment status to 'confirmed'
-          const appointmentRef = doc(db, 'appointments', appointment.id);
-          await updateDoc(appointmentRef, {
-            status: 'confirmed'
-          });
+          const updateData = {
+            status: 'scheduled'
+          };
           
-          // Update local state for new patient
+          await Promise.all([
+            updateDoc(staffCurrentServingRef, updateData),
+            updateDoc(patientCurrentServingRef, updateData)
+          ]);
+          
+          // Update local state for previous patient
           setAppointments(prev => 
             prev.map(apt => 
-              apt.id === appointment.id 
-                ? { ...apt, status: 'confirmed' } 
+              apt.id === nowServing.id 
+                ? { ...apt, status: 'scheduled' } 
                 : apt
             )
           );
-          
-          // Update nowServing with confirmed status
-          setNowServing({ ...appointment, status: 'confirmed' });
-          
-          // Success message
-          addNotification('success', `Now serving ${appointment.fullName} (Queue #${appointment.queueNumber})`);
-        } catch (error) {
-          console.error('Error starting service:', error);
-          addNotification('error', 'Failed to start serving. Please try again.');
         }
+        
+        // UPDATED: Update the new appointment status to 'confirmed' in both collections
+        const staffAppointmentRef = doc(db, 'staff_appointments', appointment.id);
+        const patientAppointmentRef = doc(db, 'patient_appointments', appointment.id);
+        
+        const confirmData = {
+          status: 'confirmed'
+        };
+        
+        await Promise.all([
+          updateDoc(staffAppointmentRef, confirmData),
+          updateDoc(patientAppointmentRef, confirmData)
+        ]);
+        
+        // Update local state for new patient
+        setAppointments(prev => 
+          prev.map(apt => 
+            apt.id === appointment.id 
+              ? { ...apt, status: 'confirmed' } 
+              : apt
+          )
+        );
+        
+        // Update nowServing with confirmed status
+        setNowServing({ ...appointment, status: 'confirmed' });
+        
+        // Success message
+        addNotification('success', `Now serving ${appointment.fullName} (Queue #${appointment.queueNumber})`);
+      } catch (error) {
+        console.error('Error starting service:', error);
+        addNotification('error', 'Failed to start serving. Please try again.');
       }
-    );
-  };
+    }
+  );
+};
 
-  const handleComplete = async (appointment: Appointment) => {
+ const handleComplete = async (appointment: Appointment) => {
     showConfirmDialog(
       'Mark Complete',
       `Mark ${appointment.fullName}'s appointment as completed?`,
       async () => {
         try {
-          const appointmentRef = doc(db, 'appointments', appointment.id);
-          await updateDoc(appointmentRef, {
-            status: 'completed'
-          });
+          // UPDATED: Update both collections
+          const staffAppointmentRef = doc(db, 'staff_appointments', appointment.id);
+          const patientAppointmentRef = doc(db, 'patient_appointments', appointment.id);
           
+          const completeData = { status: 'completed' };
+          
+          await Promise.all([
+            updateDoc(staffAppointmentRef, completeData),
+            updateDoc(patientAppointmentRef, completeData)
+          ]);
           // Remove from queue
           setAppointments(prev => prev.filter(apt => apt.id !== appointment.id));
           
@@ -246,17 +257,27 @@ useEffect(() => {
         }
       }
     );
-  };const handleMiss = async (appointment: Appointment) => {
+  };
+  
+ const handleMiss = async (appointment: Appointment) => {
   showConfirmDialog(
     'Mark as Missed',
     `Mark ${appointment.fullName}'s appointment as missed? This will move to the next patient and send an email notification.`,
     async () => {
       try {
-        // First update Firebase status
-        const appointmentRef = doc(db, 'appointments', appointment.id);
-        await updateDoc(appointmentRef, {
-          status: 'missed'
-        });
+        // UPDATED: Update both collections with missed status
+        const staffAppointmentRef = doc(db, 'staff_appointments', appointment.id);
+        const patientAppointmentRef = doc(db, 'patient_appointments', appointment.id);
+        
+        const missedData = { 
+          status: 'missed',
+          missedAt: new Date().toISOString()
+        };
+        
+        await Promise.all([
+          updateDoc(staffAppointmentRef, missedData),
+          updateDoc(patientAppointmentRef, missedData)
+        ]);
         
         // Send email notification
         setSendingMissedNotification(appointment.id);

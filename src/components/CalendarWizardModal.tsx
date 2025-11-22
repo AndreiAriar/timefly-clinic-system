@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { X, Calendar, ChevronLeft, ChevronRight, User, Clock, ArrowLeft } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Calendar, ChevronLeft, ChevronRight, User, Clock, ArrowLeft, AlertCircle } from 'lucide-react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 import { toast } from 'react-toastify';
 import AppointmentModal from './AppointmentModal';
 
@@ -47,6 +47,17 @@ interface TimeSlot {
   isUnavailable?: boolean;
 }
 
+interface BookingEligibility {
+  canBook: boolean;
+  reason: string;
+  dailyLimits?: {
+    normal: number;
+    urgent: number;
+    emergency: number;
+  };
+  totalActive?: number;
+}
+
 interface CalendarWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -67,7 +78,8 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
   const [priorityLevel, setPriorityLevel] = useState<string>('normal');
   const [availableTimeSlots, setAvailableTimeSlots] = useState<TimeSlot[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
-  const [hasAvailableSlots, setHasAvailableSlots] = useState(true);
+  const [hasAvailableSlots, setHasAvailableSlots] = useState<boolean | undefined>(true);
+  const [bookingEligibility, setBookingEligibility] = useState<BookingEligibility | null>(null);
 
   // Load doctors and appointments
   useEffect(() => {
@@ -76,149 +88,14 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
     }
   }, [isOpen]);
 
-  // Generate time slots when doctor, date, or priority level changes
+  // Check booking eligibility when modal opens
   useEffect(() => {
-    if (selectedDoctor && selectedDate && priorityLevel) {
-      generateTimeSlots(priorityLevel, selectedDoctor, selectedDate);
-    } else {
-      setAvailableTimeSlots([]);
-      setHasAvailableSlots(true);
+    if (isOpen) {
+      checkBookingEligibility();
     }
-  }, [selectedDoctor, selectedDate, priorityLevel]);
+  }, [isOpen]);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    try {
-      const doctorsRef = collection(db, 'doctors');
-      const doctorsSnapshot = await getDocs(doctorsRef);
-      const doctorsData = doctorsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Doctor[];
-      setDoctors(doctorsData.filter(d => d.isActive));
-
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(appointmentsRef, where('status', '!=', 'cancelled'));
-      const appointmentsSnapshot = await getDocs(q);
-      const appointmentsData = appointmentsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
-      
-      console.log('📊 Loaded appointments:', appointmentsData.length);
-      setAppointments(appointmentsData);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      toast.error('Failed to load calendar data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // ============= Helper Functions =============
-  const formatDate = (dateString: string): string => {
-    const dateObj = new Date(dateString);
-    return dateObj.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const convertTo12Hour = (time24: string): string => {
-    const [hours, minutes] = time24.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hours12 = hours % 12 || 12;
-    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
-
-  const isPastTime = (date: string, time: string): boolean => {
-    const now = new Date();
-    const [year, month, day] = date.split('-').map(Number);
-    const [hours, minutes] = time.split(':').map(Number);
-    
-    const appointmentDateTime = new Date(year, month - 1, day, hours, minutes);
-    const bufferTime = new Date(now.getTime() + 30 * 60 * 1000);
-    
-    const isPast = appointmentDateTime <= bufferTime;
-    
-    console.log(`⏰ Calendar Wizard: Checking ${time} on ${date}: ${isPast ? 'PAST' : 'FUTURE'} (now: ${now.toLocaleTimeString()}, appointment: ${appointmentDateTime.toLocaleTimeString()})`);
-    
-    return isPast;
-  };
-
-  const getBookedTimeSlots = async (doctor: string, appointmentDate: string): Promise<string[]> => {
-    if (!doctor || !appointmentDate) return [];
-    
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(
-        appointmentsRef,
-        where('doctor', '==', doctor),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const bookedSlots = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        console.log('📌 Calendar Wizard: Booked appointment found:', {
-          doctor: data.doctor,
-          date: data.appointmentDate,
-          timeSlot: data.timeSlot,
-          status: data.status
-        });
-        return data.timeSlot as string;
-      });
-      
-      console.log('📋 Calendar Wizard: Total booked slots for', doctor, 'on', appointmentDate, ':', bookedSlots);
-      return bookedSlots;
-    } catch (error) {
-      console.error('Error fetching booked slots:', error);
-      return [];
-    }
-  };
-
-  const isDoctorFullyBooked = async (doctor: Doctor, appointmentDate: string): Promise<boolean> => {
-    if (!doctor || !appointmentDate) return false;
-    
-    try {
-      const unavailableDates = doctor.unavailableDates || {};
-      if (unavailableDates[appointmentDate] === true) {
-        console.log('🚫 Calendar Wizard: Doctor is marked as unavailable on this date');
-        return true;
-      }
-      
-      const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
-      const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
-      const globalMaxSlots = doctor.maxSlots || 10;
-      const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
-      
-      console.log('📊 Calendar Wizard: Max slots for this date:', maxSlots);
-      
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(
-        appointmentsRef,
-        where('doctor', '==', doctor.name),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const bookedCount = querySnapshot.size;
-      
-      console.log('📋 Calendar Wizard: Current booked appointments:', bookedCount);
-      console.log('🔍 Calendar Wizard: Is fully booked?', bookedCount >= maxSlots);
-      
-      return bookedCount >= maxSlots;
-    } catch (error) {
-      console.error('Error checking if doctor is fully booked:', error);
-      return false;
-    }
-  };
-
-  const generateTimeSlots = async (priorityLevel: string, doctor: Doctor, appointmentDate: string) => {
+  const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: Doctor, appointmentDate: string) => {
     console.log(`\n🔄 Calendar Wizard: Generating time slots for ${doctor.name} on ${appointmentDate}, priority: ${priorityLevel}`);
     
     setIsCheckingAvailability(true);
@@ -344,6 +221,213 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
     }
     
     setIsCheckingAvailability(false);
+  }, []);
+
+  // Generate time slots when doctor, date, or priority level changes
+  useEffect(() => {
+    if (selectedDoctor && selectedDate && priorityLevel) {
+      generateTimeSlots(priorityLevel, selectedDoctor, selectedDate);
+    } else {
+      setAvailableTimeSlots([]);
+      setHasAvailableSlots(true);
+    }
+  }, [selectedDoctor, selectedDate, priorityLevel, generateTimeSlots]);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const doctorsRef = collection(db, 'doctors');
+      const doctorsSnapshot = await getDocs(doctorsRef);
+      const doctorsData = doctorsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Doctor[];
+      setDoctors(doctorsData.filter(d => d.isActive));
+
+      const appointmentsRef = collection(db, 'staff_appointments');
+      const q = query(appointmentsRef, where('status', 'in', ['pending', 'confirmed', 'scheduled']));
+      const appointmentsSnapshot = await getDocs(q);
+      const appointmentsData = appointmentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Appointment[];
+      
+      console.log('📊 Calendar Wizard - Loaded appointments:', appointmentsData.length);
+      setAppointments(appointmentsData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast.error('Failed to load calendar data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const checkBookingEligibility = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser?.uid) {
+      setBookingEligibility({ canBook: true, reason: '', dailyLimits: { normal: 0, urgent: 0, emergency: 0 }, totalActive: 0 });
+      return;
+    }
+
+    try {
+      const userEmail = currentUser.email;
+      if (!userEmail) {
+        setBookingEligibility({ canBook: false, reason: 'User email not found. Please log in again.' });
+        return;
+      }
+
+      // CRITICAL: Check user restriction status FIRST
+      const userQuery = query(collection(db, 'users'), where('__name__', '==', currentUser.uid));
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (!userSnapshot.empty) {
+        const userData = userSnapshot.docs[0].data();
+        const isRestricted = userData.isRestricted || false;
+        const noShowCount = userData.noShowCount || 0;
+
+        console.log('🔍 Calendar Wizard - User restriction check:', { 
+          email: userEmail, 
+          isRestricted, 
+          noShowCount,
+          restrictionReason: userData.restrictionReason 
+        });
+
+        // CRITICAL: Block booking if user is restricted OR has 3+ no-shows
+        if (isRestricted || noShowCount >= 3) {
+          const reason = isRestricted 
+            ? (userData.restrictionReason || 'Your account has been restricted by an administrator.')
+            : 'Your booking privileges are suspended due to multiple no-shows (3 or more).';
+          
+          setBookingEligibility({
+            canBook: false,
+            reason: `🚫 ${reason} Please contact the clinic to restore your booking access.`,
+            totalActive: 0
+          });
+          
+          console.error('🚫 Calendar Wizard - USER BLOCKED FROM BOOKING:', reason);
+          return;
+        }
+      }
+
+      // If not restricted, user can book
+      setBookingEligibility({ 
+        canBook: true, 
+        reason: '',
+        dailyLimits: { normal: 0, urgent: 0, emergency: 0 },
+        totalActive: 0
+      });
+    } catch (error) {
+      console.error('Calendar Wizard - Error checking booking eligibility:', error);
+      setBookingEligibility({ 
+        canBook: false, 
+        reason: 'Unable to verify booking eligibility. Please try again.',
+        dailyLimits: { normal: 0, urgent: 0, emergency: 0 },
+        totalActive: 0
+      });
+    }
+  };
+
+  // ============= Helper Functions =============
+  const formatDate = (dateString: string): string => {
+    const dateObj = new Date(dateString);
+    return dateObj.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const convertTo12Hour = (time24: string): string => {
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  const isPastTime = (date: string, time: string): boolean => {
+    const now = new Date();
+    const [year, month, day] = date.split('-').map(Number);
+    const [hours, minutes] = time.split(':').map(Number);
+    
+    const appointmentDateTime = new Date(year, month - 1, day, hours, minutes);
+    const bufferTime = new Date(now.getTime() + 30 * 60 * 1000);
+    
+    const isPast = appointmentDateTime <= bufferTime;
+    
+    console.log(`⏰ Calendar Wizard: Checking ${time} on ${date}: ${isPast ? 'PAST' : 'FUTURE'} (now: ${now.toLocaleTimeString()}, appointment: ${appointmentDateTime.toLocaleTimeString()})`);
+    
+    return isPast;
+  };
+
+  const getBookedTimeSlots = async (doctor: string, appointmentDate: string): Promise<string[]> => {
+    if (!doctor || !appointmentDate) return [];
+    
+    try {
+      const appointmentsRef = collection(db, 'staff_appointments');
+      const q = query(
+        appointmentsRef,
+        where('doctor', '==', doctor),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', 'in', ['pending', 'confirmed', 'scheduled'])
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const bookedSlots = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        console.log('📌 Calendar Wizard: Booked appointment found:', {
+          doctor: data.doctor,
+          date: data.appointmentDate,
+          timeSlot: data.timeSlot,
+          status: data.status
+        });
+        return data.timeSlot as string;
+      });
+      
+      console.log('📋 Calendar Wizard: Total booked slots for', doctor, 'on', appointmentDate, ':', bookedSlots);
+      return bookedSlots;
+    } catch (error) {
+      console.error('Error fetching booked slots:', error);
+      return [];
+    }
+  };
+
+  const isDoctorFullyBooked = async (doctor: Doctor, appointmentDate: string): Promise<boolean> => {
+    if (!doctor || !appointmentDate) return false;
+    
+    try {
+      const unavailableDates = doctor.unavailableDates || {};
+      if (unavailableDates[appointmentDate] === true) {
+        console.log('🚫 Calendar Wizard: Doctor is marked as unavailable on this date');
+        return true;
+      }
+      
+      const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
+      const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
+      const globalMaxSlots = doctor.maxSlots || 10;
+      const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+      
+      console.log('📊 Calendar Wizard: Max slots for this date:', maxSlots);
+      
+      const appointmentsRef = collection(db, 'staff_appointments');
+      const q = query(
+        appointmentsRef,
+        where('doctor', '==', doctor.name),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', 'in', ['pending', 'confirmed', 'scheduled'])
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const bookedCount = querySnapshot.size;
+      
+      console.log('📋 Calendar Wizard: Current booked appointments:', bookedCount);
+      console.log('🔍 Calendar Wizard: Is fully booked?', bookedCount >= maxSlots);
+      
+      return bookedCount >= maxSlots;
+    } catch (error) {
+      console.error('Error checking if doctor is fully booked:', error);
+      return false;
+    }
   };
 
   const getDaysInMonth = (date: Date): number => {
@@ -368,7 +452,7 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
 
   const getBookedSlotsForDate = (date: string): number => {
     return appointments.filter(
-      apt => apt.appointmentDate === date && apt.status !== 'cancelled'
+      apt => apt.appointmentDate === date
     ).length;
   };
 
@@ -400,8 +484,7 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
     const unavailableTimeSlots = doctor.availableSlots?.[date] || [];
     const bookedSlots = appointments.filter(
       apt => apt.appointmentDate === date && 
-             apt.doctor === doctor.name &&
-             apt.status !== 'cancelled'
+             apt.doctor === doctor.name
     ).length;
     
     const totalPossibleSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
@@ -567,6 +650,31 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
+            {/* CRITICAL: Restriction Warning Banner */}
+            {bookingEligibility && !bookingEligibility.canBook && (
+              <div className="mb-6 p-4 bg-red-100 border-2 border-red-500 rounded-lg shadow-lg">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 bg-red-500 p-2 rounded-full">
+                    <AlertCircle className="w-6 h-6 text-white flex-shrink-0 mt-0.5" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-lg font-bold text-red-900 mb-1">
+                      Account Restricted
+                    </h4>
+                    <p className="text-sm text-red-800 font-medium">
+                      {bookingEligibility.reason}
+                    </p>
+                    <div className="mt-3 p-3 bg-white rounded border border-red-300">
+                      <p className="text-xs text-gray-700">
+                        <strong>Note:</strong> All booking functions are disabled while your account is restricted. 
+                        You cannot select dates, doctors, or time slots.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {isLoading ? (
               <div className="flex items-center justify-center h-96">
                 <div className="text-center">
@@ -621,21 +729,22 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                           <button
                             key={date}
                             onClick={() => handleDateSelect(date)}
-                            disabled={isPast || !hasSlots}
+                            disabled={isPast || !hasSlots || (bookingEligibility && !bookingEligibility.canBook)}
                             className={`p-3 rounded-lg border-2 transition min-h-[70px] flex flex-col items-center justify-between ${
                               isToday
                                 ? 'border-blue-600 bg-blue-50'
-                                : isPast || !hasSlots
+                                : isPast || !hasSlots || (bookingEligibility && !bookingEligibility.canBook)
                                 ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-50'
                                 : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md cursor-pointer'
                             }`}
+                            title={bookingEligibility && !bookingEligibility.canBook ? 'Your account is restricted from booking' : ''}
                           >
                             <span className={`text-sm font-semibold ${
                               isToday ? 'text-blue-700' : isPast ? 'text-gray-400' : 'text-gray-700'
                             }`}>
                               {new Date(date).getDate()}
                             </span>
-                            {!isPast && hasSlots && (
+                            {!isPast && hasSlots && !(bookingEligibility && !bookingEligibility.canBook) && (
                               <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                                 bookedSlots === totalSlots
                                   ? 'bg-red-100 text-red-700'
@@ -644,6 +753,11 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                                   : 'bg-green-100 text-green-700'
                               }`}>
                                 {bookedSlots}/{totalSlots}
+                              </span>
+                            )}
+                            {bookingEligibility && !bookingEligibility.canBook && !isPast && (
+                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700">
+                                Restricted
                               </span>
                             )}
                           </button>
@@ -682,9 +796,9 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                           <button
                             key={doctor.id}
                             onClick={() => handleDoctorSelect(doctor)}
-                            disabled={isUnavailable}
+                            disabled={isUnavailable || (bookingEligibility && !bookingEligibility.canBook)}
                             className={`flex items-center gap-4 p-4 rounded-lg border-2 transition text-left ${
-                              isUnavailable
+                              isUnavailable || (bookingEligibility && !bookingEligibility.canBook)
                                 ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
                                 : 'border-gray-300 bg-white hover:border-blue-500 hover:shadow-lg cursor-pointer'
                             }`}
@@ -705,17 +819,23 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                               <p className="text-sm text-gray-600">{doctor.specialty}</p>
                               <div className="mt-2">
                                 <span className={`text-xs px-3 py-1 rounded-full font-medium ${
-                                  isUnavailable
+                                  bookingEligibility && !bookingEligibility.canBook
+                                    ? 'bg-red-100 text-red-700'
+                                    : isUnavailable
                                     ? 'bg-red-100 text-red-700'
                                     : availableSlots <= 3
                                     ? 'bg-yellow-100 text-yellow-700'
                                     : 'bg-green-100 text-green-700'
                                 }`}>
-                                  {isUnavailable ? 'No slots' : `${availableSlots}/${totalSlots} slots available`}
+                                  {bookingEligibility && !bookingEligibility.canBook
+                                    ? '🚫 Account Restricted'
+                                    : isUnavailable 
+                                    ? 'No slots' 
+                                    : `${availableSlots}/${totalSlots} slots available`}
                                 </span>
                               </div>
                             </div>
-                            {!isUnavailable && <ChevronRight className="w-5 h-5 text-gray-400" />}
+                            {!isUnavailable && !(bookingEligibility && !bookingEligibility.canBook) && <ChevronRight className="w-5 h-5 text-gray-400" />}
                           </button>
                         );
                       })}
@@ -768,6 +888,7 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                         value={priorityLevel}
                         onChange={(e) => setPriorityLevel(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        disabled={bookingEligibility && !bookingEligibility.canBook}
                       >
                         <option value="normal">Normal (1 hour slots)</option>
                         <option value="urgent">Urgent (30 minute buffer slots)</option>
@@ -815,7 +936,11 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                       ) : (
                         <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg">
                           {availableTimeSlots.map((slot) => {
-                            const isAvailable = slot.available && !slot.isBooked && !slot.isUnavailable;
+                            // CRITICAL: Disable all slots if user is restricted
+                            const isUserRestricted = bookingEligibility && !bookingEligibility.canBook && 
+                              bookingEligibility.reason.includes('🚫');
+                            
+                            const isAvailable = !isUserRestricted && slot.available && !slot.isBooked && !slot.isUnavailable;
                             const isBooked = slot.isBooked;
                             const isUnavailable = slot.isUnavailable && !slot.isBooked;
                             
@@ -823,7 +948,12 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                             let statusLabel = '';
                             let statusLabelClasses = '';
                             
-                            if (isBooked) {
+                            // If user is restricted, show all slots as disabled
+                            if (isUserRestricted) {
+                              buttonClasses += 'bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed opacity-50';
+                              statusLabel = 'Restricted';
+                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
+                            } else if (isBooked) {
                               buttonClasses += 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed opacity-75';
                               statusLabel = 'Booked';
                               statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
@@ -841,7 +971,7 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                               statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
                             }
                             
-                            if (selectedTime === slot.time && isAvailable) {
+                            if (selectedTime === slot.time && isAvailable && !isUserRestricted) {
                               buttonClasses += ' ring-2 ring-blue-500 ring-offset-2';
                             }
                             
@@ -849,24 +979,25 @@ const CalendarWizardModal = ({ isOpen, onClose, onBookingComplete }: CalendarWiz
                               <button
                                 key={slot.time}
                                 onClick={() => {
-                                  if (isAvailable) {
+                                  if (isAvailable && !isUserRestricted) {
                                     handleTimeSelect(slot.time);
                                   }
                                 }}
-                                disabled={!isAvailable}
+                                disabled={!isAvailable || !!isUserRestricted}
                                 className={buttonClasses}
                                 aria-pressed={selectedTime === slot.time ? "true" : "false"}
-                                aria-disabled={!isAvailable}
+                                aria-disabled={!isAvailable || !!isUserRestricted}
+                                title={isUserRestricted ? 'Your account is restricted from booking' : ''}
                               >
                                 <div className="flex flex-col items-center">
                                   <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
                                   <span className={statusLabelClasses}>
                                     {statusLabel}
                                   </span>
-                                  {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && (
+                                  {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && !isUserRestricted && (
                                     <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
                                   )}
-                                  {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && (
+                                  {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && !isUserRestricted && (
                                     <span className="text-xs mt-1 text-orange-600 font-semibold">Urgent</span>
                                   )}
                                 </div>

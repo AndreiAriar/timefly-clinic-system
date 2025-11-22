@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Stethoscope, Eye, X, Trash2 } from 'lucide-react';
-import { collection, query, updateDoc, doc, orderBy, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, updateDoc, getDoc, doc, orderBy, where, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import ViewAppointmentModal from './ViewAppointmentModal';
 import RescheduleModal from './RescheduleModal';
@@ -95,7 +95,6 @@ const Appointments = () => {
     return `${year}-${month}-${day}`;
   };
 useEffect(() => {
-  // Get current user's email from auth
   const userEmail = auth.currentUser?.email;
   
   if (!userEmail) {
@@ -106,8 +105,7 @@ useEffect(() => {
 
   console.log('🔥 Setting up real-time listener for patient appointments...');
 
-  // Real-time listener for appointments
-  const appointmentsRef = collection(db, 'appointments');
+  const appointmentsRef = collection(db, 'patient_appointments');
   const q = query(
     appointmentsRef, 
     where('email', '==', userEmail),
@@ -117,15 +115,20 @@ useEffect(() => {
   const unsubscribe = onSnapshot(
     q,
     (snapshot) => {
-      // Filter out appointments deleted by patient
+      // UPDATED: Filter to show only active appointments
       const appointmentsData = snapshot.docs
         .map(doc => ({
           id: doc.id,
           ...doc.data()
         } as Appointment))
-        .filter(apt => !apt.deletedByPatient);
+        .filter(apt => {
+          // Only show appointments that are not in terminal states
+          return apt.status !== 'cancelled' && 
+                 apt.status !== 'completed' && 
+                 apt.status !== 'missed';
+        });
       
-      console.log('📊 Real-time update - Patient Appointments:', appointmentsData.length);
+      console.log('📊 Real-time update - Active Patient Appointments:', appointmentsData.length);
       setAppointments(appointmentsData);
       setIsLoading(false);
     },
@@ -139,7 +142,6 @@ useEffect(() => {
     }
   );
 
-  // Cleanup function
   return () => {
     console.log('🔌 Cleaning up patient appointments listener');
     unsubscribe();
@@ -170,12 +172,18 @@ useEffect(() => {
   if (!selectedAppointment) return;
 
   try {
-    const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-    await updateDoc(appointmentRef, {
+    // Update both patient and staff collections
+    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+    
+    const updateData = {
       appointmentDate: updatedData.appointmentDate,
       timeSlot: updatedData.timeSlot,
       status: 'rescheduled'
-    });
+    };
+
+    await updateDoc(patientAppointmentRef, updateData);
+    await updateDoc(staffAppointmentRef, updateData);
 
     // Real-time listener will auto-update, no need to reload
     setShowRescheduleModal(false);
@@ -202,46 +210,112 @@ const handleDelete = (appointment: Appointment) => {
   setSelectedAppointment(appointment);
   setShowDeleteModal(true);
 };
-
 const confirmCancel = async (reason: string) => {
   if (!selectedAppointment) return;
 
   try {
-    const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-    await updateDoc(appointmentRef, {
+    // Update both staff and patient collections
+    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+    
+    const updateData = {
       status: 'cancelled',
-      cancelReason: reason
-    });
+      cancelReason: reason,
+      cancelledAt: new Date().toISOString()
+    };
 
-    // Real-time listener will auto-update, no need to reload
+    await updateDoc(staffAppointmentRef, updateData);
+    await updateDoc(patientAppointmentRef, updateData);
+
+    console.log('✅ Firebase updated for cancellation');
+
+    // FREE THE TIME SLOT: Delete the slot lock so others can book
+    const slotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
+    try {
+      await deleteDoc(slotLockRef);
+      console.log('✅ Slot lock removed - time slot is now available');
+    } catch {
+      console.log('ℹ️ No slot lock found or already deleted');
+    }
+
+    // Decrement booking counter
+    const counterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}`);
+    try {
+      const counterDoc = await getDoc(counterRef);
+      if (counterDoc.exists()) {
+        const currentCount = counterDoc.data()?.count || 0;
+        if (currentCount > 0) {
+          await updateDoc(counterRef, { count: currentCount - 1 });
+          console.log('✅ Booking counter decremented');
+        }
+      }
+    } catch {
+      console.log('ℹ️ No booking counter found or already updated');
+    }
+
+// Real-time listener will auto-update, no need to reload
     setShowCancelModal(false);
     setSelectedAppointment(null);
-    toast.success('Appointment cancelled successfully!', {
+    toast.success('Appointment cancelled successfully! Email notification sent.', {
       position: "top-center",
       autoClose: 3000,
     });
   } catch (error) {
     console.error('Error cancelling appointment:', error);
-    toast.error('Failed to cancel appointment. Please try again.', {
+    toast.error(error instanceof Error ? error.message : 'Failed to cancel appointment. Please try again.', {
       position: "top-center",
       autoClose: 5000,
     });
   }
 };
-
 const confirmDelete = async () => {
   if (!selectedAppointment) return;
 
   try {
-    const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-    await updateDoc(appointmentRef, {
-      deletedByPatient: true
-    });
+    // Delete from BOTH patient and staff collections
+    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+    
+    // Delete from patient collection
+    await deleteDoc(patientAppointmentRef);
+    console.log('✅ Deleted from patient_appointments');
+    
+    // Delete from staff collection as well
+    try {
+      await deleteDoc(staffAppointmentRef);
+      console.log('✅ Deleted from staff_appointments');
+    } catch {
+      console.log('ℹ️ Staff appointment not found or already deleted');
+    }
+
+    // FREE THE TIME SLOT: Delete the slot lock so others can book
+    const slotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
+    try {
+      await deleteDoc(slotLockRef);
+      console.log('✅ Slot lock removed - time slot is now available');
+    } catch {
+      console.log('ℹ️ No slot lock found or already deleted');
+    }
+
+    // Decrement booking counter
+    const counterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}`);
+    try {
+      const counterDoc = await getDoc(counterRef);
+      if (counterDoc.exists()) {
+        const currentCount = counterDoc.data()?.count || 0;
+        if (currentCount > 0) {
+          await updateDoc(counterRef, { count: currentCount - 1 });
+          console.log('✅ Booking counter decremented');
+        }
+      }
+    } catch {
+      console.log('ℹ️ No booking counter found or already updated');
+    }
 
     // Real-time listener will auto-update, no need to reload
     setShowDeleteModal(false);
     setSelectedAppointment(null);
-    toast.success('Appointment deleted successfully!', {
+    toast.success('Appointment deleted!', {
       position: "top-center",
       autoClose: 3000,
     });
@@ -253,7 +327,6 @@ const confirmDelete = async () => {
     });
   }
 };
-
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'emergency': return 'bg-red-100 text-red-800';

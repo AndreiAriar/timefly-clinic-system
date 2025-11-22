@@ -29,15 +29,30 @@ const Home = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCalendarWizardOpen, setIsCalendarWizardOpen] = useState(false);
   const [stats, setStats] = useState({
-    upcomingAppointments: 0,
+    todaysAppointments: 0,
     pendingAppointments: 0,
     totalAppointments: 0
   });
 
+  // Get today's date in Philippine timezone (UTC+8)
+  const getTodayDatePH = (): string => {
+    const now = new Date();
+    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const year = phTime.getFullYear();
+    const month = String(phTime.getMonth() + 1).padStart(2, '0');
+    const day = String(phTime.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   useEffect(() => {
     console.log('🔥 Setting up real-time listener for home stats...');
-    const appointmentsRef = collection(db, 'appointments');
+    
+    const today = getTodayDatePH();
+    console.log('📅 Today\'s date (PH timezone):', today);
+    
+    const appointmentsRef = collection(db, 'patient_appointments');
     const q = query(appointmentsRef);
+    
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -47,28 +62,30 @@ const Home = () => {
             ...doc.data()
           } as Appointment))
           .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
+        
         console.log('📊 Total appointments (after filtering):', appointments.length);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const upcomingCount = appointments.filter((apt: Appointment) => {
-          const aptDate = new Date(apt.appointmentDate);
-          aptDate.setHours(0, 0, 0, 0);
-          const isUpcoming = aptDate >= today && 
-                            apt.status !== 'completed' && 
-                            apt.status !== 'cancelled' &&
-                            apt.status !== 'missed';
-          return isUpcoming;
+        
+        // Count today's appointments
+        const todaysCount = appointments.filter((apt: Appointment) => {
+          const isTodayAppointment = apt.appointmentDate === today && 
+                                     apt.status !== 'completed' && 
+                                     apt.status !== 'cancelled' &&
+                                     apt.status !== 'missed';
+          return isTodayAppointment;
         }).length;
+        
         const pendingCount = appointments.filter((apt: Appointment) => 
           apt.status === 'pending'
         ).length;
+        
         setStats({
-          upcomingAppointments: upcomingCount,
+          todaysAppointments: todaysCount,
           pendingAppointments: pendingCount,
           totalAppointments: appointments.length
         });
+        
         console.log('✅ Real-time stats update:', {
-          upcoming: upcomingCount,
+          today: todaysCount,
           pending: pendingCount,
           total: appointments.length
         });
@@ -77,6 +94,7 @@ const Home = () => {
         console.error('❌ Error in stats listener:', error);
       }
     );
+    
     return () => {
       console.log('🔌 Cleaning up home stats listener');
       unsubscribe();
@@ -129,14 +147,14 @@ const Home = () => {
                 <div className="mb-4">
                   <Calendar className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm font-medium text-white opacity-90">Upcoming</span>
+                <span className="text-sm font-medium text-white opacity-90">Today</span>
               </div>
               <h3 className="text-3xl font-bold text-white text-center mb-2">
-                {stats.upcomingAppointments}
+                {stats.todaysAppointments}
               </h3>
-              <p className="text-sm text-white text-center opacity-90">Upcoming Appointments</p>
+              <p className="text-sm text-white text-center opacity-90">Today's Appointments</p>
               <div className="mt-4 pt-4 border-t border-white/30">
-                <p className="text-xs text-white opacity-100 text-center">Scheduled future visits</p>
+                <p className="text-xs text-white opacity-100 text-center">Scheduled for today</p>
               </div>
             </div>
             <div className="bg-yellow-500 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">

@@ -8,7 +8,7 @@ import DisplayFeedback from './DisplayFeedback';
 import ContactMessagesTab from './ContactMessagesTab';
 import WaitingList from './WaitingList';
 import Reports from './Reports';
-
+import UserManagement from './UserManagement'; 
 
 interface StaffDashboardProps {
   userEmail: string;
@@ -17,7 +17,7 @@ interface StaffDashboardProps {
   onLogout: () => void;
 }
 
-type PageType = 'home' | 'appointments' | 'queue' | 'doctors' | 'calendar' | 'reports' | 'waiting-list' | 'feedback' | 'contact-messages';
+type PageType = 'home' | 'appointments' | 'queue' | 'doctors' | 'calendar' | 'reports' | 'waiting-list' | 'feedback' | 'contact-messages' | 'user-management';
 
 const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashboardProps) => {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
@@ -70,12 +70,10 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      // Close mobile menu when clicking outside
       if (isMobileMenuOpen && mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
         setIsMobileMenuOpen(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -84,11 +82,9 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
 
   const handleNavClick = (page: PageType) => {
     setCurrentPage(page);
-    // Only close mobile menu on mobile devices
     if (window.innerWidth < 1024) {
       setIsMobileMenuOpen(false);
     }
-    // Keep sidebar open on desktop when navigating
   };
 
   const handleLogout = () => {
@@ -102,7 +98,6 @@ const StaffDashboard = ({ userEmail, userName, userPhoto, onLogout }: StaffDashb
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
   };
-
 const renderPage = () => {
   switch (currentPage) {
     case 'home':
@@ -123,12 +118,13 @@ const renderPage = () => {
       return <Reports />;
     case 'waiting-list':
       return <WaitingList />;
+    case 'user-management':  // ADD THIS CASE
+      return <UserManagement />;
     default:
       return <StaffHome onNavigate={handleNavClick} />;
   }
 };
-
-  const navItems = [
+const navItems = [
     { id: 'home', label: 'Dashboard', icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -164,6 +160,11 @@ const renderPage = () => {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     )},
+    { id: 'user-management', label: 'User Management', icon: (  // ADD THIS NEW ITEM
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    )},
     { id: 'feedback', label: 'Feedbacks', icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
@@ -178,15 +179,12 @@ const renderPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Mobile Overlay */}
       {isMobileMenuOpen && (
         <div 
           className="fixed inset-0 z-40 lg:hidden transition-opacity duration-300"
           onClick={closeMobileMenu}
         />
       )}
-
-      {/* Sidebar */}
       <div 
         ref={sidebarRef}
         className={`
@@ -198,7 +196,6 @@ const renderPage = () => {
           ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >
-        {/* Logo Section */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
             <img 
@@ -212,8 +209,6 @@ const renderPage = () => {
               TimeFly
             </span>
           </div>
-          
-          {/* Desktop Toggle Button */}
           <button
             onClick={toggleSidebar}
             className="p-2 rounded-lg hover:bg-gray-100 transition hidden lg:block flex-shrink-0"
@@ -223,8 +218,6 @@ const renderPage = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
             </svg>
           </button>
-
-          {/* Mobile Close Button */}
           <button
             onClick={closeMobileMenu}
             className="p-2 rounded-lg hover:bg-gray-100 transition lg:hidden flex-shrink-0"
@@ -234,8 +227,6 @@ const renderPage = () => {
             </svg>
           </button>
         </div>
-
-        {/* Navigation Items */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map((item) => (
             <button
@@ -263,8 +254,6 @@ const renderPage = () => {
             </button>
           ))}
         </nav>
-
-        {/* User Profile Section */}
         <div className="border-t border-gray-200 bg-white flex-shrink-0">
           <div className={`p-4 ${isSidebarOpen ? 'space-y-3' : 'space-y-2'}`}>
             <div className={`flex items-center ${isSidebarOpen ? 'space-x-3' : 'justify-center'}`}>
@@ -280,7 +269,6 @@ const renderPage = () => {
                   {getInitials(userEmail, userName)}
                 </div>
               )}
-              
               <div className={`min-w-0 transition-all duration-300 ${
                 isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
               }`}>
@@ -288,8 +276,6 @@ const renderPage = () => {
                 <p className="text-gray-500 text-xs truncate">{userEmail}</p>
               </div>
             </div>
-
-            {/* Profile Actions */}
             <div className={`transition-all duration-300 space-y-1 ${
               isSidebarOpen ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
             }`}>
@@ -309,13 +295,9 @@ const renderPage = () => {
           </div>
         </div>
       </div>
-
-      {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-screen transition-all duration-300">
-        {/* Mobile Header */}
         <header className="lg:hidden bg-white shadow-sm border-b border-gray-200 p-4 flex-shrink-0">
           <div className="flex items-center justify-between">
-            {/* Mobile Menu Toggle */}
             <button 
               onClick={() => setIsMobileMenuOpen(true)}
               className="p-2 rounded-lg hover:bg-gray-100 transition"
@@ -324,8 +306,6 @@ const renderPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-
-            {/* Logo and Title */}
             <button 
               onClick={handleHomeClick}
               className="flex items-center space-x-2"
@@ -337,8 +317,6 @@ const renderPage = () => {
               />
               <span className="text-xl font-bold text-gray-900">TimeFly</span>
             </button>
-
-            {/* Mobile Profile */}
             <div className="flex items-center space-x-3">
               {profilePhoto ? (
                 <img 
@@ -355,14 +333,10 @@ const renderPage = () => {
             </div>
           </div>
         </header>
-
-        {/* Page Content */}
         <main className="flex-1 overflow-auto">
           {renderPage()}
         </main>
       </div>
-
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"

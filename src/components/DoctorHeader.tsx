@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Camera, LogOut, User, Calendar, Users, Home } from 'lucide-react';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -20,7 +20,6 @@ interface DoctorHeaderProps {
 
 const DoctorHeader = ({ 
   doctorName, 
-  username, 
   profilePhoto, 
   userEmail, 
   currentView, 
@@ -162,9 +161,10 @@ const DoctorHeader = ({
             photoURL: compressedBase64
           });
           console.log('✅ Auth profile updated successfully');
-        } catch (authError: any) {
+        } catch (authError: unknown) {
           // If Auth profile update fails, it's okay - we have it in Firestore
-          console.warn('⚠️ Auth profile update failed (using Firestore instead):', authError.message);
+          const errorMessage = authError instanceof Error ? authError.message : 'Unknown error occurred';
+          console.warn('⚠️ Auth profile update failed (using Firestore instead):', errorMessage);
         }
 
         // Close dropdown
@@ -178,15 +178,16 @@ const DoctorHeader = ({
           autoClose: 3000,
         });
 
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error updating profile photo:', error);
         
         // Revert local state on error
         setLocalProfilePhoto(profilePhoto);
         
         // Update loading toast to error
+        const errorMessage = error instanceof Error ? error.message : 'Failed to upload profile photo. Please try again.';
         toast.update(loadingToast, {
-          render: error.message === 'Could not compress image to required size' 
+          render: errorMessage === 'Could not compress image to required size' 
             ? 'Image is too large. Please try a smaller image.'
             : 'Failed to upload profile photo. Please try again.',
           type: 'error',
@@ -204,9 +205,9 @@ const DoctorHeader = ({
   };
 
   // Sync local photo state with prop changes
-  useState(() => {
+  useEffect(() => {
     setLocalProfilePhoto(profilePhoto);
-  });
+  }, [profilePhoto]);
 
   const handleLogoClick = () => {
     onViewChange('home');
@@ -241,7 +242,7 @@ const DoctorHeader = ({
               <img 
                 src="/timefly_logo.png" 
                 alt="TimeFly" 
-                className="h-10 w-auto filter brightness-0 invert" // Increased from h-8 to h-10
+                className="h-10 w-auto filter brightness-0 invert"
               />
               <span className="text-xl font-bold text-white">TimeFly</span>
             </button>
@@ -260,7 +261,7 @@ const DoctorHeader = ({
                         : 'text-blue-100 hover:text-white hover:bg-blue-500'
                     }`}
                   >
-                    <Icon className="w-4 h-4 text-white" /> {/* Added text-white for consistent brightness */}
+                    <Icon className="w-4 h-4 text-white" />
                     <span>{item.label}</span>
                   </button>
                 );
@@ -276,12 +277,12 @@ const DoctorHeader = ({
             >
               <div className="relative">
                 {displayPhoto ? (
-                 <img
-                      className="h-10 w-10 rounded-full object-cover border-2 border-blue-300"
-                      src={displayPhoto}
-                      alt="Profile"
-                      style={{ imageRendering: 'auto' as const }} // Changed to 'auto'
-                    />
+                  <img
+                    className="h-10 w-10 rounded-full object-cover border-2 border-blue-300"
+                    src={displayPhoto}
+                    alt="Profile"
+                    style={{ imageRendering: 'auto' }}
+                  />
                 ) : (
                   <div className="h-10 w-10 rounded-full bg-blue-400 flex items-center justify-center border-2 border-blue-300">
                     <User className="h-5 w-5 text-white" />
@@ -303,7 +304,7 @@ const DoctorHeader = ({
                         className="h-14 w-14 rounded-full object-cover border-2 border-gray-200"
                         src={displayPhoto}
                         alt="Profile"
-                        style={{ imageRendering: 'auto' as const }} // Changed to 'auto'
+                        style={{ imageRendering: 'auto' }}
                       />
                     ) : (
                       <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center border-2 border-gray-200">
@@ -335,7 +336,7 @@ const DoctorHeader = ({
                             : 'text-gray-700 hover:bg-gray-50'
                         }`}
                       >
-                        <Icon className="h-4 w-4 mr-3 text-gray-700" /> {/* Consistent icon styling */}
+                        <Icon className="h-4 w-4 mr-3 text-gray-700" />
                         {item.label}
                       </button>
                     );
@@ -357,7 +358,7 @@ const DoctorHeader = ({
                     disabled={isUploading}
                     className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Camera className="h-4 w-4 mr-3 text-gray-700" /> {/* Consistent icon styling */}
+                    <Camera className="h-4 w-4 mr-3 text-gray-700" />
                     {isUploading ? 'Uploading...' : 'Change Photo'}
                   </button>
                   <button
@@ -367,7 +368,7 @@ const DoctorHeader = ({
                     }}
                     className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
                   >
-                    <LogOut className="h-4 w-4 mr-3 text-gray-700" /> {/* Consistent icon styling */}
+                    <LogOut className="h-4 w-4 mr-3 text-gray-700" />
                     Logout
                   </button>
                 </div>

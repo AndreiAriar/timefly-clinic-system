@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, Users, FileText, Sun, CloudSun, Moon } from 'lucide-react';
-import AppointmentModal from './AppointmentModal';
+import StaffBookAppointment from './StaffBookAppointment';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
@@ -93,20 +93,20 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
     const greetingInterval = setInterval(updateGreeting, 60000);
 
     // Real-time listener for appointments stats
-    const appointmentsRef = collection(db, 'appointments');
+    // UPDATED: Query from staff_appointments collection
+    const appointmentsRef = collection(db, 'staff_appointments');
     const q = query(appointmentsRef);
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        // Filter out deleted appointments
+        // Staff appointments collection - no need to filter deleted
         const appointmentsData = snapshot.docs
           .map(doc => ({
             id: doc.id,
             ...doc.data()
-          } as Appointment))
-          .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
+          } as Appointment));
 
-        console.log('📊 Total appointments (after filtering):', appointmentsData.length);
+        console.log('📊 Total appointments:', appointmentsData.length);
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -344,7 +344,7 @@ const StaffHome = ({ onNavigate }: StaffHomeProps) => {
 
       {/* Appointment Modal */}
       {showAppointmentModal && (
-        <AppointmentModal
+        <StaffBookAppointment
           isOpen={showAppointmentModal}
           onClose={() => setShowAppointmentModal(false)}
         />

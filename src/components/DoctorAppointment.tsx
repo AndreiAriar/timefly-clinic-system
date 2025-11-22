@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Clock, User } from 'lucide-react';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface Appointment {
@@ -9,6 +9,7 @@ interface Appointment {
   age: string;
   photo: string;
   appointmentDate: string;
+  doctor: string;
   gender: string;
   medicalCondition: string;
   phone: string;
@@ -32,9 +33,9 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Real-time listener for appointments
+  // Real-time listeners for both appointment collections
   useEffect(() => {
-    console.log('🔥 Setting up real-time listener for doctor appointments...');
+    console.log('🔥 Setting up real-time listeners for doctor appointments...');
     console.log('Doctor Name:', doctorName);
     
     if (!doctorName) {
@@ -45,50 +46,100 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
 
     setIsLoading(true);
     
-    const appointmentsRef = collection(db, 'appointments');
-    const q = query(
-      appointmentsRef,
+    const patientAppointmentsRef = collection(db, 'patient_appointments');
+    const staffAppointmentsRef = collection(db, 'staff_appointments');
+    
+    const patientQuery = query(
+      patientAppointmentsRef,
       where('doctor', '==', doctorName),
       orderBy('appointmentDate', 'desc')
     );
     
-    // Real-time listener for appointments
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        // Filter out appointments deleted by staff or patient
-        const appointmentsData = snapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as Appointment))
-          .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
+    const staffQuery = query(
+      staffAppointmentsRef,
+      where('doctor', '==', doctorName),
+      orderBy('appointmentDate', 'desc')
+    );
+
+    let allAppointments: Appointment[] = [];
+    const handleAppointmentsUpdate = (snapshot: QuerySnapshot<DocumentData>, source: string) => {
+      const newAppointments = snapshot.docs
+        .map((doc) => ({
+          id: `${source}_${doc.id}`,
+          originalId: doc.id, // Keep original ID for reference
+          ...doc.data()
+        } as Appointment & { originalId: string }))
+        .filter((apt: Appointment) => !apt.deletedByStaff && !apt.deletedByPatient);
+
+      console.log(`📊 ${source} appointments after filtering:`, newAppointments.length);
+
+      // Update the combined appointments array by filtering out old appointments from this source
+      allAppointments = allAppointments.filter(apt => !apt.id.startsWith(`${source}_`));
+      allAppointments = [...allAppointments, ...newAppointments];
+
+      // Deduplicate based on appointment details (same date, time, patient, doctor)
+      const uniqueAppointments = allAppointments.reduce((acc, current) => {
+        const key = `${current.appointmentDate}_${current.timeSlot}_${current.fullName}_${current.doctor}`;
         
-        // Sort by date and time
-        appointmentsData.sort((a, b) => {
-          const dateCompare = new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime();
-          if (dateCompare !== 0) return dateCompare;
-          
-          // If same date, sort by time slot
-          const timeA = a.timeSlot || '00:00';
-          const timeB = b.timeSlot || '00:00';
-          return timeA.localeCompare(timeB);
-        });
+        // If this appointment key doesn't exist yet, add it
+        if (!acc.has(key)) {
+          acc.set(key, current);
+        } else {
+          // If duplicate exists, prefer the one from patient_appointments
+          const existing = acc.get(key);
+          if (existing && current.id.startsWith('patient_')) {
+            acc.set(key, current);
+          }
+        }
         
-        console.log('📊 Real-time update - Doctor Appointments:', appointmentsData.length);
-        setAppointments(appointmentsData);
-        setIsLoading(false);
+        return acc;
+      }, new Map<string, Appointment>());
+
+      allAppointments = Array.from(uniqueAppointments.values());
+
+      // Sort by date and time
+      allAppointments.sort((a, b) => {
+        const dateCompare = new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime();
+        if (dateCompare !== 0) return dateCompare;
+        
+        const timeA = a.timeSlot || '00:00';
+        const timeB = b.timeSlot || '00:00';
+        return timeA.localeCompare(timeB);
+      });
+      
+      console.log('📊 Combined Appointments (after deduplication):', allAppointments.length);
+      setAppointments(allAppointments);
+      setIsLoading(false);
+    };
+    // Real-time listener for patient appointments
+    const unsubscribePatient = onSnapshot(
+      patientQuery,
+      (patientSnapshot) => {
+        console.log('📊 Patient appointments update received');
+        handleAppointmentsUpdate(patientSnapshot, 'patient');
       },
       (error) => {
-        console.error('❌ Error in appointments listener:', error);
-        setIsLoading(false);
+        console.error('❌ Error in patient appointments listener:', error);
+      }
+    );
+
+    // Real-time listener for staff appointments
+    const unsubscribeStaff = onSnapshot(
+      staffQuery,
+      (staffSnapshot) => {
+        console.log('📊 Staff appointments update received');
+        handleAppointmentsUpdate(staffSnapshot, 'staff');
+      },
+      (error) => {
+        console.error('❌ Error in staff appointments listener:', error);
       }
     );
 
     // Cleanup function
     return () => {
-      console.log('🔌 Cleaning up doctor appointments listener');
-      unsubscribe();
+      console.log('🔌 Cleaning up doctor appointments listeners');
+      unsubscribePatient();
+      unsubscribeStaff();
     };
   }, [doctorName]);
 

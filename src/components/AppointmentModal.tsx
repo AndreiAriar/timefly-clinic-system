@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, X, CheckCircle, AlertCircle, Info, Upload } from 'lucide-react';
-import { collection, addDoc, query, where, getDocs, doc, updateDoc, runTransaction } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, doc, updateDoc, runTransaction, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 
 interface AppointmentModalProps {
@@ -52,6 +52,17 @@ interface Doctor {
   unavailableDates?: { [date: string]: boolean };
 }
 
+interface BookingEligibility {
+  canBook: boolean;
+  reason: string;
+  dailyLimits?: {
+    normal: number;
+    urgent: number;
+    emergency: number;
+  };
+  totalActive?: number;
+}
+
 const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }: AppointmentModalProps) => {
   const [formData, setFormData] = useState({
     fullName: '',
@@ -76,6 +87,7 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [isDoctorUnavailable, setIsDoctorUnavailable] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [bookingEligibility, setBookingEligibility] = useState<BookingEligibility | null>(null);
 
   const eyeConditions = [
     'Blurred Vision',
@@ -109,57 +121,234 @@ const AppointmentModal = ({ isOpen, onClose, preFilledData, onBookingComplete }:
     }
   }, [isOpen, preFilledData]);
 
-  // Add Toast state
   const [toast, setToast] = useState<{
     show: boolean;
     message: string;
     type: 'success' | 'error' | 'warning' | 'info';
   } | null>(null);
 
-const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info') => {
-  setToast({ show: true, message, type });
-  setTimeout(() => setToast(null), 5000);
-}, []);
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(null), 5000);
+  }, []);
 
-const loadDoctors = useCallback(async () => {
-  try {
-    const doctorsRef = collection(db, 'doctors');
-    const q = query(doctorsRef, where('isActive', '==', true));
-    const querySnapshot = await getDocs(q);
-    
-    const doctorsData = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Doctor[];
-    
-    setDoctors(doctorsData);
-  } catch (error) {
-    console.error('Error loading doctors:', error);
-    showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-  }
-}, [showToast]); 
+  const loadDoctors = useCallback(async () => {
+    try {
+      const doctorsRef = collection(db, 'doctors');
+      const q = query(doctorsRef, where('isActive', '==', true));
+      const querySnapshot = await getDocs(q);
+      
+      const doctorsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Doctor[];
+      
+      setDoctors(doctorsData);
+    } catch (error) {
+      console.error('Error loading doctors:', error);
+      showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+    }
+  }, [showToast]); 
 
   useEffect(() => {
     loadDoctors();
   }, [loadDoctors]);
 
-  const recalculateQueueNumbers = async (appointmentDate: string) => {
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(
+const checkBookingEligibility = useCallback(async () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser?.uid) {
+    setBookingEligibility({ canBook: true, reason: '', dailyLimits: { normal: 0, urgent: 0, emergency: 0 }, totalActive: 0 });
+    return;
+  }
+
+  try {
+    const userEmail = currentUser.email;
+    if (!userEmail) {
+      setBookingEligibility({ canBook: false, reason: 'User email not found. Please log in again.' });
+      return;
+    }
+
+    // CRITICAL: Check user restriction status FIRST
+    const userQuery = query(collection(db, 'users'), where('__name__', '==', currentUser.uid));
+    const userSnapshot = await getDocs(userQuery);
+    
+    if (!userSnapshot.empty) {
+      const userData = userSnapshot.docs[0].data();
+      const isRestricted = userData.isRestricted || false;
+      const noShowCount = userData.noShowCount || 0;
+
+      console.log('🔍 User restriction check:', { 
+        email: userEmail, 
+        isRestricted, 
+        noShowCount,
+        restrictionReason: userData.restrictionReason 
+      });
+
+      // CRITICAL: Block booking if user is restricted OR has 3+ no-shows
+      if (isRestricted || noShowCount >= 3) {
+        const reason = isRestricted 
+          ? (userData.restrictionReason || 'Your account has been restricted by an administrator.')
+          : 'Your booking privileges are suspended due to multiple no-shows (3 or more).';
+        
+        setBookingEligibility({
+          canBook: false,
+          reason: `🚫 ${reason} Please contact the clinic at [clinic contact] to restore your booking access.`,
+          totalActive: 0
+        });
+        
+        console.error('🚫 USER BLOCKED FROM BOOKING:', reason);
+        return;
+      }
+    }
+
+    // Continue with existing checks only if user is not restricted
+    const appointmentsRef = collection(db, 'patient_appointments');
+    const allActiveQuery = query(
+      appointmentsRef,
+      where('email', '==', userEmail),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled'])
+    );
+    
+    const allActiveSnapshot = await getDocs(allActiveQuery);
+    const totalActiveAppointments = allActiveSnapshot.size;
+
+    console.log('📊 Total active appointments:', totalActiveAppointments);
+
+    if (totalActiveAppointments >= 2) {
+      setBookingEligibility({
+        canBook: false,
+        reason: 'You have reached the maximum limit of 2 active appointments. Please complete or cancel an existing appointment before booking a new one.',
+        totalActive: totalActiveAppointments
+      });
+      return;
+    }
+
+    if (formData.appointmentDate) {
+      const dailyQuery = query(
         appointmentsRef,
-        where('appointmentDate', '==', appointmentDate)
+        where('email', '==', userEmail),
+        where('appointmentDate', '==', formData.appointmentDate),
+        where('status', 'in', ['pending', 'confirmed', 'scheduled'])
       );
       
-      const querySnapshot = await getDocs(q);
+      const dailySnapshot = await getDocs(dailyQuery);
       
-      if (querySnapshot.empty) return;
+      const dailyCounts = {
+        normal: 0,
+        urgent: 0,
+        emergency: 0
+      };
       
-      const appointments = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        timeSlot: doc.data().timeSlot as string
-      }));
+      dailySnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const priority = (data.priorityLevel || 'normal') as 'normal' | 'urgent' | 'emergency';
+        if (priority in dailyCounts) {
+          dailyCounts[priority]++;
+        }
+      });
+
+      console.log('📊 Daily booking counts for', formData.appointmentDate, ':', dailyCounts);
+
+      const selectedPriority = formData.priorityLevel;
+      let limitReached = false;
+      let limitMessage = '';
+
+      if (selectedPriority === 'normal' && dailyCounts.normal >= 2) {
+        limitReached = true;
+        limitMessage = 'You have reached the daily limit of 2 Normal appointments for this date.';
+      } else if (selectedPriority === 'urgent' && dailyCounts.urgent >= 1) {
+        limitReached = true;
+        limitMessage = 'You have reached the daily limit of 1 Urgent appointment for this date.';
+      } else if (selectedPriority === 'emergency' && dailyCounts.emergency >= 1) {
+        limitReached = true;
+        limitMessage = 'You have reached the daily limit of 1 Emergency appointment for this date.';
+      }
+
+      if (limitReached) {
+        setBookingEligibility({
+          canBook: false,
+          reason: limitMessage + ' Please choose another date or priority level.',
+          dailyLimits: dailyCounts,
+          totalActive: totalActiveAppointments
+        });
+        return;
+      }
+
+      setBookingEligibility({ 
+        canBook: true, 
+        reason: '',
+        dailyLimits: dailyCounts,
+        totalActive: totalActiveAppointments
+      });
+    } else {
+      setBookingEligibility({ 
+        canBook: true, 
+        reason: '',
+        dailyLimits: { normal: 0, urgent: 0, emergency: 0 },
+        totalActive: totalActiveAppointments
+      });
+    }
+  } catch (error) {
+    console.error('Error checking booking eligibility:', error);
+    // On error, assume not eligible for safety
+    setBookingEligibility({ 
+      canBook: false, 
+      reason: 'Unable to verify booking eligibility. Please try again.',
+      dailyLimits: { normal: 0, urgent: 0, emergency: 0 },
+      totalActive: 0
+    });
+  }
+}, [formData.appointmentDate, formData.priorityLevel]);
+
+  useEffect(() => {
+    if (isOpen) {
+      checkBookingEligibility();
+    }
+  }, [isOpen, formData.appointmentDate, formData.priorityLevel, checkBookingEligibility]);
+
+  // FIXED: Recalculate queue numbers chronologically by appointment time
+  const recalculateQueueNumbers = async (appointmentDate: string, doctor: string) => {
+    try {
+      // Query BOTH collections for this doctor and date
+      const patientRef = collection(db, 'patient_appointments');
+      const staffRef = collection(db, 'staff_appointments');
       
+      const patientQuery = query(
+        patientRef,
+        where('doctor', '==', doctor),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const staffQuery = query(
+        staffRef,
+        where('doctor', '==', doctor),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const [patientSnapshot, staffSnapshot] = await Promise.all([
+        getDocs(patientQuery),
+        getDocs(staffQuery)
+      ]);
+      
+      // Combine appointments from both sources
+      const appointments = [
+        ...patientSnapshot.docs.map(docSnapshot => ({
+          id: docSnapshot.id,
+          timeSlot: docSnapshot.data().timeSlot as string,
+          source: 'patient'
+        })),
+        ...staffSnapshot.docs.map(docSnapshot => ({
+          id: docSnapshot.id,
+          timeSlot: docSnapshot.data().timeSlot as string,
+          source: 'staff'
+        }))
+      ];
+      
+      if (appointments.length === 0) return;
+      
+      // Sort chronologically by time slot (earliest first)
       appointments.sort((a, b) => {
         const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
         const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
@@ -168,16 +357,81 @@ const loadDoctors = useCallback(async () => {
         return timeA - timeB;
       });
       
+      // Update queue numbers in the correct collection
       const updatePromises = appointments.map((apt, index) => {
-        const appointmentRef = doc(db, 'appointments', apt.id);
-        return updateDoc(appointmentRef, {
-          queueNumber: index + 1
-        });
+        const newQueueNumber = index + 1;
+        const collectionName = apt.source === 'patient' ? 'patient_appointments' : 'staff_appointments';
+        const appointmentRef = doc(db, collectionName, apt.id);
+        
+        return updateDoc(appointmentRef, { queueNumber: newQueueNumber });
       });
       
       await Promise.all(updatePromises);
+      console.log('✅ Queue numbers recalculated chronologically for', doctor, 'on', appointmentDate);
     } catch (error) {
       console.error('Error recalculating queue numbers:', error);
+    }
+  };
+
+  // FIXED: Calculate queue number based on time slot position (chronological)
+  const calculateChronologicalQueueNumber = async (
+    doctor: string, 
+    appointmentDate: string, 
+    newTimeSlot: string
+  ): Promise<number> => {
+    try {
+      const [newHours, newMinutes] = newTimeSlot.split(':').map(Number);
+      const newTimeInMinutes = newHours * 60 + newMinutes;
+
+      // Check BOTH collections
+      const patientRef = collection(db, 'patient_appointments');
+      const staffRef = collection(db, 'staff_appointments');
+      
+      const patientQuery = query(
+        patientRef,
+        where('doctor', '==', doctor),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const staffQuery = query(
+        staffRef,
+        where('doctor', '==', doctor),
+        where('appointmentDate', '==', appointmentDate),
+        where('status', '!=', 'cancelled')
+      );
+      
+      const [patientSnapshot, staffSnapshot] = await Promise.all([
+        getDocs(patientQuery),
+        getDocs(staffQuery)
+      ]);
+      
+      let queuePosition = 1;
+      
+      // Count from patient appointments
+      patientSnapshot.docs.forEach(docSnapshot => {
+        const data = docSnapshot.data();
+        const [h, m] = data.timeSlot.split(':').map(Number);
+        const existingTime = h * 60 + m;
+        if (existingTime < newTimeInMinutes) {
+          queuePosition++;
+        }
+      });
+      
+      // Count from staff appointments
+      staffSnapshot.docs.forEach(docSnapshot => {
+        const data = docSnapshot.data();
+        const [h, m] = data.timeSlot.split(':').map(Number);
+        const existingTime = h * 60 + m;
+        if (existingTime < newTimeInMinutes) {
+          queuePosition++;
+        }
+      });
+      
+      return queuePosition;
+    } catch (error) {
+      console.error('Error calculating queue number:', error);
+      return 1;
     }
   };
 
@@ -188,83 +442,176 @@ const loadDoctors = useCallback(async () => {
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
 
-  const getBookedTimeSlots = useCallback(async (doctor: string, appointmentDate: string): Promise<string[]> => {
-    if (!doctor || !appointmentDate) return [];
+const getBookedTimeSlots = useCallback(async (doctor: string, appointmentDate: string): Promise<string[]> => {
+  if (!doctor || !appointmentDate) return [];
+  
+  try {
+    // UPDATED: Check BOTH collections for active appointments
+    const patientRef = collection(db, 'patient_appointments');
+    const staffRef = collection(db, 'staff_appointments');
     
-    try {
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(
-        appointmentsRef,
-        where('doctor', '==', doctor),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const bookedSlots = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        console.log('📌 Booked appointment found:', {
+    const patientQuery = query(
+      patientRef,
+      where('doctor', '==', doctor),
+      where('appointmentDate', '==', appointmentDate),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled'])
+    );
+    
+    const staffQuery = query(
+      staffRef,
+      where('doctor', '==', doctor),
+      where('appointmentDate', '==', appointmentDate),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled'])
+    );
+    
+    const [patientSnapshot, staffSnapshot] = await Promise.all([
+      getDocs(patientQuery),
+      getDocs(staffQuery)
+    ]);
+    
+    // Combine booked slots from both collections
+    const bookedSlots = [
+      ...patientSnapshot.docs.map(docSnapshot => {
+        const data = docSnapshot.data();
+        console.log('📌 Booked appointment found (patient):', {
           doctor: data.doctor,
           date: data.appointmentDate,
           timeSlot: data.timeSlot,
           status: data.status
         });
         return data.timeSlot as string;
-      });
-      
-      console.log('📋 Total booked slots for', doctor, 'on', appointmentDate, ':', bookedSlots);
-      return bookedSlots;
-    } catch (error) {
-      console.error('Error fetching booked slots:', error);
-      return [];
-    }
-  }, []);
-
-  const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: string): Promise<{isFullyBooked: boolean; isUnavailable: boolean}> => {
-    if (!doctor || !appointmentDate) return {isFullyBooked: false, isUnavailable: false};
+      }),
+      ...staffSnapshot.docs.map(docSnapshot => {
+        const data = docSnapshot.data();
+        console.log('📌 Booked appointment found (staff):', {
+          doctor: data.doctor,
+          date: data.appointmentDate,
+          timeSlot: data.timeSlot,
+          status: data.status
+        });
+        return data.timeSlot as string;
+      })
+    ];
     
-    try {
-      const doctorsRef = collection(db, 'doctors');
-      const doctorQuery = query(doctorsRef, where('name', '==', doctor));
-      const doctorSnapshot = await getDocs(doctorQuery);
+    // Remove duplicates (in case same slot exists in both collections)
+    const uniqueBookedSlots = Array.from(new Set(bookedSlots));
+    
+    // Get slot locks
+    const slotLocksRef = collection(db, 'slot_locks');
+    const locksQuery = query(
+      slotLocksRef,
+      where('doctor', '==', doctor),
+      where('appointmentDate', '==', appointmentDate)
+    );
+    
+    const locksSnapshot = await getDocs(locksQuery);
+    
+    // Only include slot locks that have a matching active appointment
+    const validLockedSlots: string[] = [];
+    const orphanLocks: string[] = [];
+    
+    for (const lockDoc of locksSnapshot.docs) {
+      const lockData = lockDoc.data();
+      const lockTimeSlot = lockData.timeSlot as string;
       
-      if (doctorSnapshot.empty) return {isFullyBooked: false, isUnavailable: false};
-      
-      const doctorData = doctorSnapshot.docs[0].data();
-      
-      const unavailableDates = doctorData.unavailableDates || {};
-      if (unavailableDates[appointmentDate] === true) {
-        console.log('🚫 Doctor is marked as unavailable on this date');
-        return {isFullyBooked: false, isUnavailable: true};
+      if (uniqueBookedSlots.includes(lockTimeSlot)) {
+        validLockedSlots.push(lockTimeSlot);
+        console.log('🔒 Valid slot lock found:', {
+          doctor: lockData.doctor,
+          date: lockData.appointmentDate,
+          timeSlot: lockTimeSlot,
+          bookedAt: lockData.bookedAt
+        });
+      } else {
+        orphanLocks.push(lockTimeSlot);
+        console.log('⚠️ Orphan slot lock found (will be cleaned up):', {
+          doctor: lockData.doctor,
+          date: lockData.appointmentDate,
+          timeSlot: lockTimeSlot
+        });
+        
+        // Auto-cleanup: Delete the orphan lock
+        try {
+          const orphanLockRef = doc(db, 'slot_locks', `${doctor}_${appointmentDate}_${lockTimeSlot}`);
+          await deleteDoc(orphanLockRef);
+          console.log('🗑️ Orphan slot lock deleted:', lockTimeSlot);
+        } catch (error) {
+          console.error('Failed to delete orphan lock:', error);
+        }
       }
-      
-      const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-      const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
-      const globalMaxSlots = doctorData.maxSlots || 10;
-      const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
-      
-      console.log('📊 Max slots for this date:', maxSlots);
-      
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(
-        appointmentsRef,
-        where('doctor', '==', doctor),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const bookedCount = querySnapshot.size;
-      
-      console.log('📋 Current booked appointments:', bookedCount);
-      console.log('🔍 Is fully booked?', bookedCount >= maxSlots);
-      
-      return {isFullyBooked: bookedCount >= maxSlots, isUnavailable: false};
-    } catch (error) {
-      console.error('Error checking if doctor is fully booked:', error);
-      return {isFullyBooked: false, isUnavailable: false};
     }
-  }, []);
+    
+    if (orphanLocks.length > 0) {
+      console.log('🧹 Cleaned up', orphanLocks.length, 'orphan slot locks:', orphanLocks);
+    }
+    
+    console.log('📋 Total booked slots for', doctor, 'on', appointmentDate, ':', uniqueBookedSlots);
+    return uniqueBookedSlots;
+  } catch (error) {
+    console.error('Error fetching booked slots:', error);
+    return [];
+  }
+}, []);
+
+const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: string): Promise<{isFullyBooked: boolean; isUnavailable: boolean}> => {
+  if (!doctor || !appointmentDate) return {isFullyBooked: false, isUnavailable: false};
+  
+  try {
+    const doctorsRef = collection(db, 'doctors');
+    const doctorQuery = query(doctorsRef, where('name', '==', doctor));
+    const doctorSnapshot = await getDocs(doctorQuery);
+    
+    if (doctorSnapshot.empty) return {isFullyBooked: false, isUnavailable: false};
+    
+    const doctorData = doctorSnapshot.docs[0].data();
+    
+    const unavailableDates = doctorData.unavailableDates || {};
+    if (unavailableDates[appointmentDate] === true) {
+      console.log('🚫 Doctor is marked as unavailable on this date');
+      return {isFullyBooked: false, isUnavailable: true};
+    }
+    
+    const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+    const dateSpecificMaxSlots = maxSlotsPerDate[appointmentDate];
+    const globalMaxSlots = doctorData.maxSlots || 10;
+    const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+    
+    console.log('📊 Max slots for this date:', maxSlots);
+    
+    // UPDATED: Count active appointments from BOTH collections
+    const patientRef = collection(db, 'patient_appointments');
+    const staffRef = collection(db, 'staff_appointments');
+    
+    const patientQuery = query(
+      patientRef,
+      where('doctor', '==', doctor),
+      where('appointmentDate', '==', appointmentDate),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled'])
+    );
+    
+    const staffQuery = query(
+      staffRef,
+      where('doctor', '==', doctor),
+      where('appointmentDate', '==', appointmentDate),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled'])
+    );
+    
+    const [patientSnapshot, staffSnapshot] = await Promise.all([
+      getDocs(patientQuery),
+      getDocs(staffQuery)
+    ]);
+    
+    const bookedCount = patientSnapshot.size + staffSnapshot.size;
+    
+    console.log('📋 Current booked appointments:', bookedCount, '(patient:', patientSnapshot.size, '+ staff:', staffSnapshot.size, ')');
+    console.log('🔍 Is fully booked?', bookedCount >= maxSlots);
+    
+    return {isFullyBooked: bookedCount >= maxSlots, isUnavailable: false};
+  } catch (error) {
+    console.error('Error checking if doctor is fully booked:', error);
+    return {isFullyBooked: false, isUnavailable: false};
+  }
+}, []);
 
   const isPastTime = (date: string, time: string): boolean => {
     const now = new Date();
@@ -282,319 +629,308 @@ const loadDoctors = useCallback(async () => {
     return isPast;
   };
 
-const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
-  console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
-  
-  setIsCheckingAvailability(true);
-  
-  const {isFullyBooked, isUnavailable} = await isDoctorFullyBooked(doctor, appointmentDate);
-  
-  if (isUnavailable) {
-    console.log('🚫 DOCTOR IS UNAVAILABLE - No slots available');
-    setAvailableTimeSlots([]);
-    setHasAvailableSlots(false);
-    setIsDoctorUnavailable(true);
-    setIsCheckingAvailability(false);
-    return;
-  }
-  
-  setIsDoctorUnavailable(false);
-  
-  if (isFullyBooked) {
-    console.log('🚫 DOCTOR IS FULLY BOOKED - No slots available');
-    setAvailableTimeSlots([]);
-    setHasAvailableSlots(false);
-    setIsCheckingAvailability(false);
-    return;
-  }
-  
-  const slots: TimeSlot[] = [];
-  const startHour = 8;
-  const endHour = 17;
-  
-  const bookedSlots = await getBookedTimeSlots(doctor, appointmentDate);
-  console.log('📋 Booked slots:', bookedSlots);
-  
-  const doctorsRef = collection(db, 'doctors');
-  const doctorQuery = query(doctorsRef, where('name', '==', doctor));
-  const doctorSnapshot = await getDocs(doctorQuery);
-  
-  let unavailableTimeSlots: string[] = [];
-  
-  if (!doctorSnapshot.empty) {
-    const doctorData = doctorSnapshot.docs[0].data();
-    unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
-    console.log('⛔ Unavailable time slots:', unavailableTimeSlots);
-  }
-
-if (priorityLevel === 'normal') {
-    // Generate 1-hour interval slots (8:00, 9:00, 10:00, 11:00, 1:00, 2:00, 3:00, 4:00)
-    for (let hour = startHour; hour < endHour; hour++) {
-      if (hour === 12) continue; // Skip lunch hour
-      
-      const timeString = `${hour.toString().padStart(2, '0')}:00`;
-      const isBooked = bookedSlots.includes(timeString);
-      const isPast = isPastTime(appointmentDate, timeString);
-      const isUnavailable = unavailableTimeSlots.includes(timeString);
-      const isAvailable = !isBooked && !isUnavailable && !isPast;
-      
-      slots.push({
-        time: timeString,
-        available: isAvailable,
-        isBooked,
-        isUnavailable
-      });
-      
-      console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
-    }
-  }
-  
-  else if (priorityLevel === 'urgent') {
-    for (let hour = startHour; hour < endHour; hour++) {
-      if (hour === 12) continue;
-      
-      const timeString = `${hour.toString().padStart(2, '0')}:30`;
-      const isBooked = bookedSlots.includes(timeString);
-      const isPast = isPastTime(appointmentDate, timeString);
-      const isUnavailable = unavailableTimeSlots.includes(timeString);
-      const isAvailable = !isBooked && !isUnavailable && !isPast;
-      
-      slots.push({
-        time: timeString,
-        available: isAvailable,
-        isBooked,
-        isUnavailable,
-        isBuffer: true,
-        bufferType: 'urgent'
-      });
-      
-      console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
-    }
-  } else if (priorityLevel === 'emergency') {
-    for (let hour = startHour; hour < endHour; hour++) {
-      if (hour === 12) continue;
-      
-      const timeString15 = `${hour.toString().padStart(2, '0')}:15`;
-      const isBooked15 = bookedSlots.includes(timeString15);
-      const isPast15 = isPastTime(appointmentDate, timeString15);
-      const isUnavailable15 = unavailableTimeSlots.includes(timeString15);
-      const isAvailable15 = !isBooked15 && !isUnavailable15 && !isPast15;
-      
-      slots.push({
-        time: timeString15,
-        available: isAvailable15,
-        isBooked: isBooked15,
-        isUnavailable: isUnavailable15,
-        isBuffer: true,
-        bufferType: 'emergency'
-      });
-      
-      console.log(`  ${timeString15}: ${isAvailable15 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked15}, unavailable: ${isUnavailable15}, past: ${isPast15})`);
-      
-      const timeString45 = `${hour.toString().padStart(2, '0')}:45`;
-      const isBooked45 = bookedSlots.includes(timeString45);
-      const isPast45 = isPastTime(appointmentDate, timeString45);
-      const isUnavailable45 = unavailableTimeSlots.includes(timeString45);
-      const isAvailable45 = !isBooked45 && !isUnavailable45 && !isPast45;
-      
-      slots.push({
-        time: timeString45,
-        available: isAvailable45,
-        isBooked: isBooked45,
-        isUnavailable: isUnavailable45,
-        isBuffer: true,
-        bufferType: 'emergency'
-      });
-      
-      console.log(`  ${timeString45}: ${isAvailable45 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked45}, unavailable: ${isUnavailable45}, past: ${isPast45})`);
-    }
-  }
-
-  const actuallyAvailableSlots = slots.filter(slot => 
-    slot.available && !slot.isBooked && !slot.isUnavailable
-  );
-  const anyAvailable = actuallyAvailableSlots.length > 0;
-
-  setHasAvailableSlots(anyAvailable);
-  setAvailableTimeSlots(slots);
-
-  console.log(`✅ Generated ${slots.length} total slots`);
-  console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
-  console.log(`✅ Booked slots: ${slots.filter(s => s.isBooked).length}`);
-  console.log(`✅ Unavailable slots: ${slots.filter(s => s.isUnavailable).length}`);
-  console.log(`✅ hasAvailableSlots set to: ${anyAvailable}`);
-
-  if (anyAvailable) {
-    console.log('Available times:', actuallyAvailableSlots.map(s => s.time).join(', '));
-  } else {
-    console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
-  }
-  
-  setIsCheckingAvailability(false);
-}, [getBookedTimeSlots, isDoctorFullyBooked]);
-
-useEffect(() => {
-  if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-    generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
-  } else {
-    setAvailableTimeSlots([]);
-    setHasAvailableSlots(true);
-    setIsDoctorUnavailable(false);
-  }
-}, [formData.doctor, formData.appointmentDate, formData.priorityLevel, generateTimeSlots]);
-
-useEffect(() => {
-  if (isOpen) {
-    document.body.style.overflow = 'hidden';
-  } else {
-    document.body.style.overflow = 'unset';
-  }
-  return () => {
-    document.body.style.overflow = 'unset';
-  };
-}, [isOpen]);
-
-// Function to compress image for optimal display
-const compressImageForDisplay = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
+  const generateTimeSlots = useCallback(async (priorityLevel: string, doctor: string, appointmentDate: string) => {
+    console.log(`\n🔄 Generating time slots for ${doctor} on ${appointmentDate}, priority: ${priorityLevel}`);
     
-    img.onload = () => {
-      const MAX_WIDTH = 800;
-      const MAX_HEIGHT = 800;
-      
-      let { width, height } = img;
-      
-      // Calculate new dimensions while maintaining aspect ratio
-      const scale = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height, 1);
-      width = Math.floor(width * scale);
-      height = Math.floor(height * scale);
-      
-      canvas.width = width;
-      canvas.height = height;
-      
-      ctx?.drawImage(img, 0, 0, width, height);
-      
-      // Start with good quality and reduce if needed
-      let quality = 0.8;
-      let attempts = 0;
-      const maxAttempts = 3;
-      
-      const tryCompression = () => {
-        let processedDataUrl;
-        if (file.type === 'image/png' || file.type === 'image/gif') {
-          processedDataUrl = canvas.toDataURL('image/png');
-        } else if (file.type === 'image/webp') {
-          processedDataUrl = canvas.toDataURL('image/webp', quality);
-        } else {
-          processedDataUrl = canvas.toDataURL('image/jpeg', quality);
-        }
+    setIsCheckingAvailability(true);
+    
+    const {isFullyBooked, isUnavailable} = await isDoctorFullyBooked(doctor, appointmentDate);
+    
+    if (isUnavailable) {
+      console.log('🚫 DOCTOR IS UNAVAILABLE - No slots available');
+      setAvailableTimeSlots([]);
+      setHasAvailableSlots(false);
+      setIsDoctorUnavailable(true);
+      setIsCheckingAvailability(false);
+      return;
+    }
+    
+    setIsDoctorUnavailable(false);
+    
+    if (isFullyBooked) {
+      console.log('🚫 DOCTOR IS FULLY BOOKED - No slots available');
+      setAvailableTimeSlots([]);
+      setHasAvailableSlots(false);
+      setIsCheckingAvailability(false);
+      return;
+    }
+    
+    const slots: TimeSlot[] = [];
+    const startHour = 8;
+    const endHour = 17;
+    
+    const bookedSlots = await getBookedTimeSlots(doctor, appointmentDate);
+    console.log('📋 Booked slots:', bookedSlots);
+    
+    const doctorsRef = collection(db, 'doctors');
+    const doctorQuery = query(doctorsRef, where('name', '==', doctor));
+    const doctorSnapshot = await getDocs(doctorQuery);
+    
+    let unavailableTimeSlots: string[] = [];
+    
+    if (!doctorSnapshot.empty) {
+      const doctorData = doctorSnapshot.docs[0].data();
+      unavailableTimeSlots = doctorData.availableSlots?.[appointmentDate] || [];
+      console.log('⛔ Unavailable time slots:', unavailableTimeSlots);
+    }
+
+    if (priorityLevel === 'normal') {
+      for (let hour = startHour; hour < endHour; hour++) {
+        if (hour === 12) continue;
         
-        const sizeInKB = (processedDataUrl.length - 'data:image/jpeg;base64,'.length) * 0.75 / 1024;
+        const timeString = `${hour.toString().padStart(2, '0')}:00`;
+        const isBooked = bookedSlots.includes(timeString);
+        const isPast = isPastTime(appointmentDate, timeString);
+        const isUnavailable = unavailableTimeSlots.includes(timeString);
+        const isAvailable = !isBooked && !isUnavailable && !isPast;
         
-        console.log(`Image compression attempt ${attempts + 1}: Quality ${quality}, Size ${sizeInKB.toFixed(2)}KB`);
+        slots.push({
+          time: timeString,
+          available: isAvailable,
+          isBooked,
+          isUnavailable
+        });
         
-        if (sizeInKB < 2000 || attempts >= maxAttempts) { // Target under 2MB
-          resolve(processedDataUrl);
-        } else {
-          quality -= 0.2;
-          attempts++;
-          setTimeout(tryCompression, 0);
-        }
+        console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
+      }
+    }
+    
+    else if (priorityLevel === 'urgent') {
+      for (let hour = startHour; hour < endHour; hour++) {
+        if (hour === 12) continue;
+        
+        const timeString = `${hour.toString().padStart(2, '0')}:30`;
+        const isBooked = bookedSlots.includes(timeString);
+        const isPast = isPastTime(appointmentDate, timeString);
+        const isUnavailable = unavailableTimeSlots.includes(timeString);
+        const isAvailable = !isBooked && !isUnavailable && !isPast;
+        
+        slots.push({
+          time: timeString,
+          available: isAvailable,
+          isBooked,
+          isUnavailable,
+          isBuffer: true,
+          bufferType: 'urgent'
+        });
+        
+        console.log(`  ${timeString}: ${isAvailable ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked}, unavailable: ${isUnavailable}, past: ${isPast})`);
+      }
+    } else if (priorityLevel === 'emergency') {
+      for (let hour = startHour; hour < endHour; hour++) {
+        if (hour === 12) continue;
+        
+        const timeString15 = `${hour.toString().padStart(2, '0')}:15`;
+        const isBooked15 = bookedSlots.includes(timeString15);
+        const isPast15 = isPastTime(appointmentDate, timeString15);
+        const isUnavailable15 = unavailableTimeSlots.includes(timeString15);
+        const isAvailable15 = !isBooked15 && !isUnavailable15 && !isPast15;
+        
+        slots.push({
+          time: timeString15,
+          available: isAvailable15,
+          isBooked: isBooked15,
+          isUnavailable: isUnavailable15,
+          isBuffer: true,
+          bufferType: 'emergency'
+        });
+        
+        console.log(`  ${timeString15}: ${isAvailable15 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked15}, unavailable: ${isUnavailable15}, past: ${isPast15})`);
+        
+        const timeString45 = `${hour.toString().padStart(2, '0')}:45`;
+        const isBooked45 = bookedSlots.includes(timeString45);
+        const isPast45 = isPastTime(appointmentDate, timeString45);
+        const isUnavailable45 = unavailableTimeSlots.includes(timeString45);
+        const isAvailable45 = !isBooked45 && !isUnavailable45 && !isPast45;
+        
+        slots.push({
+          time: timeString45,
+          available: isAvailable45,
+          isBooked: isBooked45,
+          isUnavailable: isUnavailable45,
+          isBuffer: true,
+          bufferType: 'emergency'
+        });
+        
+        console.log(`  ${timeString45}: ${isAvailable45 ? '✅ Available' : '❌ Unavailable'} (booked: ${isBooked45}, unavailable: ${isUnavailable45}, past: ${isPast45})`);
+      }
+    }
+
+    const actuallyAvailableSlots = slots.filter(slot => 
+      slot.available && !slot.isBooked && !slot.isUnavailable
+    );
+    const anyAvailable = actuallyAvailableSlots.length > 0;
+
+    setHasAvailableSlots(anyAvailable);
+    setAvailableTimeSlots(slots);
+
+    console.log(`✅ Generated ${slots.length} total slots`);
+    console.log(`✅ Actually available slots: ${actuallyAvailableSlots.length}`);
+    console.log(`✅ Booked slots: ${slots.filter(s => s.isBooked).length}`);
+    console.log(`✅ Unavailable slots: ${slots.filter(s=> s.isUnavailable).length}`);
+    console.log(`✅ hasAvailableSlots set to: ${anyAvailable}`);
+
+    if (anyAvailable) {
+      console.log('Available times:', actuallyAvailableSlots.map(s => s.time).join(', '));
+    } else {
+      console.log('⚠️ NO AVAILABLE SLOTS - Should show warning');
+    }
+    
+    setIsCheckingAvailability(false);
+  }, [getBookedTimeSlots, isDoctorFullyBooked]);
+
+  useEffect(() => {
+    if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+      generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+    } else {
+      setAvailableTimeSlots([]);
+      setHasAvailableSlots(true);
+      setIsDoctorUnavailable(false);
+    }
+  }, [formData.doctor, formData.appointmentDate, formData.priorityLevel, generateTimeSlots]);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
+  const compressImageForDisplay = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        
+        let { width, height } = img;
+        
+        const scale = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height, 1);
+        width = Math.floor(width * scale);
+        height = Math.floor(height * scale);
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        let quality = 0.8;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        const tryCompression = () => {
+          let processedDataUrl;
+          if (file.type === 'image/png' || file.type === 'image/gif') {
+            processedDataUrl = canvas.toDataURL('image/png');
+          } else if (file.type === 'image/webp') {
+            processedDataUrl = canvas.toDataURL('image/webp', quality);
+          } else {
+            processedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+          
+          const sizeInKB = (processedDataUrl.length - 'data:image/jpeg;base64,'.length) * 0.75 / 1024;
+          
+          console.log(`Image compression attempt ${attempts + 1}: Quality ${quality}, Size ${sizeInKB.toFixed(2)}KB`);
+          
+          if (sizeInKB < 2000 || attempts >= maxAttempts) {
+            resolve(processedDataUrl);
+          } else {
+            quality -= 0.2;
+            attempts++;
+            setTimeout(tryCompression, 0);
+          }
+        };
+        
+        tryCompression();
       };
       
-      tryCompression();
-    };
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!file) return;
+
+    const validTypes = [
+      'image/jpeg', 
+      'image/jpg', 
+      'image/png', 
+      'image/gif', 
+      'image/webp',
+      'image/bmp',
+      'image/tiff',
+      'image/svg+xml'
+    ];
     
-    img.onerror = () => reject(new Error('Failed to load image'));
-    img.src = URL.createObjectURL(file);
-  });
-};
+    if (!validTypes.includes(file.type)) {
+      showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
+      return;
+    }
 
-// Enhanced photo upload with drag-and-drop support and no file size limits
-const handlePhotoUpload = async (file: File) => {
-  if (!file) return;
+    console.log('🖼️ Processing image:', {
+      name: file.name,
+      type: file.type,
+      size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+      dimensions: 'Processing...'
+    });
 
-  // Only validate file type - NO FILE SIZE LIMITS
-  const validTypes = [
-    'image/jpeg', 
-    'image/jpg', 
-    'image/png', 
-    'image/gif', 
-    'image/webp',
-    'image/bmp',
-    'image/tiff',
-    'image/svg+xml'
-  ];
-  
-  if (!validTypes.includes(file.type)) {
-    showToast('Please upload a valid image file (JPEG, PNG, GIF, WebP, BMP, TIFF, or SVG).', 'error');
-    return;
-  }
+    try {
+      const tempReader = new FileReader();
+      tempReader.onloadend = () => {
+        const tempPhotoUrl = tempReader.result as string;
+        setFormData(prev => ({ ...prev, photo: tempPhotoUrl }));
+      };
+      tempReader.readAsDataURL(file);
 
-  console.log('🖼️ Processing image:', {
-    name: file.name,
-    type: file.type,
-    size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-    dimensions: 'Processing...'
-  });
+      const compressedBase64 = await compressImageForDisplay(file);
+      
+      setFormData(prev => ({ ...prev, photo: compressedBase64 }));
+      
+      console.log('✅ Image processed successfully for display');
+      
+    } catch (error) {
+      console.error('Error processing image:', error);
+      showToast('Error processing image. Please try again.', 'error');
+    }
+  };
 
-  try {
-    // Show temporary preview immediately
-    const tempReader = new FileReader();
-    tempReader.onloadend = () => {
-      const tempPhotoUrl = tempReader.result as string;
-      setFormData(prev => ({ ...prev, photo: tempPhotoUrl }));
-    };
-    tempReader.readAsDataURL(file);
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
 
-    // Compress image for optimal display
-    const compressedBase64 = await compressImageForDisplay(file);
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
     
-    // Update with compressed version
-    setFormData(prev => ({ ...prev, photo: compressedBase64 }));
-    
-    console.log('✅ Image processed successfully for display');
-    
-  } catch (error) {
-    console.error('Error processing image:', error);
-    showToast('Error processing image. Please try again.', 'error');
-  }
-};
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      handlePhotoUpload(file);
+    }
+  };
 
-// Drag and drop event handlers
-const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-  e.preventDefault();
-  setIsDragOver(true);
-};
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handlePhotoUpload(file);
+    }
+  };
 
-const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-  e.preventDefault();
-  setIsDragOver(false);
-};
-
-const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-  e.preventDefault();
-  setIsDragOver(false);
-  
-  const files = e.dataTransfer.files;
-  if (files && files.length > 0) {
-    const file = files[0];
-    handlePhotoUpload(file);
-  }
-};
-
-// File input change handler
-const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    handlePhotoUpload(file);
-  }
-};
-
-const handleSubmit = async () => {
+  const handleSubmit = async () => {
     if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
         !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
       showToast('Please fill in all required fields', 'warning');
@@ -604,6 +940,31 @@ const handleSubmit = async () => {
     if (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim()) {
       showToast('Please specify your medical condition', 'warning');
       return;
+    }
+
+    if (bookingEligibility && !bookingEligibility.canBook) {
+      showToast('🚫 ' + bookingEligibility.reason, 'error');
+      return;
+    }
+
+    const dailyLimits = bookingEligibility?.dailyLimits;
+    if (dailyLimits) {
+      const currentPriority = formData.priorityLevel;
+      
+      if (currentPriority === 'normal' && dailyLimits.normal >= 2) {
+        showToast('❌ Daily limit reached: You can only book 2 Normal appointments per day. Choose another date or priority.', 'error');
+        return;
+      }
+      
+      if (currentPriority === 'urgent' && dailyLimits.urgent >= 1) {
+        showToast('❌ Daily limit reached: You can only book 1 Urgent appointment per day. Choose another date or priority.', 'error');
+        return;
+      }
+      
+      if (currentPriority === 'emergency' && dailyLimits.emergency >= 1) {
+        showToast('❌ Daily limit reached: You can only book 1 Emergency appointment per day. Choose another date or priority.', 'error');
+        return;
+      }
     }
 
     const userEmail = auth.currentUser?.email;
@@ -619,10 +980,8 @@ const handleSubmit = async () => {
         ? formData.customCondition 
         : formData.medicalCondition;
 
-      // ⚡ PRE-FETCH: Get doctor data BEFORE transaction (cached from doctors state)
       const selectedDoctor = doctors.find(d => d.name === formData.doctor);
       
-      // ⚡ PRE-CALCULATE: Check doctor availability from cached data
       if (selectedDoctor) {
         const unavailableDates = selectedDoctor.unavailableDates || {};
         if (unavailableDates[formData.appointmentDate] === true) {
@@ -630,37 +989,41 @@ const handleSubmit = async () => {
         }
       }
       
-      // ⚡ PRE-CALCULATE: Get max slots from cached doctor data
       const maxSlotsPerDate = selectedDoctor?.maxSlotsPerDate || {};
       const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
       const globalMaxSlots = selectedDoctor?.maxSlots || 10;
       const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
 
-      // 🔒 OPTIMIZED TRANSACTION: Minimal reads, fast writes
+      // FIXED: Calculate chronological queue number BEFORE transaction
+      const calculatedQueueNumber = await calculateChronologicalQueueNumber(
+        formData.doctor,
+        formData.appointmentDate,
+        formData.timeSlot
+      );
+
       const appointmentData = await runTransaction(db, async (transaction) => {
-        // ⚡ Step 1: Only check slot lock (single read)
         const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
         const slotLockDoc = await transaction.get(slotLockRef);
-        
+
         if (slotLockDoc.exists()) {
+          const lockData = slotLockDoc.data();
+          console.log('🔒 Slot is locked:', lockData);
           throw new Error('SLOT_TAKEN');
         }
-        
-        // ⚡ Step 2: Get booking count from a counter document (single read instead of query)
+
         const counterRef = doc(db, 'booking_counters', `${formData.doctor}_${formData.appointmentDate}`);
         const counterDoc = await transaction.get(counterRef);
         const counterData = counterDoc.data();
         const currentCount = counterData?.count || 0;
-        
-        // Check capacity
+              
         if (currentCount >= maxSlots) {
+          console.log('📊 Doctor fully booked:', { currentCount, maxSlots });
           throw new Error('DOCTOR_FULLY_BOOKED');
         }
         
-        // Simple queue number: use timestamp-based for now, recalculate later if needed
-        const queueNumber = currentCount + 1;
+        // Use chronological queue number
+        const queueNumber = calculatedQueueNumber;
         
-        // ⚡ Step 4: Create appointment
         const appointment: Appointment = {
           fullName: formData.fullName,
           age: formData.age,
@@ -678,20 +1041,23 @@ const handleSubmit = async () => {
           createdAt: new Date().toISOString()
         };
 
-        const newAppointmentRef = doc(collection(db, 'appointments'));
-        
-        // ⚡ Step 5: Write all documents atomically
-        transaction.set(newAppointmentRef, appointment);
-        
+        // FIXED: Save ONLY to patient_appointments (patient booking)
+        const appointmentId = doc(collection(db, 'patient_appointments')).id;
+        const patientAppointmentRef = doc(db, 'patient_appointments', appointmentId);
+
+        transaction.set(patientAppointmentRef, appointment);
+
+        // Set slot lock
         transaction.set(slotLockRef, {
           doctor: formData.doctor,
           appointmentDate: formData.appointmentDate,
           timeSlot: formData.timeSlot,
-          appointmentId: newAppointmentRef.id,
-          bookedAt: new Date().toISOString()
+          appointmentId: appointmentId,
+          bookedAt: new Date().toISOString(),
+          bookedBy: userEmail
         });
-        
-        // ⚡ Update or create counter
+
+        // Update counter
         if (counterDoc.exists()) {
           transaction.update(counterRef, { count: currentCount + 1 });
         } else {
@@ -701,13 +1067,12 @@ const handleSubmit = async () => {
             count: 1 
           });
         }
-        
-        return { appointmentId: newAppointmentRef.id, appointment, queueNumber };
+
+        return { appointmentId: appointmentId, appointment, queueNumber };
       });
 
       console.log('✅ Appointment booked successfully:', appointmentData.appointmentId);
 
-      // ⚡ INSTANT UI UPDATE: Show success immediately
       setQueueNumber(appointmentData.queueNumber);
       showToast('🎉 Appointment booked successfully!', 'success');
 
@@ -715,13 +1080,11 @@ const handleSubmit = async () => {
         onBookingComplete();
       }
 
-      // ⚡ BACKGROUND TASKS: Run these after UI updates (non-blocking)
-      // Queue recalculation in background (don't await)
-      recalculateQueueNumbers(formData.appointmentDate).catch(err => 
+      // FIXED: Pass doctor parameter to recalculateQueueNumbers
+      recalculateQueueNumbers(formData.appointmentDate, formData.doctor).catch(err => 
         console.error('Background queue recalculation failed:', err)
       );
 
-      // Send email in background (don't await)
       fetch('/api/send-booking-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -745,7 +1108,7 @@ const handleSubmit = async () => {
       
       if (error instanceof Error) {
         if (error.message === 'SLOT_TAKEN') {
-          showToast('⚠️ This time slot was just booked by another user. Please refresh and choose another time.', 'warning');
+          showToast('⚠️ This time slot was just booked by another user. Please choose another time.', 'warning');
           if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
             generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
           }
@@ -757,6 +1120,7 @@ const handleSubmit = async () => {
             generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
           }
         } else {
+          console.error('Unexpected error:', error);
           showToast('Failed to book appointment. Please try again.', 'error');
         }
       } else {
@@ -785,7 +1149,8 @@ const handleSubmit = async () => {
     setAvailableTimeSlots([]);
     setHasAvailableSlots(true);
     setIsCheckingAvailability(false);
-    setIsDoctorUnavailable(false); 
+    setIsDoctorUnavailable(false);
+    setBookingEligibility(null);
     onClose();
   };
 
@@ -835,6 +1200,52 @@ const handleSubmit = async () => {
               </div>
             ) : (
               <div className="space-y-6">
+               {bookingEligibility && !bookingEligibility.canBook && (
+            <div className={`mb-6 p-4 border-2 rounded-lg ${
+              bookingEligibility.reason.includes('🚫') 
+                ? 'bg-red-100 border-red-500 shadow-lg' 
+                : 'bg-red-50 border-red-300'
+            }`}>
+              <div className="flex items-start gap-3">
+                <div className={`flex-shrink-0 ${
+                  bookingEligibility.reason.includes('🚫') 
+                    ? 'bg-red-500 p-2 rounded-full' 
+                    : ''
+                }`}>
+                  <AlertCircle className={`w-6 h-6 ${
+                    bookingEligibility.reason.includes('🚫') 
+                      ? 'text-white' 
+                      : 'text-red-600'
+                  } flex-shrink-0 mt-0.5`} />
+                </div>
+                <div className="flex-1">
+                  <h4 className={`text-lg font-bold mb-1 ${
+                    bookingEligibility.reason.includes('🚫') 
+                      ? 'text-red-900' 
+                      : 'text-red-800'
+                  }`}>
+                    {bookingEligibility.reason.includes('🚫') ? 'Account Restricted' : 'Booking Restricted'}
+                  </h4>
+                  <p className={`text-sm ${
+                    bookingEligibility.reason.includes('🚫') 
+                      ? 'text-red-800 font-medium' 
+                      : 'text-red-700'
+                  }`}>
+                    {bookingEligibility.reason}
+                  </p>
+                  {bookingEligibility.reason.includes('🚫') && (
+                    <div className="mt-3 p-3 bg-white rounded border border-red-300">
+                      <p className="text-xs text-gray-700">
+                        <strong>Note:</strong> All booking functions are disabled while your account is restricted. 
+                        This includes selecting time slots and submitting appointments.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
                 <div>
                   <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
                     Full Name <span className="text-red-500" aria-label="required">*</span>
@@ -892,7 +1303,6 @@ const handleSubmit = async () => {
                   </div>
                 </div>
 
-                {/* Enhanced Photo upload section with drag-and-drop and no file size limits */}
                 <div>
                   <label htmlFor="photo" className="block text-sm font-medium text-gray-700 mb-2">
                     Upload Photo (Optional)
@@ -905,7 +1315,6 @@ const handleSubmit = async () => {
                           alt="Profile preview"
                           className="w-32 h-32 rounded-lg object-cover border-2 border-blue-600"
                         />
-                        {/* X Remove Button */}
                         <button
                           type="button"
                           onClick={() => setFormData(prev => ({ ...prev, photo: '' }))}
@@ -1023,15 +1432,34 @@ const handleSubmit = async () => {
                     aria-required="true"
                     autoComplete="off"
                   >
-                    <option value="normal">Normal (1 hour slots)</option>
-                    <option value="urgent">Urgent (30 minute buffer slots)</option>
-                    <option value="emergency">Emergency (15 minute buffer slots)</option>
+                    <option value="normal">🟢 Normal (1 hour slots - 2 per day max)</option>
+                    <option value="urgent">🟡 Urgent (30 min buffer - 1 per day max)</option>
+                    <option value="emergency">🔴 Emergency (15 min buffer - 1 per day max)</option>
                   </select>
                 </div>
 
+                {formData.priorityLevel && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-blue-800">
+                      <Info className="w-4 h-4 flex-shrink-0" />
+                      <div>
+                        <span className="font-medium block">
+                          {formData.priorityLevel === 'emergency' && '🔴 Emergency: 15-minute buffer slots'}
+                          {formData.priorityLevel === 'urgent' && '🟡 Urgent: 30-minute buffer slots'}
+                          {formData.priorityLevel === 'normal' && '🟢 Normal: 1-hour regular slots'}
+                        </span>
+                        <span className="text-xs text-blue-700 font-semibold mt-1 block">
+                          Daily limit: {formData.priorityLevel === 'normal' ? '2' : '1'} {formData.priorityLevel} appointment{formData.priorityLevel === 'normal' ? 's' : ''} per day
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label htmlFor="doctor" className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Doctor <span className="text-red-500" aria-label="required">*</span>
+                    Select Doctor <span className="text-red-500" aria-label="required">*
+                    </span>
                   </label>
                   <select
                     id="doctor"
@@ -1070,13 +1498,11 @@ const handleSubmit = async () => {
                   />
                 </div>
 
-                {/* Time Slot Section */}
                 <div>
                   <label htmlFor="timeSlot" className="block text-sm font-medium text-gray-700 mb-2">
                     Select Time Slot <span className="text-red-500" aria-label="required">*</span>
                   </label>
                   
-                  {/* Warning at top for doctor unavailability or full booking */}
                   {formData.doctor && formData.appointmentDate && formData.priorityLevel && !isCheckingAvailability && (
                     (() => {
                       const availableSlotsCount = availableTimeSlots.filter(slot => 
@@ -1084,7 +1510,6 @@ const handleSubmit = async () => {
                       ).length;
                       const hasSlots = availableSlotsCount > 0;
 
-                      // Show warning at top if doctor is unavailable or fully booked
                       if (isDoctorUnavailable) {
                         return (
                           <div className="mb-4 text-center py-6 border-2 border-red-300 rounded-lg bg-red-50">
@@ -1194,7 +1619,6 @@ const handleSubmit = async () => {
                     })()
                   )}
 
-                  {/* Time Slot Selection Area */}
                   {formData.doctor && formData.appointmentDate && formData.priorityLevel ? (
                     (() => {
                       const isLoading = isCheckingAvailability;
@@ -1215,7 +1639,6 @@ const handleSubmit = async () => {
                         );
                       }
 
-                      // Don't show the inline warnings - they're now at the top
                       if (isDoctorUnavailable || (!hasAvailableSlots && !hasSlots)) {
                         return (
                           <div className="text-center py-8 border border-gray-200 rounded-lg bg-gray-50">
@@ -1226,75 +1649,83 @@ const handleSubmit = async () => {
 
                       if (availableTimeSlots.length > 0) {
                         return (
-                          <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
-                          {availableTimeSlots.map((slot) => {
-                            const isAvailable = slot.available && !slot.isBooked && !slot.isUnavailable;
-                            const isBooked = slot.isBooked;
-                            const isUnavailable = slot.isUnavailable && !slot.isBooked;
-                            
-                            let buttonClasses = 'px-3 py-3 rounded-lg text-sm font-medium transition border-2 ';
-                            let statusLabel = '';
-                            let statusLabelClasses = '';
-                            
-                            if (isBooked) {
-                              buttonClasses += 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed opacity-75';
-                              statusLabel = 'Booked';
-                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
-                            } else if (isUnavailable) {
-                              buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
-                              statusLabel = 'Unavailable';
-                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
-                            } else if (isAvailable) {
-                              // Apply priority-based colors for available slots
-                              if (slot.isBuffer && slot.bufferType === 'emergency') {
-                                buttonClasses += 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 cursor-pointer';
-                              } else if (slot.isBuffer && slot.bufferType === 'urgent') {
-                                buttonClasses += 'bg-yellow-50 text-yellow-700 border-yellow-300 hover:bg-yellow-100 cursor-pointer';
-                              } else {
-                                buttonClasses += 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 cursor-pointer';
-                              }
-                              statusLabel = 'Available';
-                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70';
-                            } else {
-                              buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
-                              statusLabel = 'Unavailable';
-                              statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
-                            }
-                            
-                            if (formData.timeSlot === slot.time && isAvailable) {
-                              buttonClasses += ' ring-2 ring-blue-500 ring-offset-2';
-                            }
-                            
-                            return (
-                              <button
-                                key={slot.time}
-                                type="button"
-                                onClick={() => {
-                                  if (isAvailable) {
-                                    setFormData(prev => ({ ...prev, timeSlot: slot.time }));
-                                  }
-                                }}
-                                disabled={!isAvailable}
-                                className={buttonClasses}
-                                aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
-                                aria-disabled={!isAvailable}
-                              >
-                                <div className="flex flex-col items-center">
-                                  <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
-                                  <span className={statusLabelClasses}>
-                                    {statusLabel}
-                                  </span>
-                                  {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && (
-                                    <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
-                                  )}
-                                  {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && (
-                                    <span className="text-xs mt-1 text-yellow-600 font-semibold">Urgent</span>
-                                  )}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
+                   <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Time slot selection">
+                  {availableTimeSlots.map((slot) => {
+                    // CRITICAL: Disable all slots if user is restricted
+                    const isUserRestricted = bookingEligibility && !bookingEligibility.canBook && 
+                      bookingEligibility.reason.includes('🚫');
+                    
+                    const isAvailable = !isUserRestricted && slot.available && !slot.isBooked && !slot.isUnavailable;
+                    const isBooked = slot.isBooked;
+                    const isUnavailable = slot.isUnavailable && !slot.isBooked;
+                    
+                    let buttonClasses = 'px-3 py-3 rounded-lg text-sm font-medium transition border-2 ';
+                    let statusLabel = '';
+                    let statusLabelClasses = '';
+                    
+                    // If user is restricted, show all slots as disabled
+                    if (isUserRestricted) {
+                      buttonClasses += 'bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed opacity-50';
+                      statusLabel = 'Restricted';
+                      statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
+                    } else if (isBooked) {
+                      buttonClasses += 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed opacity-75';
+                      statusLabel = 'Booked';
+                      statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold';
+                    } else if (isUnavailable) {
+                      buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
+                      statusLabel = 'Unavailable';
+                      statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                    } else if (isAvailable) {
+                      if (slot.isBuffer && slot.bufferType === 'emergency') {
+                        buttonClasses += 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 cursor-pointer';
+                      } else if (slot.isBuffer && slot.bufferType === 'urgent') {
+                        buttonClasses += 'bg-yellow-50 text-yellow-700 border-yellow-300 hover:bg-yellow-100 cursor-pointer';
+                      } else {
+                        buttonClasses += 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 cursor-pointer';
+                      }
+                      statusLabel = 'Available';
+                      statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-white bg-opacity-70';
+                    } else {
+                      buttonClasses += 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed opacity-60';
+                      statusLabel = 'Unavailable';
+                      statusLabelClasses = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600';
+                    }
+                    
+                    if (formData.timeSlot === slot.time && isAvailable && !isUserRestricted) {
+                      buttonClasses += ' ring-2 ring-blue-500 ring-offset-2';
+                    }
+                    
+                    return (
+                     <button
+                      key={slot.time}
+                      type="button"
+                      onClick={() => {
+                        if (isAvailable && !isUserRestricted) {
+                          setFormData(prev => ({ ...prev, timeSlot: slot.time }));
+                        }
+                      }}
+                      disabled={!isAvailable || !!isUserRestricted}
+                      className={buttonClasses}
+                      aria-pressed={formData.timeSlot === slot.time ? "true" : "false"}
+                      aria-disabled={!isAvailable || !!isUserRestricted}
+                    >
+                      <div className="flex flex-col items-center">
+                        <span className="font-semibold">{convertTo12Hour(slot.time)}</span>
+                        <span className={statusLabelClasses}>
+                          {statusLabel}
+                        </span>
+                        {slot.isBuffer && slot.bufferType === 'emergency' && isAvailable && !isUserRestricted && (
+                          <span className="text-xs mt-1 text-red-600 font-semibold">Emergency</span>
+                        )}
+                        {slot.isBuffer && slot.bufferType === 'urgent' && isAvailable && !isUserRestricted && (
+                          <span className="text-xs mt-1 text-yellow-600 font-semibold">Urgent</span>
+                        )}
+                      </div>
+                    </button>
+                    );
+                  })}
+                </div>
                         );
                       }
                       
@@ -1362,13 +1793,32 @@ const handleSubmit = async () => {
                     Cancel
                   </button>
                   <button
-                    type="button"
-                    onClick={handleSubmit}
-                    disabled={!formData.timeSlot || isSubmitting}
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-500 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    {isSubmitting ? 'Booking...' : 'Book Appointment'}
-                  </button>
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={
+                    !formData.timeSlot || 
+                    isSubmitting || 
+                    (bookingEligibility !== null && !bookingEligibility.canBook)
+                  }
+                  className={`flex-1 px-6 py-3 rounded-lg font-medium transition ${
+                    bookingEligibility && !bookingEligibility.canBook && bookingEligibility.reason.includes('🚫')
+                      ? 'bg-gray-400 text-gray-700 cursor-not-allowed opacity-50'
+                      : 'bg-blue-600 text-white hover:bg-blue-500 disabled:bg-gray-300 disabled:cursor-not-allowed'
+                  }`}
+                  title={
+                    bookingEligibility && !bookingEligibility.canBook && bookingEligibility.reason.includes('🚫')
+                      ? 'Your account is restricted from booking'
+                      : ''
+                  }
+                >
+                  {isSubmitting 
+                    ? 'Booking...' 
+                    : (bookingEligibility && !bookingEligibility.canBook && bookingEligibility.reason.includes('🚫')
+                        ? '🚫 Booking Disabled'
+                        : 'Book Appointment'
+                      )
+                  }
+                </button>
                 </div>
               </div>
             )}
@@ -1376,7 +1826,6 @@ const handleSubmit = async () => {
         </div>
       </div>
 
-      {/* Toast Notification positioned on the right side */}
       {toast && toast.show && (
         <div className="fixed top-4 right-4 z-[200] max-w-md w-full">
           <div className={`
@@ -1403,7 +1852,6 @@ const handleSubmit = async () => {
         </div>
       )}
 
-      {/* Fix autofill white background issue */}
       <style>{`
         input:-webkit-autofill,
         input:-webkit-autofill:hover,
@@ -1419,3 +1867,4 @@ const handleSubmit = async () => {
 };
 
 export default AppointmentModal;
+                    

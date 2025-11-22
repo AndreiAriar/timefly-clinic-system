@@ -1,6 +1,6 @@
 import { Calendar, Clock, Users, Activity, Sun, Cloud, Moon } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import DoctorCalendarModal from './DoctorCalendarModal';
 
@@ -87,7 +87,7 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments }: DoctorHomeProps) =
   }, []);
 
   useEffect(() => {
-    console.log('🔥 Setting up real-time listener for doctor stats...');
+    console.log('🔥 Setting up real-time listeners for doctor stats...');
 
     // Get today's date in Philippine Time (UTC+8)
     const phTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
@@ -135,155 +135,168 @@ const DoctorHome = ({ doctorName, onNavigateToAppointments }: DoctorHomeProps) =
       }
     };
 
-    let unsubscribe: (() => void) | undefined;
+    let unsubscribePatient: (() => void) | undefined;
+    let unsubscribeStaff: (() => void) | undefined;
 
-    const setupListener = async () => {
+    const setupListeners = async () => {
       const { doctorData, actualDoctorName } = await loadDoctorData();
       
-      // Setup real-time listener for appointments
-      const appointmentsRef = collection(db, 'appointments');
+      // Setup real-time listeners for both appointment collections
+      const patientAppointmentsRef = collection(db, 'patient_appointments');
+      const staffAppointmentsRef = collection(db, 'staff_appointments');
       
       // Try multiple doctor name variations
-      const appointmentsQuery = query(
-        appointmentsRef,
+      const patientQuery = query(
+        patientAppointmentsRef,
         where('doctor', '==', actualDoctorName),
         where('appointmentDate', '==', today)
       );
       
-      unsubscribe = onSnapshot(
-        appointmentsQuery,
-        async (snapshot) => {
-          console.log('📊 Raw snapshot size:', snapshot.docs.length);
-          
-          let appointments = snapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            } as Appointment))
-            .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
+      const staffQuery = query(
+        staffAppointmentsRef,
+        where('doctor', '==', actualDoctorName),
+        where('appointmentDate', '==', today)
+      );
 
-          console.log('📊 After filtering deleted:', appointments.length);
+      let allAppointments: Appointment[] = [];
 
-          // If no results and doctor name doesn't have "Dr.", try with "Dr." prefix
-          if (appointments.length === 0 && !actualDoctorName.startsWith('Dr.')) {
-            const nameWithDr = `Dr. ${actualDoctorName}`;
-            const altQuery = query(
-              appointmentsRef,
-              where('doctor', '==', nameWithDr),
-              where('appointmentDate', '==', today)
-            );
-            const altSnapshot = await getDocs(altQuery);
-            if (!altSnapshot.empty) {
-              appointments = altSnapshot.docs
-                .map(doc => ({
-                  id: doc.id,
-                  ...doc.data()
-                } as Appointment))
-                .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
-            }
-          }
-          
-          // If no results and doctor name has "Dr.", try without it
-          if (appointments.length === 0 && actualDoctorName.startsWith('Dr.')) {
-            const nameWithoutDr = actualDoctorName.replace(/^Dr\.\s*/i, '');
-            const altQuery = query(
-              appointmentsRef,
-              where('doctor', '==', nameWithoutDr),
-              where('appointmentDate', '==', today)
-            );
-            const altSnapshot = await getDocs(altQuery);
-            if (!altSnapshot.empty) {
-              appointments = altSnapshot.docs
-                .map(doc => ({
-                  id: doc.id,
-                  ...doc.data()
-                } as Appointment))
-                .filter(apt => !apt.deletedByStaff && !apt.deletedByPatient);
-            }
-          }
+      const updateStats = (appointments: Appointment[]) => {
+        // Calculate stats
+        const todayAppointments = appointments.filter(apt => 
+          apt.status !== 'cancelled' && apt.status !== 'missed'
+        ).length;
+        
+        const pendingQueue = appointments.filter(apt => 
+          apt.status === 'pending' || 
+          apt.status === 'scheduled' || 
+          apt.status === 'confirmed'
+        ).length;
+        
+        const completedToday = appointments.filter(apt => 
+          apt.status === 'completed'
+        ).length;
 
-          console.log('📊 Final appointments count:', appointments.length);
-
-          // Calculate stats
-          const todayAppointments = appointments.filter(apt => 
-            apt.status !== 'cancelled' && apt.status !== 'missed'
-          ).length;
+        // Calculate available slots
+        let availableSlots = 0;
+        
+        if (doctorData) {
+          const unavailableDates = doctorData.unavailableDates || {};
           
-          const pendingQueue = appointments.filter(apt => 
-            apt.status === 'pending' || 
-            apt.status === 'scheduled' || 
-            apt.status === 'confirmed'
-          ).length;
-          
-          const completedToday = appointments.filter(apt => 
-            apt.status === 'completed'
-          ).length;
-
-          // Calculate available slots
-          let availableSlots = 0;
-          
-          if (doctorData) {
-            const unavailableDates = doctorData.unavailableDates || {};
-            
-            if (unavailableDates[today]) {
-              console.log('⛔ Doctor unavailable today');
-              availableSlots = 0;
-            } else {
-              const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
-              const dateSpecificSlots = maxSlotsPerDate[today];
-              const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : (doctorData.maxSlots || 0);
-              
-              const unavailableTimeSlots = doctorData.availableSlots?.[today] || [];
-              const totalAvailableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
-              const bookedSlots = appointments.filter(apt => 
-                apt.status !== 'cancelled' && apt.status !== 'missed'
-              ).length;
-              availableSlots = Math.max(0, totalAvailableSlots - bookedSlots);
-              
-              console.log('📊 Slots calculation:', {
-                maxSlots,
-                unavailableTimeSlots: unavailableTimeSlots.length,
-                totalAvailableSlots,
-                bookedSlots,
-                remaining: availableSlots
-              });
-            }
+          if (unavailableDates[today]) {
+            console.log('⛔ Doctor unavailable today');
+            availableSlots = 0;
           } else {
+            const maxSlotsPerDate = doctorData.maxSlotsPerDate || {};
+            const dateSpecificSlots = maxSlotsPerDate[today];
+            const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : (doctorData.maxSlots || 0);
+            
+            const unavailableTimeSlots = doctorData.availableSlots?.[today] || [];
+            const totalAvailableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
             const bookedSlots = appointments.filter(apt => 
               apt.status !== 'cancelled' && apt.status !== 'missed'
             ).length;
-            availableSlots = Math.max(0, 10 - bookedSlots);
-            console.log('⚠️ Using fallback calculation');
+            availableSlots = Math.max(0, totalAvailableSlots - bookedSlots);
+            
+            console.log('📊 Slots calculation:', {
+              maxSlots,
+              unavailableTimeSlots: unavailableTimeSlots.length,
+              totalAvailableSlots,
+              bookedSlots,
+              remaining: availableSlots
+            });
           }
+        } else {
+          const bookedSlots = appointments.filter(apt => 
+            apt.status !== 'cancelled' && apt.status !== 'missed'
+          ).length;
+          availableSlots = Math.max(0, 10 - bookedSlots);
+          console.log('⚠️ Using fallback calculation');
+        }
 
-          setStats({
-            todayAppointments,
-            pendingQueue,
-            completedToday,
-            availableSlots
-          });
+        setStats({
+          todayAppointments,
+          pendingQueue,
+          completedToday,
+          availableSlots
+        });
 
-          console.log('✅ Real-time doctor stats update:', {
-            today: todayAppointments,
-            pending: pendingQueue,
-            completed: completedToday,
-            available: availableSlots
-          });
+        console.log('✅ Real-time doctor stats update:', {
+          today: todayAppointments,
+          pending: pendingQueue,
+          completed: completedToday,
+          available: availableSlots
+        });
+      };
+
+          const handleAppointmentsUpdate = (snapshot: QuerySnapshot<DocumentData>, source: string) => {
+        const newAppointments = snapshot.docs
+          .map((doc) => ({
+            id: `${source}_${doc.id}`,
+            originalId: doc.id, // Keep original ID
+            ...doc.data()
+          } as Appointment & { originalId: string }))
+          .filter((apt: Appointment) => !apt.deletedByStaff && !apt.deletedByPatient);
+
+        console.log(`📊 ${source} appointments after filtering:`, newAppointments.length);
+
+        // Update the combined appointments array by filtering out old appointments from this source
+        allAppointments = allAppointments.filter(apt => !apt.id.startsWith(`${source}_`));
+        allAppointments = [...allAppointments, ...newAppointments];
+
+        // Deduplicate based on appointment details
+        const uniqueAppointments = allAppointments.reduce((acc, current) => {
+          const key = `${current.appointmentDate}_${current.timeSlot}_${current.fullName}_${current.doctor}`;
+          
+          if (!acc.has(key)) {
+            acc.set(key, current);
+          } else {
+            // Prefer patient_appointments over staff_appointments
+            const existing = acc.get(key);
+            if (existing && current.id.startsWith('patient_')) {
+              acc.set(key, current);
+            }
+          }
+          
+          return acc;
+        }, new Map<string, Appointment>());
+
+        allAppointments = Array.from(uniqueAppointments.values());
+
+        console.log('📊 Combined Appointments (after deduplication):', allAppointments.length);
+        updateStats(allAppointments);
+      };
+      // Subscribe to patient appointments
+      unsubscribePatient = onSnapshot(
+        patientQuery,
+        (snapshot) => {
+          console.log('📊 Patient appointments update received');
+          handleAppointmentsUpdate(snapshot, 'patient');
         },
         (error) => {
-          console.error('❌ Error in doctor stats listener:', error);
+          console.error('❌ Error in patient appointments listener:', error);
+        }
+      );
+
+      // Subscribe to staff appointments
+      unsubscribeStaff = onSnapshot(
+        staffQuery,
+        (snapshot) => {
+          console.log('📊 Staff appointments update received');
+          handleAppointmentsUpdate(snapshot, 'staff');
+        },
+        (error) => {
+          console.error('❌ Error in staff appointments listener:', error);
         }
       );
     };
 
-    setupListener();
+    setupListeners();
 
     // Cleanup function
     return () => {
-      console.log('🔌 Cleaning up doctor stats listener');
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      console.log('🔌 Cleaning up doctor stats listeners');
+      if (unsubscribePatient) unsubscribePatient();
+      if (unsubscribeStaff) unsubscribeStaff();
     };
   }, [doctorName]);
 

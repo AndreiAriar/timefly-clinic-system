@@ -1,6 +1,6 @@
 import { X, Save, Clock, User, Calendar, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, doc, updateDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { toast } from 'react-toastify';
 
@@ -25,7 +25,8 @@ interface Appointment {
   appointmentDate: string;
   status: string;
   doctor: string;
-  // Add other appointment properties as needed
+  timeSlot: string;
+  source?: string;
 }
 
 interface ManageDoctorAvailabilityProps {
@@ -43,7 +44,7 @@ interface SelectedDateInfo {
 
 // ============= ManageDoctorAvailability Component =============
 const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoctors }: ManageDoctorAvailabilityProps) => {
-  const [maxSlots, setMaxSlots] = useState<number | string>(doctor.maxSlots || 10);
+  const [maxSlots, setMaxSlots] = useState<number | string>(doctor.maxSlotsPerDate?.[date] ?? doctor.maxSlots ?? 10);
   const [isAvailableForDate, setIsAvailableForDate] = useState(true);
   const [unavailableSlots, setUnavailableSlots] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +77,10 @@ const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoc
     
     // Load unavailable slots for this date (inverted logic)
     setUnavailableSlots(doctor.availableSlots?.[date] || []);
+    
+    // Load date-specific max slots or fall back to global
+    const dateSpecificSlots = doctor.maxSlotsPerDate?.[date];
+    setMaxSlots(dateSpecificSlots !== undefined ? dateSpecificSlots : (doctor.maxSlots || 10));
   }, [date, doctor]);
 
   const toggleTimeSlot = (timeSlot: string): void => {
@@ -90,60 +95,59 @@ const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoc
     });
   };
 
-const handleSave = async (): Promise<void> => {
-  // Convert maxSlots to number for comparison
-  const maxSlotsNumber = typeof maxSlots === 'string' ? parseInt(maxSlots) || 0 : maxSlots;
-  
-if (maxSlotsNumber < 1) {
-  toast.error('Please enter a valid number of slots (minimum 1)');
-  return;
-}
-  setIsLoading(true);
-  try {
-    // Update doctor in Firestore
-    const doctorRef = doc(db, 'doctors', doctor.id);
+  const handleSave = async (): Promise<void> => {
+    // Convert maxSlots to number for comparison
+    const maxSlotsNumber = typeof maxSlots === 'string' ? parseInt(maxSlots) || 0 : maxSlots;
     
-    // ✅ Handle unavailable dates
-    const unavailableDates = { ...doctor.unavailableDates };
-    if (!isAvailableForDate) {
-      unavailableDates[date] = true;
-    } else {
-      delete unavailableDates[date];
+    if (maxSlotsNumber < 1) {
+      toast.error('Please enter a valid number of slots (minimum 1)');
+      return;
     }
+    setIsLoading(true);
+    try {
+      // Update doctor in Firestore
+      const doctorRef = doc(db, 'doctors', doctor.id);
+      
+      // ✅ Handle unavailable dates
+      const unavailableDates = { ...doctor.unavailableDates };
+      if (!isAvailableForDate) {
+        unavailableDates[date] = true;
+      } else {
+        delete unavailableDates[date];
+      }
 
-    // ✅ Handle unavailable time slots
-    const availableSlots = { ...doctor.availableSlots };
-    availableSlots[date] = unavailableSlots;
+      // ✅ Handle unavailable time slots
+      const availableSlots = { ...doctor.availableSlots };
+      availableSlots[date] = unavailableSlots;
 
-    // ✅ FIX: Store per-date max slots properly
-    const maxSlotsPerDate = { ...(doctor.maxSlotsPerDate || {}) };
-    maxSlotsPerDate[date] = maxSlotsNumber;
+      // ✅ FIX: Store per-date max slots properly
+      const maxSlotsPerDate = { ...(doctor.maxSlotsPerDate || {}) };
+      maxSlotsPerDate[date] = maxSlotsNumber;
 
-    // ✅ Update only per-date configuration (does NOT affect global maxSlots)
-    await updateDoc(doctorRef, {
-      maxSlotsPerDate,  // ✅ Per-date max slots
-      unavailableDates,
-      availableSlots,
-      updatedAt: new Date().toISOString()
-    });
+      // ✅ Update only per-date configuration (does NOT affect global maxSlots)
+      await updateDoc(doctorRef, {
+        maxSlotsPerDate,  // ✅ Per-date max slots
+        unavailableDates,
+        availableSlots,
+        updatedAt: new Date().toISOString()
+      });
 
-   toast.success(`Doctor availability updated successfully for ${formatDate(date)}`, {
-      autoClose: 3000,
-      position: "top-right"
-    });
-    onUpdate();
-    onClose();
-  } catch (error) {
-  console.error('Error updating doctor availability:', error);
-  toast.error('Failed to update doctor availability');
-  }
-  finally {
-    setIsLoading(false);
-  }
-};
+      toast.success(`Doctor availability updated successfully for ${formatDate(date)}`, {
+        autoClose: 3000,
+        position: "top-right"
+      });
+      onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error updating doctor availability:', error);
+      toast.error('Failed to update doctor availability');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const formatDate = (dateString: string): string => {
-    const dateObj = new Date(dateString);
+    const dateObj = new Date(dateString + 'T00:00:00');
     return dateObj.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -171,7 +175,7 @@ if (maxSlotsNumber < 1) {
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white hover:bg-opacity-10 rounded-lg  text-white hover:text-gray-200"
+            className="p-2 hover:bg-white hover:bg-opacity-10 rounded-lg text-white hover:text-gray-200"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
@@ -219,6 +223,7 @@ if (maxSlotsNumber < 1) {
               </div>
             </div>
           </div>
+
           {/* Availability Controls */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Max Slots Input */}
@@ -240,6 +245,7 @@ if (maxSlotsNumber < 1) {
                 Total number of appointment slots available for this day
               </p>
             </div>
+
             {/* Availability Toggle */}
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
               <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -365,46 +371,122 @@ const CalendarTab = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load doctors and appointments from Firestore
+  // Helper function to deduplicate appointments by timeSlot + appointmentDate + doctor
+  const deduplicateAppointments = (appointmentsList: Appointment[]): Appointment[] => {
+    const uniqueMap = new Map<string, Appointment>();
+    
+    appointmentsList.forEach(apt => {
+      // Create a unique key based on doctor, date, and timeSlot
+      const key = `${apt.doctor}_${apt.appointmentDate}_${apt.timeSlot}`;
+      
+      // Only add if not already in map (first one wins, or prefer patient_appointments)
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, apt);
+      } else {
+        // If duplicate exists, prefer the one from patient_appointments
+        const existing = uniqueMap.get(key);
+        if (existing?.source === 'staff' && apt.source === 'patient') {
+          uniqueMap.set(key, apt);
+        }
+      }
+    });
+    
+    const deduplicated = Array.from(uniqueMap.values());
+    console.log(`🔄 Deduplicated: ${appointmentsList.length} -> ${deduplicated.length} appointments`);
+    return deduplicated;
+  };
+
+  // Set up real-time listeners for doctors and appointments
   useEffect(() => {
-    const loadData = async (): Promise<void> => {
-      try {
-        setIsLoading(true);
-        
-        // Load doctors
-        const doctorsRef = collection(db, 'doctors');
-        const doctorsSnapshot = await getDocs(doctorsRef);
-        const doctorsData = doctorsSnapshot.docs.map(doc => ({
+    setIsLoading(true);
+    
+    let unsubscribeDoctors: Unsubscribe | null = null;
+    let unsubscribePatientAppointments: Unsubscribe | null = null;
+    let unsubscribeStaffAppointments: Unsubscribe | null = null;
+    
+    // Store appointments from each source separately for merging
+    let patientAppointmentsCache: Appointment[] = [];
+    let staffAppointmentsCache: Appointment[] = [];
+
+    const setupListeners = () => {
+      // Real-time listener for doctors
+      const doctorsRef = collection(db, 'doctors');
+      unsubscribeDoctors = onSnapshot(doctorsRef, (snapshot) => {
+        const doctorsData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         })) as Doctor[];
+        
+        console.log('🔄 Doctors updated:', doctorsData.length);
         setDoctors(doctorsData);
-        
-        // Load appointments
-        const appointmentsRef = collection(db, 'appointments');
-        const appointmentsSnapshot = await getDocs(appointmentsRef);
-        const appointmentsData = appointmentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Appointment[];
-        setAppointments(appointmentsData);
-        
-      } catch (error) {
-        console.error('Error loading data:', error);
-      } finally {
         setIsLoading(false);
-      }
+      }, (error) => {
+        console.error('❌ Error listening to doctors:', error);
+        setIsLoading(false);
+      });
+
+      // Real-time listener for patient_appointments
+      const patientAppointmentsRef = collection(db, 'patient_appointments');
+      unsubscribePatientAppointments = onSnapshot(patientAppointmentsRef, (snapshot) => {
+        patientAppointmentsCache = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          source: 'patient'
+        })) as Appointment[];
+        
+        console.log('🔄 Patient appointments updated:', patientAppointmentsCache.length);
+        
+        // Merge and deduplicate
+        const combined = [...patientAppointmentsCache, ...staffAppointmentsCache];
+        const deduplicated = deduplicateAppointments(combined);
+        setAppointments(deduplicated);
+      }, (error) => {
+        console.error('❌ Error listening to patient appointments:', error);
+      });
+
+      // Real-time listener for staff_appointments
+      const staffAppointmentsRef = collection(db, 'staff_appointments');
+      unsubscribeStaffAppointments = onSnapshot(staffAppointmentsRef, (snapshot) => {
+        staffAppointmentsCache = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          source: 'staff'
+        })) as Appointment[];
+        
+        console.log('🔄 Staff appointments updated:', staffAppointmentsCache.length);
+        
+        // Merge and deduplicate
+        const combined = [...patientAppointmentsCache, ...staffAppointmentsCache];
+        const deduplicated = deduplicateAppointments(combined);
+        setAppointments(deduplicated);
+      }, (error) => {
+        console.error('❌ Error listening to staff appointments:', error);
+      });
     };
 
-    loadData();
+    setupListeners();
+
+    // Cleanup function
+    return () => {
+      console.log('🧹 Cleaning up Firebase listeners...');
+      if (unsubscribeDoctors) unsubscribeDoctors();
+      if (unsubscribePatientAppointments) unsubscribePatientAppointments();
+      if (unsubscribeStaffAppointments) unsubscribeStaffAppointments();
+    };
   }, []);
 
+  // Count booked slots for a specific date (deduplicated)
   const getBookedSlotsForDate = (date: string): number => {
-    return appointments.filter(
-      (apt: Appointment) => apt.appointmentDate === date && apt.status !== 'cancelled'
+    const booked = appointments.filter(
+      (apt: Appointment) => apt.appointmentDate === date && 
+                           apt.status !== 'cancelled' &&
+                           apt.status !== 'completed' &&
+                           apt.status !== 'no-show'
     ).length;
+    return booked;
   };
 
+  // Calculate total available slots for a date across all active doctors
   const getTotalSlotsForDate = (date: string): number => {
     console.log(`\n📅 === Calculating total slots for ${date} ===`);
     
@@ -414,14 +496,14 @@ const CalendarTab = () => {
       
       // Skip inactive doctors
       if (!doctor.isActive) {
-        console.log(`   ⏭️  Skipped (inactive)`);
+        console.log(`   ⭕ Skipped (inactive)`);
         return total;
       }
       
       // Skip if doctor is marked unavailable for this specific date
       const unavailableDates = doctor.unavailableDates || {};
       if (unavailableDates[date]) {
-        console.log(`   ⏭️  Skipped (unavailable on ${date})`);
+        console.log(`   ⭕ Skipped (unavailable on ${date})`);
         return total;
       }
       
@@ -507,48 +589,8 @@ const CalendarTab = () => {
   };
 
   const handleAvailabilityUpdate = async (): Promise<void> => {
-    console.log('🔄 Reloading doctors after availability update...');
-    
-    try {
-      // Reload doctors data
-      const doctorsRef = collection(db, 'doctors');
-      const querySnapshot = await getDocs(doctorsRef);
-      
-      const doctorsData = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        console.log(`📋 Doctor ${data.name} (${doc.id}):`);
-        console.log('  - maxSlots (global):', data.maxSlots);
-        console.log('  - maxSlotsPerDate:', data.maxSlotsPerDate);
-        console.log('  - availableSlots:', data.availableSlots);
-        console.log('  - unavailableDates:', data.unavailableDates);
-        console.log('  - isActive:', data.isActive);
-        
-        return {
-          id: doc.id,
-          name: data.name,
-          specialty: data.specialty,
-          email: data.email,
-          phone: data.phone,
-          photo: data.photo,
-          isActive: data.isActive,
-          maxSlots: data.maxSlots,
-          maxSlotsPerDate: data.maxSlotsPerDate || {},
-          availableSlots: data.availableSlots || {},
-          unavailableDates: data.unavailableDates || {},
-          createdAt: data.createdAt
-        };
-      }) as Doctor[];
-      
-      console.log(`✅ Loaded ${doctorsData.length} doctors`);
-      setDoctors(doctorsData);
-      
-      // Force a re-render by updating state
-      setCurrentMonth(new Date(currentMonth));
-      
-    } catch (error) {
-      console.error('❌ Error reloading doctors:', error);
-      toast.error('Failed to reload doctor data');
-    }
+    console.log('🔄 Doctor availability updated - real-time listeners will handle refresh');
+    // No need to manually reload - real-time listeners will automatically update
   };
 
   const navigateMonth = (direction: 'prev' | 'next'): void => {
@@ -568,19 +610,32 @@ const CalendarTab = () => {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
- if (isLoading) {
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading calendar...</p>
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading calendar...</p>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-return (
-  <div className="min-h-screen bg-gray-50 py-8">
+  // Calculate summary stats
+  const activeAppointmentsCount = appointments.filter(apt => 
+    apt.status === 'pending' || apt.status === 'confirmed' || apt.status === 'scheduled'
+  ).length;
+  
+  const completedAppointmentsCount = appointments.filter(apt => apt.status === 'completed').length;
+  
+  const blockedDatesCount = doctors.reduce((count, doctor) => {
+    return count + Object.keys(doctor.unavailableDates || {}).filter(date => doctor.unavailableDates?.[date]).length;
+  }, 0);
+
+  const totalDefaultSlots = doctors.filter(d => d.isActive).reduce((sum, d) => sum + (d.maxSlots || 0), 0);
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
@@ -592,13 +647,33 @@ return (
           </div>
         </div>
 
+        {/* Summary Stats - TOP */}
+        <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
+            <p className="text-2xl font-bold text-blue-700">{totalDefaultSlots}</p>
+            <p className="text-sm text-blue-600">Default Daily Slots</p>
+          </div>
+          <div className="bg-green-100 rounded-lg p-4 text-center border border-green-200">
+            <p className="text-2xl font-bold text-green-700">{activeAppointmentsCount}</p>
+            <p className="text-sm text-green-600">Active Appointments</p>
+          </div>
+          <div className="bg-gray-100 rounded-lg p-4 text-center border border-gray-300">
+            <p className="text-2xl font-bold text-gray-700">{blockedDatesCount}</p>
+            <p className="text-sm text-gray-600">Blocked Dates</p>
+          </div>
+          <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
+            <p className="text-2xl font-bold text-green-600">{completedAppointmentsCount}</p>
+            <p className="text-sm text-green-600">Completed</p>
+          </div>
+        </div>
+
         {/* Calendar View */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex items-center justify-center mb-6">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigateMonth('prev')}
-               className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-2 hover:bg-gray-100 rounded-lg"
                 aria-label="Previous month"
               >
                 <ChevronLeft className="w-5 h-5 text-gray-600" />
@@ -610,7 +685,7 @@ return (
               
               <button
                 onClick={() => navigateMonth('next')}
-                className="p-2 hover:bg-gray-100 rounded-lg "
+                className="p-2 hover:bg-gray-100 rounded-lg"
                 aria-label="Next month"
               >
                 <ChevronRight className="w-5 h-5 text-gray-600" />
@@ -637,13 +712,14 @@ return (
             {generateCalendarDays().map((date) => {
               const bookedSlots = getBookedSlotsForDate(date);
               const totalSlots = getTotalSlotsForDate(date);
+              const remainingSlots = Math.max(0, totalSlots - bookedSlots);
               const isToday = date === new Date().toISOString().split('T')[0];
               const isPast = new Date(date) < new Date(new Date().toISOString().split('T')[0]);
 
               return (
                 <div
                   key={date}
-                  className={`p-1.5 rounded-lg border cursor-pointer min-h-[60px] flex-col ${
+                  className={`p-1.5 rounded-lg border cursor-pointer min-h-[70px] flex flex-col ${
                     isToday
                       ? 'border-indigo-500 bg-indigo-50'
                       : isPast
@@ -651,23 +727,32 @@ return (
                       : 'border-gray-200 bg-white hover:border-indigo-300 hover:shadow-sm'
                   }`}
                   onClick={() => handleDateClick(date)}
->
+                >
                   <div className="flex flex-col items-center justify-between flex-1">
                     <span className={`text-xs font-medium ${
                       isToday ? 'text-indigo-700' : isPast ? 'text-gray-400' : 'text-gray-700'
                     }`}>
-                      {new Date(date).getDate()}
+                      {new Date(date + 'T00:00:00').getDate()}
                     </span>
                     {!isPast && (
-                      <span className={`text-[10px] px-1 py-0.5 rounded-full ${
-                        bookedSlots === totalSlots
-                          ? 'bg-red-100 text-red-800'
-                          : bookedSlots > 0
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {bookedSlots}/{totalSlots}
-                      </span>
+                      <>
+                        <span className={`text-[10px] px-1 py-0.5 rounded-full ${
+                          totalSlots === 0
+                            ? 'bg-gray-200 text-gray-600'
+                            : bookedSlots >= totalSlots
+                            ? 'bg-red-100 text-red-800'
+                            : bookedSlots > 0
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {bookedSlots}/{totalSlots}
+                        </span>
+                        {totalSlots > 0 && remainingSlots > 0 && (
+                          <span className="text-[9px] text-gray-500">
+                            {remainingSlots} left
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -695,7 +780,7 @@ return (
               <div>
                 <h2 className="text-xl font-bold text-white">Select Doctor</h2>
                 <p className="text-sm text-indigo-100 mt-1">
-                  Choose a doctor to manage availability for {new Date(selectedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  Choose a doctor to manage availability for {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </p>
               </div>
               <button
@@ -709,34 +794,66 @@ return (
             
             <div className="p-6 max-h-[60vh] overflow-y-auto">
               <div className="grid gap-4">
-                {doctors.map((doctor) => (
-                  <button
-                    key={doctor.id}
-                    onClick={() => handleDoctorSelect(doctor)}
-                    className="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50  text-left w-full"
-                  >
-                    {doctor.photo ? (
-                      <img
-                        src={doctor.photo}
-                        alt={`Dr. ${doctor.name}`}
-                        className="w-16 h-16 rounded-full object-cover border-2 border-indigo-200"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center border-2 border-indigo-200">
-                        <User className="w-8 h-8 text-indigo-600" />
+                {doctors.filter(d => d.isActive).map((doctor) => {
+                  // Show doctor-specific info for selected date
+                  const unavailableDates = doctor.unavailableDates || {};
+                  const isUnavailable = unavailableDates[selectedDate] === true;
+                  const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
+                  const dateSlots = maxSlotsPerDate[selectedDate] ?? doctor.maxSlots ?? 0;
+                  const unavailableTimeSlots = doctor.availableSlots?.[selectedDate] || [];
+                  const availableSlots = Math.max(0, dateSlots - unavailableTimeSlots.length);
+                  
+                  return (
+                    <button
+                      key={doctor.id}
+                      onClick={() => handleDoctorSelect(doctor)}
+                      className={`flex items-center gap-4 p-4 border-2 rounded-lg text-left w-full ${
+                        isUnavailable 
+                          ? 'border-red-200 bg-red-50 hover:border-red-300' 
+                          : 'border-gray-200 hover:border-indigo-500 hover:bg-indigo-50'
+                      }`}
+                    >
+                      {doctor.photo ? (
+                        <img
+                          src={doctor.photo}
+                          alt={`Dr. ${doctor.name}`}
+                          className="w-16 h-16 rounded-full object-cover border-2 border-indigo-200"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center border-2 border-indigo-200">
+                          <User className="w-8 h-8 text-indigo-600" />
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-gray-900">Dr. {doctor.name}</h3>
+                        <p className="text-sm text-gray-600">{doctor.specialty}</p>
+                        <div className="flex items-center gap-4 mt-1">
+                          <span className="text-xs text-gray-500">{doctor.email}</span>
+                          <span className="text-xs text-gray-500">{doctor.phone}</span>
+                        </div>
+                        {/* Status for selected date */}
+                        <div className="mt-2">
+                          {isUnavailable ? (
+                            <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">
+                              Unavailable on this date
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                              {availableSlots} slots available
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900">Dr. {doctor.name}</h3>
-                      <p className="text-sm text-gray-600">{doctor.specialty}</p>
-                      <div className="flex items-center gap-4 mt-1">
-                        <span className="text-xs text-gray-500">{doctor.email}</span>
-                        <span className="text-xs text-gray-500">{doctor.phone}</span>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                  </button>
-                ))}
+                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                    </button>
+                  );
+                })}
+                
+                {doctors.filter(d => d.isActive).length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    No active doctors found. Please activate doctors first.
+                  </div>
+                )}
               </div>
             </div>
           </div>

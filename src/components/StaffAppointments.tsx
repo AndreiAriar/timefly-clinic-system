@@ -1,6 +1,7 @@
+
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown, Mail } from 'lucide-react';
-import { collection, query, getDocs, updateDoc, doc, orderBy, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, getDocs, updateDoc, doc, orderBy, where, onSnapshot, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import StaffViewAppointments from './StaffViewAppointments';
 import RescheduleModal from './RescheduleModal';
@@ -60,98 +61,90 @@ const StaffAppointments = () => {
     setToast({ message, type, isVisible: true });
   };
 
-  useEffect(() => {
-    console.log('🔥 Setting up real-time listeners for staff...');
-    
-    // Get current user's email
-    const userEmail = auth.currentUser?.email;
-    
-    if (!userEmail) {
-      console.error('No user email found');
-      setIsLoading(false);
-      return;
-    }
-
-    let unsubscribeAppointments: (() => void) | undefined;
-
-    // Load user role and setup appointments listener
-    const setupListeners = async () => {
-      try {
-        // Get user role from Firestore
-        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-        const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-        const appointmentsRef = collection(db, 'appointments');
-        let appointmentsQuery;
-        
-        // If staff or doctor, show all appointments
-        if (userRole === 'staff' || userRole === 'doctor') {
-          appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
-        } else {
-          // If patient, show only their appointments
-          appointmentsQuery = query(
-            appointmentsRef, 
-            where('email', '==', userEmail),
-            orderBy('createdAt', 'desc')
-          );
-        }
-        
-        // Real-time listener for appointments
-        unsubscribeAppointments = onSnapshot(
-          appointmentsQuery,
-          (snapshot) => {
-            // Filter out appointments deleted by staff
-            const appointmentsData = snapshot.docs
-              .map(doc => ({
-                id: doc.id,
-                ...doc.data()
-              } as Appointment))
-              .filter(apt => !apt.deletedByStaff);
-            
-            console.log('📊 Real-time update - Staff Appointments:', appointmentsData.length);
-            setAppointments(appointmentsData);
-            setIsLoading(false);
-          },
-          (error) => {
-            console.error('❌ Error in appointments listener:', error);
-            showToast('Failed to load appointments. Please try again.', 'error');
-            setIsLoading(false);
-          }
-        );
-      } catch (error) {
-        console.error('Error setting up listeners:', error);
-        showToast('Failed to load appointments. Please try again.', 'error');
+    useEffect(() => {
+      console.log('🔥 Setting up real-time listeners for staff...');
+      
+      const userEmail = auth.currentUser?.email;
+      
+      if (!userEmail) {
+        console.error('No user email found');
         setIsLoading(false);
+        return;
       }
-    };
 
-    setupListeners();
+      let unsubscribeAppointments: (() => void) | undefined;
 
-    // Load doctors
-    const loadDoctors = async () => {
-      try {
-        const doctorsRef = collection(db, 'doctors');
-        const q = query(doctorsRef, where('isActive', '==', true));
-        const querySnapshot = await getDocs(q);
-        
-        const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
-        setDoctors(doctorsData);
-      } catch (error) {
-        console.error('Error loading doctors:', error);
-        showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-      }
-    };
+      const setupListeners = async () => {
+        try {
+          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
 
-    loadDoctors();
+          const appointmentsRef = collection(db, 'staff_appointments');
+          let appointmentsQuery;
+          
+          if (userRole === 'staff' || userRole === 'doctor') {
+            appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
+          } else {
+            appointmentsQuery = query(
+              appointmentsRef, 
+              where('email', '==', userEmail),
+              orderBy('createdAt', 'desc')
+            );
+          }
+          
+          unsubscribeAppointments = onSnapshot(
+            appointmentsQuery,
+            (snapshot) => {
+              // UPDATED: Show all appointments but allow filtering in the UI
+              // Staff can see all statuses including cancelled, completed, missed
+              const appointmentsData = snapshot.docs
+                .map(doc => ({
+                  id: doc.id,
+                  ...doc.data()
+                } as Appointment));
+              
+              console.log('📊 Real-time update - Staff Appointments (all):', appointmentsData.length);
+              setAppointments(appointmentsData);
+              setIsLoading(false);
+            },
+            (error) => {
+              console.error('❌ Error in appointments listener:', error);
+              showToast('Failed to load appointments. Please try again.', 'error');
+              setIsLoading(false);
+            }
+          );
+        } catch (error) {
+          console.error('Error setting up listeners:', error);
+          showToast('Failed to load appointments. Please try again.', 'error');
+          setIsLoading(false);
+        }
+      };
 
-    // Cleanup function
-    return () => {
-      console.log('🔌 Cleaning up staff appointments listener');
-      if (unsubscribeAppointments) {
-        unsubscribeAppointments();
-      }
-    };
-  }, []);
+      setupListeners();
+
+      const loadDoctors = async () => {
+        try {
+          const doctorsRef = collection(db, 'doctors');
+          const q = query(doctorsRef, where('isActive', '==', true));
+          const querySnapshot = await getDocs(q);
+          
+          const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
+          setDoctors(doctorsData);
+        } catch {
+          console.error('Error loading doctors:');
+          showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+        }
+      };
+
+      loadDoctors();
+
+      return () => {
+        console.log('🔌 Cleaning up staff appointments listener');
+        if (unsubscribeAppointments) {
+          unsubscribeAppointments();
+        }
+      };
+    }, []);
 
   useEffect(() => {
     let filtered = [...appointments];
@@ -241,145 +234,225 @@ const StaffAppointments = () => {
     setShowRescheduleModal(true);
   };
 
-  const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
-    if (!selectedAppointment) return;
+const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
+  if (!selectedAppointment) return;
 
+  try {
+    // Update both staff and patient collections
+    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+    
+    const updateData = {
+      appointmentDate: updatedData.appointmentDate,
+      timeSlot: updatedData.timeSlot,
+      status: 'rescheduled',
+      rescheduledAt: new Date().toISOString()
+    };
+
+    await updateDoc(staffAppointmentRef, updateData);
+    await updateDoc(patientAppointmentRef, updateData);
+
+    console.log('✅ Firebase updated for reschedule');
+
+    // FREE THE OLD TIME SLOT: Delete the old slot lock
+    const oldSlotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
     try {
-      // First update Firebase
-      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-      await updateDoc(appointmentRef, {
+      await deleteDoc(oldSlotLockRef);
+      console.log('✅ Old slot lock removed - old time slot is now available');
+    } catch {
+      console.log('ℹ️ No old slot lock found or already deleted');
+    }
+
+    // CREATE NEW SLOT LOCK for the new time
+    const newSlotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${updatedData.appointmentDate}_${updatedData.timeSlot}`);
+    try {
+      const { setDoc } = await import('firebase/firestore');
+      await setDoc(newSlotLockRef, {
+        doctor: selectedAppointment.doctor,
         appointmentDate: updatedData.appointmentDate,
         timeSlot: updatedData.timeSlot,
-        status: 'rescheduled',
-        rescheduledAt: new Date().toISOString()
-      });
-
-      console.log('✅ Firebase updated for reschedule');
-
-      // Then send email notification
-      const response = await fetch('/api/reschedule-appointment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          appointmentId: selectedAppointment.id,
-          appointmentDate: updatedData.appointmentDate,
-          timeSlot: updatedData.timeSlot,
-          patientEmail: selectedAppointment.email,
-          patientName: selectedAppointment.fullName,
-          doctor: selectedAppointment.doctor,
-          queueNumber: selectedAppointment.queueNumber,
-          oldDate: selectedAppointment.appointmentDate,
-          oldTimeSlot: selectedAppointment.timeSlot,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to send reschedule email');
-      }
-
-      // Real-time listener will auto-update appointments
-      setShowRescheduleModal(false);
-      setSelectedAppointment(null);
-      showToast('Appointment rescheduled successfully! Email notification sent.', 'success');
-    } catch (error) {
-      console.error('Error rescheduling appointment:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
-    }
-  };
-
-  const handleCancel = (appointment: Appointment) => {
-    setSelectedAppointment(appointment);
-    setShowStaffCancelModal(true);
-  };
-
-  const confirmCancel = async (reason: string) => {
-    if (!selectedAppointment) return;
-
-    try {
-      // First update Firebase
-      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-      await updateDoc(appointmentRef, {
-        status: 'cancelled',
-        cancelReason: reason,
-        cancelledAt: new Date().toISOString()
-      });
-
-      console.log('✅ Firebase updated for cancellation');
-
-      // Then send email notification
-      const response = await fetch('/api/cancel-appointment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          appointmentId: selectedAppointment.id,
-          cancelReason: reason,
-          patientEmail: selectedAppointment.email,
-          patientName: selectedAppointment.fullName,
-          appointmentDate: selectedAppointment.appointmentDate,
-          timeSlot: selectedAppointment.timeSlot,
-          doctor: selectedAppointment.doctor,
-          queueNumber: selectedAppointment.queueNumber,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to send cancellation email');
-      }
-
-      // Reload appointments to reflect real-time updates
-      const loadAppointments = async () => {
-        try {
-          const appointmentsRef = collection(db, 'appointments');
-          const userEmail = auth.currentUser?.email;
-          
-          if (!userEmail) return;
-
-          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-          let q;
-          
-          if (userRole === 'staff' || userRole === 'doctor') {
-            q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-          } else {
-            q = query(
-              appointmentsRef, 
-              where('email', '==', userEmail),
-              orderBy('createdAt', 'desc')
-            );
-          }
-          
-          const querySnapshot = await getDocs(q);
-          const appointmentsData = querySnapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            } as Appointment))
-            .filter(apt => !apt.deletedByStaff);
-          
-          setAppointments(appointmentsData);
-        } catch (error) {
-          console.error('Error loading appointments:', error);
+        appointmentId: selectedAppointment.id,
+        bookedAt: new Date().toISOString(),
+        bookedBy: selectedAppointment.email,
+        rescheduledFrom: {
+          date: selectedAppointment.appointmentDate,
+          timeSlot: selectedAppointment.timeSlot
         }
-      };
-
-      await loadAppointments();
-      setShowStaffCancelModal(false);
-      setSelectedAppointment(null);
-      showToast('Appointment cancelled successfully! Email notification sent.', 'success');
+      });
+      console.log('✅ New slot lock created for rescheduled appointment');
     } catch (error) {
-      console.error('Error cancelling appointment:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to cancel appointment. Please try again.', 'error');
+      console.error('⚠️ Failed to create new slot lock:', error);
     }
-  };
+
+    // Update booking counters if date changed
+    if (selectedAppointment.appointmentDate !== updatedData.appointmentDate) {
+      // Decrement old date counter
+      const oldCounterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}`);
+      try {
+        const oldCounterDoc = await getDoc(oldCounterRef);
+        if (oldCounterDoc.exists()) {
+          const currentCount = oldCounterDoc.data()?.count || 0;
+          if (currentCount > 0) {
+            await updateDoc(oldCounterRef, { count: currentCount - 1 });
+            console.log('✅ Old date booking counter decremented');
+          }
+        }
+      } catch {
+        console.log('ℹ️ No old booking counter found');
+      }
+
+      // Increment new date counter
+      const newCounterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${updatedData.appointmentDate}`);
+      try {
+        const newCounterDoc = await getDoc(newCounterRef);
+        if (newCounterDoc.exists()) {
+          const currentCount = newCounterDoc.data()?.count || 0;
+          await updateDoc(newCounterRef, { count: currentCount + 1 });
+        } else {
+          const { setDoc } = await import('firebase/firestore');
+          await setDoc(newCounterRef, {
+            doctor: selectedAppointment.doctor,
+            date: updatedData.appointmentDate,
+            count: 1
+          });
+        }
+        console.log('✅ New date booking counter updated');
+      } catch {
+        console.log('ℹ️ Failed to update new booking counter');
+      }
+    }
+
+    // Then send email notification
+    const response = await fetch('/api/reschedule-appointment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        appointmentId: selectedAppointment.id,
+        appointmentDate: updatedData.appointmentDate,
+        timeSlot: updatedData.timeSlot,
+        patientEmail: selectedAppointment.email,
+        patientName: selectedAppointment.fullName,
+        doctor: selectedAppointment.doctor,
+        queueNumber: selectedAppointment.queueNumber,
+        oldDate: selectedAppointment.appointmentDate,
+        oldTimeSlot: selectedAppointment.timeSlot,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      // Don't throw - reschedule was already done, just log email failure
+      console.error('Email notification failed:', data.error);
+    }
+
+    // Real-time listener will auto-update appointments
+    setShowRescheduleModal(false);
+    setSelectedAppointment(null);
+    showToast('Appointment rescheduled successfully! Email notification sent.', 'success');
+  } catch (error) {
+    console.error('Error rescheduling appointment:', error);
+    showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
+  }
+};
+
+const handleCancel = (appointment: Appointment) => {
+  setSelectedAppointment(appointment);
+  setShowStaffCancelModal(true);
+};
+
+const confirmCancel = async (reason: string) => {
+  if (!selectedAppointment) return;
+
+  try {
+    // UPDATED: Update both staff and patient collections
+    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+    
+    const updateData = {
+      status: 'cancelled',
+      cancelReason: reason,
+      cancelledAt: new Date().toISOString()
+    };
+
+    await updateDoc(staffAppointmentRef, updateData);
+    await updateDoc(patientAppointmentRef, updateData);
+
+    console.log('✅ Firebase updated for cancellation');
+
+    // Then send email notification
+    const response = await fetch('/api/cancel-appointment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        appointmentId: selectedAppointment.id,
+        cancelReason: reason,
+        patientEmail: selectedAppointment.email,
+        patientName: selectedAppointment.fullName,
+        appointmentDate: selectedAppointment.appointmentDate,
+        timeSlot: selectedAppointment.timeSlot,
+        doctor: selectedAppointment.doctor,
+        queueNumber: selectedAppointment.queueNumber,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Failed to send cancellation email');
+    }
+
+    // Reload appointments to reflect real-time updates
+    const loadAppointments = async () => {
+      try {
+        // UPDATED: Changed to staff_appointments collection
+        const appointmentsRef = collection(db, 'staff_appointments');
+        const userEmail = auth.currentUser?.email;
+        
+        if (!userEmail) return;
+
+        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+        const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+        let q;
+        
+        if (userRole === 'staff' || userRole === 'doctor') {
+          q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+        } else {
+          q = query(
+            appointmentsRef, 
+            where('email', '==', userEmail),
+            orderBy('createdAt', 'desc')
+          );
+        }
+        
+        const querySnapshot = await getDocs(q);
+        const appointmentsData = querySnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Appointment))
+          .filter(apt => !apt.deletedByStaff);
+        
+        setAppointments(appointmentsData);
+      } catch {
+        console.error('Error loading appointments:');
+      }
+    };
+
+    await loadAppointments();
+    setShowStaffCancelModal(false);
+    setSelectedAppointment(null);
+    showToast('Appointment cancelled successfully! Email notification sent.', 'success');
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    showToast(error instanceof Error ? error.message : 'Failed to cancel appointment. Please try again.', 'error');
+  }
+};
 
   const handleDelete = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
@@ -387,61 +460,58 @@ const StaffAppointments = () => {
   };
 
   const confirmDelete = async () => {
-    if (!selectedAppointment) return;
+  if (!selectedAppointment) return;
 
+  try {
+    // FIXED: Delete from BOTH staff and patient collections (not 'appointments')
+    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+    
+    // Delete from staff collection
+    await deleteDoc(staffAppointmentRef);
+    console.log('✅ Deleted from staff_appointments');
+    
+    // Delete from patient collection
     try {
-      const appointmentRef = doc(db, 'appointments', selectedAppointment.id);
-      await updateDoc(appointmentRef, {
-        deletedByStaff: true
-      });
-      
-      // Reload appointments to reflect real-time updates
-      const loadAppointments = async () => {
-        try {
-          const appointmentsRef = collection(db, 'appointments');
-          const userEmail = auth.currentUser?.email;
-          
-          if (!userEmail) return;
-
-          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-          let q;
-          
-          if (userRole === 'staff' || userRole === 'doctor') {
-            q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-          } else {
-            q = query(
-              appointmentsRef, 
-              where('email', '==', userEmail),
-              orderBy('createdAt', 'desc')
-            );
-          }
-          
-          const querySnapshot = await getDocs(q);
-          const appointmentsData = querySnapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            } as Appointment))
-            .filter(apt => !apt.deletedByStaff);
-          
-          setAppointments(appointmentsData);
-        } catch (error) {
-          console.error('Error loading appointments:', error);
-        }
-      };
-
-      await loadAppointments();
-      setShowDeleteModal(false);
-      setSelectedAppointment(null);
-      showToast('Appointment deleted successfully!', 'success');
-    } catch (error) {
-      console.error('Error deleting appointment:', error);
-      showToast('Failed to delete appointment. Please try again.', 'error');
+      await deleteDoc(patientAppointmentRef);
+      console.log('✅ Deleted from patient_appointments');
+    } catch {
+      console.log('ℹ️ Patient appointment not found or already deleted');
     }
-  };
 
+    // FREE THE TIME SLOT: Delete the slot lock so others can book
+    const slotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
+    try {
+      await deleteDoc(slotLockRef);
+      console.log('✅ Slot lock removed - time slot is now available');
+    } catch {
+      console.log('ℹ️ No slot lock found or already deleted');
+    }
+
+    // Decrement booking counter
+    const counterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}`);
+    try {
+      const counterDoc = await getDoc(counterRef);
+      if (counterDoc.exists()) {
+        const currentCount = counterDoc.data()?.count || 0;
+        if (currentCount > 0) {
+          await updateDoc(counterRef, { count: currentCount - 1 });
+          console.log('✅ Booking counter decremented');
+        }
+      }
+    } catch {
+      console.log('ℹ️ No booking counter found or already updated');
+    }
+
+    // Real-time listener will auto-update, no need to manually reload
+    setShowDeleteModal(false);
+    setSelectedAppointment(null);
+    showToast('Appointment permanently deleted!', 'success');
+  } catch (error) {
+    console.error('Error deleting appointment:', error);
+    showToast('Failed to delete appointment. Please try again.', 'error');
+  }
+};
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'emergency': return 'bg-red-100 text-red-800';
@@ -940,8 +1010,8 @@ const StaffAppointments = () => {
                   .filter(apt => !apt.deletedByStaff);
                 
                 setAppointments(appointmentsData);
-              } catch (error) {
-                console.error('Error loading appointments:', error);
+              } catch {
+                console.error('Error loading appointments:');
               }
             };
             loadAppointments();
