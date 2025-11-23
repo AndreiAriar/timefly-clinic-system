@@ -88,15 +88,15 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     setFormData(prev => ({ ...prev, specialty: value }));
   };
 
-  // Send invitation email via serverless function
+  // Send invitation email via Vercel serverless function
   const sendDoctorInvitation = async (email: string, name: string) => {
     try {
       console.log('📧 Sending doctor invitation to:', email);
       
-      // Replace with your actual Vercel function URL
-      const functionUrl = '/api/send-doctor-invitation';
+      // Use absolute URL for Vercel deployment
+      const apiUrl = window.location.origin + '/api/send-doctor-invitation';
       
-      const response = await fetch(functionUrl, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -107,10 +107,23 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         })
       });
 
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        console.error('❌ Non-JSON response received:', textResponse);
+        throw new Error('API returned an unexpected response. Please check if the serverless function is deployed correctly.');
+      }
+
       const result = await response.json();
       
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to send invitation');
+        throw new Error(result.error || 'Failed to send invitation email');
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to send invitation email');
       }
 
       console.log('✅ Invitation sent successfully:', result);
@@ -118,7 +131,17 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       
     } catch (error) {
       console.error('❌ Error sending invitation:', error);
-      throw error;
+      
+      // Provide specific error messages
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Network error: Unable to connect to the server');
+      }
+      
+      if (error instanceof Error) {
+        throw error;
+      }
+      
+      throw new Error('An unknown error occurred while sending the invitation');
     }
   };
 
@@ -156,8 +179,12 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       } else {
         // Add new doctor - create auth account and send invitation
         try {
+          console.log('🔄 Creating doctor account and sending invitation...');
+          
           // Send invitation (creates Firebase Auth account + sends password reset email)
           const invitationResult = await sendDoctorInvitation(formData.email, formData.name);
+          
+          console.log('✅ Invitation result:', invitationResult);
           
           // Save doctor data to Firestore
           const doctorData = {
@@ -175,9 +202,17 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
           toast.success('Doctor added successfully!');
           toast.info('Password reset email sent to ' + formData.email);
           
+          console.log('✅ Doctor account created and saved to Firestore');
+          
         } catch (inviteError) {
           console.error('❌ Error during invitation/creation:', inviteError);
-          throw new Error('Failed to create doctor account or send invitation email');
+          
+          // Show specific error message
+          const errorMessage = inviteError instanceof Error 
+            ? inviteError.message 
+            : 'Failed to create doctor account or send invitation email';
+          
+          throw new Error(errorMessage);
         }
       }
 
