@@ -232,10 +232,102 @@ const UserManagement = () => {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <h2 className="text-2xl font-bold mb-6">User Management</h2>
       
-      <div className="overflow-x-auto">
+      {/* MOBILE CARD LAYOUT - Hidden on Desktop */}
+      <div className="block md:hidden space-y-4">
+        {users.map(user => (
+          <div 
+            key={user.id} 
+            className={`rounded-lg shadow-md p-4 ${
+              user.isRestricted ? 'bg-red-50 border-2 border-red-200' : 'bg-white border border-gray-200'
+            }`}
+          >
+            {/* Email & Status */}
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 truncate">{user.email}</p>
+              </div>
+              <div className="ml-2 flex-shrink-0">
+                {user.isRestricted ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                    <XCircle className="w-3 h-3" />
+                    Restricted
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                    <CheckCircle className="w-3 h-3" />
+                    Active
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-gray-50 rounded p-2">
+                <p className="text-xs text-gray-600 mb-1">Active</p>
+                <p className="text-lg font-semibold text-gray-900">{user.activeAppointments}</p>
+              </div>
+              <div className="bg-gray-50 rounded p-2">
+                <p className="text-xs text-gray-600 mb-1">Total</p>
+                <p className="text-lg font-semibold text-gray-900">{user.totalBookings}</p>
+              </div>
+              <div className="bg-gray-50 rounded p-2">
+                <p className="text-xs text-gray-600 mb-1">No-Shows</p>
+                <p className={`text-lg font-semibold ${user.noShowCount >= 3 ? 'text-red-600' : 'text-gray-900'}`}>
+                  {user.noShowCount}
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded p-2">
+                <p className="text-xs text-gray-600 mb-1">Cancelled</p>
+                <p className="text-lg font-semibold text-gray-900">{user.cancelledBookings}</p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-2">
+              {user.isRestricted ? (
+                <button
+                  onClick={() => removeRestriction(user.email)}
+                  className="flex-1 min-w-[120px] px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium flex items-center justify-center gap-1"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Unrestrict
+                </button>
+              ) : (
+                <button
+                  onClick={() => addRestriction(user.email)}
+                  className="flex-1 min-w-[120px] px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center justify-center gap-1"
+                >
+                  <Ban className="w-4 h-4" />
+                  Restrict
+                </button>
+              )}
+              
+              {user.noShowCount > 0 && (
+                <button
+                  onClick={() => resetNoShowCount(user.email)}
+                  className="flex-1 min-w-[120px] px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-1"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Reset Count
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        
+        {users.length === 0 && (
+          <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
+            No users found
+          </div>
+        )}
+      </div>
+
+      {/* DESKTOP TABLE LAYOUT - Hidden on Mobile */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full border-collapse bg-white rounded-lg shadow-md">
           <thead>
             <tr className="bg-gray-100">

@@ -27,16 +27,6 @@ body {
   background: transparent;
 }
 
-/* Dark mode styles */
-.dark {
-  background-color: #111827;
-  color: #f9fafb;
-}
-
-.dark body {
-  background-color: #111827;
-}
-
 /* Background images */
 .hero-section {
   background-image: url(/timefly_bg.jpg);
@@ -94,52 +84,49 @@ body {
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
 
-.dark .high-quality-image {
-  background: linear-gradient(45deg, #374151 25%, transparent 25%), 
-              linear-gradient(-45deg, #374151 25%, transparent 25%), 
-              linear-gradient(45deg, transparent 75%, #374151 75%), 
-              linear-gradient(-45deg, transparent 75%, #374151 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
-}
-
-/* Fix autofill white background issue - DEFAULT INPUTS */
+/* COMPREHENSIVE AUTOFILL FIX - Force white text on all autofilled inputs */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
-input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px transparent inset !important;
-  -webkit-text-fill-color: #374151 !important;
-  transition: background-color 5000s ease-in-out 0s !important;
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus,
+select:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0px 1000px transparent inset !important;
+  transition: background-color 5000s ease-in-out 0s, color 5000s ease-in-out 0s !important;
+  caret-color: #ffffff !important;
 }
 
-.dark input:-webkit-autofill,
-.dark input:-webkit-autofill:hover,
-.dark input:-webkit-autofill:focus,
-.dark input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px transparent inset !important;
-  -webkit-text-fill-color: #f9fafb !important;
+/* Specifically target hero section inputs with stronger specificity */
+.hero-section input:-webkit-autofill,
+.hero-section input:-webkit-autofill:hover,
+.hero-section input:-webkit-autofill:focus,
+.hero-section input:-webkit-autofill:active,
+.staff-hero-section input:-webkit-autofill,
+.staff-hero-section input:-webkit-autofill:hover,
+.staff-hero-section input:-webkit-autofill:focus,
+.staff-hero-section input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.1) inset !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  caret-color: #ffffff !important;
 }
 
-/* Transparent input autofill - use on login/signup forms */
+/* Transparent input autofill - enhanced */
 .input-transparent:-webkit-autofill,
 .input-transparent:-webkit-autofill:hover,
 .input-transparent:-webkit-autofill:focus,
 .input-transparent:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px transparent inset !important;
   -webkit-text-fill-color: #ffffff !important;
-  transition: background-color 5000s ease-in-out 0s !important;
-}
-
-/* For dark mode support if needed */
-@media (prefers-color-scheme: dark) {
-  input:-webkit-autofill,
-  input:-webkit-autofill:hover,
-  input:-webkit-autofill:focus,
-  input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 30px #1f2937 inset !important;
-    -webkit-text-fill-color: #f9fafb !important;
-  }
+  -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.15) inset !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  caret-color: #ffffff !important;
 }
 
 /* FORCE remove focus rings EXCEPT for form inputs - FIXED VERSION */
@@ -172,22 +159,6 @@ select {
   color: #374151;
 }
 
-.dark input[type="text"],
-.dark input[type="email"],
-.dark input[type="password"],
-.dark input[type="number"],
-.dark input[type="tel"],
-.dark input[type="url"],
-.dark input[type="search"],
-.dark input[type="time"],
-.dark input[type="datetime-local"],
-.dark textarea,
-.dark select {
-  border: 1px solid #4b5563;
-  color: #f9fafb;
-  background-color: #1f2937;
-}
-
 /* Keep borders visible when focused/typing */
 input[type="text"]:focus,
 input[type="email"]:focus,
@@ -203,22 +174,6 @@ select:focus {
   border: 1px solid #3b82f6;
   outline: none;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.dark input[type="text"]:focus,
-.dark input[type="email"]:focus,
-.dark input[type="password"]:focus,
-.dark input[type="number"]:focus,
-.dark input[type="tel"]:focus,
-.dark input[type="url"]:focus,
-.dark input[type="search"]:focus,
-.dark input[type="time"]:focus,
-.dark input[type="datetime-local"]:focus,
-.dark textarea:focus,
-.dark select:focus {
-  border: 1px solid #3b82f6;
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
 /* =================================================================
@@ -243,47 +198,18 @@ select:focus {
   background: rgba(255, 255, 255, 0.15) !important;
   border: 1px solid rgba(255, 255, 255, 0.3) !important;
   border-radius: 0.5rem !important;
-  color: #1f2937 !important;
-  -webkit-text-fill-color: #1f2937 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-}
-
-.dark .hero-section input[type="text"],
-.dark .hero-section input[type="email"],
-.dark .hero-section input[type="password"],
-.dark .hero-section input[type="number"],
-.dark .hero-section input[type="tel"],
-.dark .hero-section textarea,
-.dark .hero-section select,
-.dark .staff-hero-section input[type="text"],
-.dark .staff-hero-section input[type="email"],
-.dark .staff-hero-section input[type="password"],
-.dark .staff-hero-section input[type="number"],
-.dark .staff-hero-section input[type="tel"],
-.dark .staff-hero-section textarea,
-.dark .staff-hero-section select {
-  background-color: rgba(0, 0, 0, 0.2) !important;
-  background: rgba(0, 0, 0, 0.2) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  color: #f9fafb !important;
-  -webkit-text-fill-color: #f9fafb !important;
 }
 
 .hero-section input::placeholder,
 .staff-hero-section input::placeholder,
 .hero-section textarea::placeholder,
 .staff-hero-section textarea::placeholder {
-  color: rgba(55, 65, 81, 0.7) !important;
-  -webkit-text-fill-color: rgba(55, 65, 81, 0.7) !important;
-}
-
-.dark .hero-section input::placeholder,
-.dark .staff-hero-section input::placeholder,
-.dark .hero-section textarea::placeholder,
-.dark .staff-hero-section textarea::placeholder {
-  color: rgba(249, 250, 251, 0.6) !important;
-  -webkit-text-fill-color: rgba(249, 250, 251, 0.6) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.7) !important;
 }
 
 .hero-section input:focus,
@@ -299,42 +225,6 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15) !important;
 }
 
-.dark .hero-section input:focus,
-.dark .hero-section textarea:focus,
-.dark .hero-section select:focus,
-.dark .staff-hero-section input:focus,
-.dark .staff-hero-section textarea:focus,
-.dark .staff-hero-section select:focus {
-  background-color: rgba(0, 0, 0, 0.3) !important;
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.4) !important;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
-}
-
-/* Autofill fix for hero section inputs */
-.hero-section input:-webkit-autofill,
-.hero-section input:-webkit-autofill:hover,
-.hero-section input:-webkit-autofill:focus,
-.staff-hero-section input:-webkit-autofill,
-.staff-hero-section input:-webkit-autofill:hover,
-.staff-hero-section input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 30px rgba(255, 255, 255, 0.2) inset !important;
-  -webkit-text-fill-color: #1f2937 !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  transition: background-color 5000s ease-in-out 0s !important;
-}
-
-.dark .hero-section input:-webkit-autofill,
-.dark .hero-section input:-webkit-autofill:hover,
-.dark .hero-section input:-webkit-autofill:focus,
-.dark .staff-hero-section input:-webkit-autofill,
-.dark .staff-hero-section input:-webkit-autofill:hover,
-.dark .staff-hero-section input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 30px rgba(0, 0, 0, 0.3) inset !important;
-  -webkit-text-fill-color: #f9fafb !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-}
-
 /* =================================================================
    TRANSPARENT INPUTS - For login/signup forms over backgrounds
    Add class "input-transparent" to your inputs
@@ -343,28 +233,15 @@ select:focus {
   background-color: rgba(255, 255, 255, 0.15) !important;
   background: rgba(255, 255, 255, 0.15) !important;
   border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  color: #1f2937 !important;
-  -webkit-text-fill-color: #1f2937 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
 
-.dark .input-transparent {
-  background-color: rgba(0, 0, 0, 0.2) !important;
-  background: rgba(0, 0, 0, 0.2) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  color: #f9fafb !important;
-  -webkit-text-fill-color: #f9fafb !important;
-}
-
 .input-transparent::placeholder {
-  color: rgba(55, 65, 81, 0.6) !important;
-  -webkit-text-fill-color: rgba(55, 65, 81, 0.6) !important;
-}
-
-.dark .input-transparent::placeholder {
-  color: rgba(249, 250, 251, 0.6) !important;
-  -webkit-text-fill-color: rgba(249, 250, 251, 0.6) !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.6) !important;
 }
 
 .input-transparent:focus {
@@ -373,13 +250,6 @@ select:focus {
   border: 1px solid rgba(255, 255, 255, 0.5) !important;
   outline: none !important;
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15) !important;
-}
-
-.dark .input-transparent:focus {
-  background-color: rgba(0, 0, 0, 0.3) !important;
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.4) !important;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
 }
 
 /* =================================================================
@@ -392,21 +262,10 @@ select:focus {
   color: #374151 !important;
 }
 
-.dark .input-white {
-  background-color: #1f2937 !important;
-  border: 1px solid #4b5563 !important;
-  color: #f9fafb !important;
-}
-
 .input-white:focus {
   border: 1px solid #3b82f6 !important;
   outline: none !important;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
-}
-
-.dark .input-white:focus {
-  border: 1px solid #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
 }
 
 /* =================================================================
@@ -425,22 +284,11 @@ input[type="date"] {
   -webkit-text-fill-color: #1f2937;
 }
 
-.dark input[type="date"] {
-  border: 1px solid #4b5563;
-  color: #f9fafb;
-  background-color: #1f2937;
-  -webkit-text-fill-color: #f9fafb;
-}
-
 /* Make the native calendar icon visible */
 input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
   opacity: 1;
   filter: invert(0.5);
-}
-
-.dark input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.8);
 }
 
 /* Make date text visible */
@@ -449,30 +297,15 @@ input[type="date"]::-webkit-datetime-edit {
   -webkit-text-fill-color: #1f2937;
 }
 
-.dark input[type="date"]::-webkit-datetime-edit {
-  color: #f9fafb;
-  -webkit-text-fill-color: #f9fafb;
-}
-
 input[type="date"]::-webkit-datetime-edit-fields-wrapper {
   color: #1f2937;
   -webkit-text-fill-color: #1f2937;
-}
-
-.dark input[type="date"]::-webkit-datetime-edit-fields-wrapper {
-  color: #f9fafb;
-  -webkit-text-fill-color: #f9fafb;
 }
 
 input[type="date"]::-webkit-datetime-edit-text {
   color: #6b7280;
   -webkit-text-fill-color: #6b7280;
   padding: 0 0.125rem;
-}
-
-.dark input[type="date"]::-webkit-datetime-edit-text {
-  color: #9ca3af;
-  -webkit-text-fill-color: #9ca3af;
 }
 
 input[type="date"]::-webkit-datetime-edit-month-field,
@@ -483,20 +316,8 @@ input[type="date"]::-webkit-datetime-edit-year-field {
   background: transparent;
 }
 
-.dark input[type="date"]::-webkit-datetime-edit-month-field,
-.dark input[type="date"]::-webkit-datetime-edit-day-field,
-.dark input[type="date"]::-webkit-datetime-edit-year-field {
-  color: #f9fafb;
-  -webkit-text-fill-color: #f9fafb;
-}
-
 /* Hide placeholder when empty */
 input[type="date"]:not(:focus):invalid::-webkit-datetime-edit {
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-}
-
-.dark input[type="date"]:not(:focus):invalid::-webkit-datetime-edit {
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
@@ -508,20 +329,8 @@ input[type="date"]:focus {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.dark input[type="date"]:focus {
-  border: 1px solid #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
-
 /* Transparent date input variant */
 input[type="date"].input-transparent {
-  background-color: transparent !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
-}
-
-.dark input[type="date"].input-transparent {
   background-color: transparent !important;
   border: 1px solid rgba(255, 255, 255, 0.3) !important;
   color: #ffffff !important;
@@ -555,9 +364,5 @@ input[type="date"].input-transparent::-webkit-datetime-edit-text {
   
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(0.4);
-  }
-
-  .dark input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: invert(0.8);
   }
 }
