@@ -621,18 +621,6 @@ const CalendarTab = () => {
     );
   }
 
-  // Calculate summary stats
-  const activeAppointmentsCount = appointments.filter(apt => 
-    apt.status === 'pending' || apt.status === 'confirmed' || apt.status === 'scheduled'
-  ).length;
-  
-  const completedAppointmentsCount = appointments.filter(apt => apt.status === 'completed').length;
-  
-  const blockedDatesCount = doctors.reduce((count, doctor) => {
-    return count + Object.keys(doctor.unavailableDates || {}).filter(date => doctor.unavailableDates?.[date]).length;
-  }, 0);
-
-  const totalDefaultSlots = doctors.filter(d => d.isActive).reduce((sum, d) => sum + (d.maxSlots || 0), 0);
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -647,25 +635,6 @@ const CalendarTab = () => {
           </div>
         </div>
 
-        {/* Summary Stats - TOP */}
-        <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
-            <p className="text-2xl font-bold text-blue-700">{totalDefaultSlots}</p>
-            <p className="text-sm text-blue-600">Default Daily Slots</p>
-          </div>
-          <div className="bg-green-100 rounded-lg p-4 text-center border border-green-200">
-            <p className="text-2xl font-bold text-green-700">{activeAppointmentsCount}</p>
-            <p className="text-sm text-green-600">Active Appointments</p>
-          </div>
-          <div className="bg-gray-100 rounded-lg p-4 text-center border border-gray-300">
-            <p className="text-2xl font-bold text-gray-700">{blockedDatesCount}</p>
-            <p className="text-sm text-gray-600">Blocked Dates</p>
-          </div>
-          <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
-            <p className="text-2xl font-bold text-green-600">{completedAppointmentsCount}</p>
-            <p className="text-sm text-green-600">Completed</p>
-          </div>
-        </div>
 
         {/* Calendar View */}
         <div className="bg-white rounded-lg shadow-md p-6">
