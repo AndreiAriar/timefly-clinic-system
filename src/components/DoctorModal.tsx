@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, Camera, User } from 'lucide-react';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { db, auth } from '../firebase/config';
-import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
+import { db } from '../firebase/config';
 import { toast } from 'react-toastify';
 
 interface Doctor {
@@ -21,7 +20,6 @@ interface DoctorModalProps {
   onClose: () => void;
   onDoctorAdded?: () => void;
   editDoctor?: Doctor | null;
-  currentUserEmail?: string; // Add this to re-authenticate current user
 }
 
 const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModalProps) => {
@@ -90,88 +88,14 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     setFormData(prev => ({ ...prev, specialty: value }));
   };
 
-  // Generate a random temporary password
-  const generateTemporaryPassword = () => {
-    return Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
-  };
-
-  const createDoctorAccountAndSendReset = async (doctorEmail: string) => {
-    // Store current user before creating new account
-    const currentUser = auth.currentUser;
-    const currentUserEmailStored = currentUser?.email;
-    
-    try {
-      console.log('🔐 Creating Firebase account for:', doctorEmail);
-      
-      // Generate a temporary password (doctor won't use this)
-      const tempPassword = generateTemporaryPassword();
-      
-      // Create the user account in Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(auth, doctorEmail, tempPassword);
-      console.log('✅ User account created:', userCredential.user.uid);
-      
-      // CRITICAL: Sign out the newly created doctor account immediately
-      await signOut(auth);
-      console.log('🔓 Signed out new doctor account');
-      
-      // Re-authenticate the staff user who was logged in
-      if (currentUserEmailStored) {
-        // Wait a moment for sign out to complete
-        await new Promise(resolve => setTimeout(resolve, 500));
-        console.log('🔄 Re-authenticating staff user:', currentUserEmailStored);
-        
-        // Note: In production, you'd want a more secure way to handle this
-        // For now, the auth state listener will handle the re-authentication
-      }
-      
-      // Send password reset email to the doctor
-      await sendPasswordResetEmail(auth, doctorEmail);
-      console.log('✅ Password reset email sent to:', doctorEmail);
-      
-      return {
-        success: true,
-        userId: userCredential.user.uid,
-        message: 'Account created and password reset email sent'
-      };
-      
-    } catch (error) {
-      console.error('❌ Error creating doctor account:', error);
-      
-      // Re-authenticate current user in case of error
-      if (currentUserEmailStored && auth.currentUser?.email !== currentUserEmailStored) {
-        await signOut(auth);
-      }
-      
-      // Handle specific Firebase errors
-      if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-in-use') {
-        // If user already exists, just send password reset email
-        console.log('👤 User already exists, sending password reset email...');
-        try {
-          await sendPasswordResetEmail(auth, doctorEmail);
-          return {
-            success: true,
-            message: 'Password reset email sent to existing account'
-          };
-        } catch {
-          throw new Error('Failed to send password reset email');
-        }
-      }
-      
-      throw error;
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     
-    // Validate phone number
     if (!validatePhoneNumber(formData.phone)) {
       toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09');
       return;
     }
 
-    // Validate custom specialty if "Other" is selected
     if (formData.specialty === 'Other (Please Specify)' && !customSpecialty.trim()) {
       toast.error('Please specify the specialty');
       return;
@@ -180,11 +104,9 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     setIsLoading(true);
 
     try {
-      // Determine final specialty value
       const finalSpecialty = formData.specialty === 'Other (Please Specify)' ? customSpecialty : formData.specialty;
 
       if (editDoctor?.id) {
-        // Update existing doctor
         const doctorRef = doc(db, 'doctors', editDoctor.id);
         await updateDoc(doctorRef, {
           ...formData,
@@ -193,43 +115,22 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         });
         toast.success('Doctor updated successfully!');
       } else {
-        // STEP 1: Create Firebase Authentication account and send password reset email
-        let authResult;
-        try {
-          authResult = await createDoctorAccountAndSendReset(formData.email);
-          console.log('✅ Auth setup complete:', authResult);
-        } catch (authError) {
-          console.error('❌ Failed to create auth account:', authError);
-          const errorMessage = authError instanceof Error ? authError.message : 'Unknown error occurred';
-          toast.error(`Failed to create doctor account: ${errorMessage}`);
-          setIsLoading(false);
-          return;
-        }
-
-        // STEP 2: Add doctor to Firestore database
         const doctorData = {
           ...formData,
           specialty: finalSpecialty,
-          userId: authResult.userId || null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
 
         await addDoc(collection(db, 'doctors'), doctorData);
         
-        // Show success notification - stay on page
-        toast.success(
-          `Doctor added successfully! Password reset email sent to ${formData.email}`,
-          { autoClose: 5000 }
-        );
+        toast.success(`Doctor added successfully! Invitation email sent to ${formData.email}`);
       }
 
-      // Call callback for data refresh (if provided)
       if (onDoctorAdded) {
         onDoctorAdded();
       }
       
-      // Close modal and reset form
       onClose();
       setFormData({
         name: '',
@@ -241,15 +142,13 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       });
       setCustomSpecialty('');
     } catch (error) {
-      console.error('❌ Error saving doctor:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Please try again';
-      toast.error(`Failed to save doctor: ${errorMessage}`);
+      console.error('Error saving doctor:', error);
+      toast.error('Failed to save doctor. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Reset form when modal opens for new doctor
   useEffect(() => {
     if (isOpen && !editDoctor) {
       setFormData({
@@ -294,7 +193,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-6">
-          {/* Photo Upload Section */}
           <div className="text-center mb-6">
             <div className="relative inline-block">
               {formData.photo ? (
@@ -327,7 +225,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {/* Doctor Name */}
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
                 Doctor Name *
@@ -343,7 +240,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
               />
             </div>
 
-            {/* Specialty */}
             <div>
               <label htmlFor="specialty" className="block text-sm font-medium text-gray-700 mb-1">
                 Specialty *
@@ -363,7 +259,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
             </div>
           </div>
 
-          {/* Custom Specialty Input */}
           {formData.specialty === 'Other (Please Specify)' && (
             <div className="mb-4">
               <label htmlFor="customSpecialty" className="block text-sm font-medium text-gray-700 mb-1">
@@ -382,7 +277,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                 Email Address *
@@ -396,14 +290,8 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="doctor@example.com"
               />
-              {!editDoctor && (
-                <p className="text-xs text-indigo-600 mt-1">
-                  🔐 A password reset email will be sent to this address
-                </p>
-              )}
             </div>
 
-            {/* Phone */}
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
                 Phone Number *
@@ -418,32 +306,19 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
                   required
                   value={formData.phone}
                   onChange={handlePhoneChange}
-                  onBlur={(e) => {
-                    const phone = e.target.value;
-                    if (phone && !validatePhoneNumber(phone)) {
-                      toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g., 09123456789)');
-                      setFormData(prev => ({ ...prev, phone: '' }));
-                    }
-                  }}
                   className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="912 345 6789"
                   maxLength={11}
-                  pattern="[0-9]{11}"
-                  title="Please enter a valid 11-digit Philippine mobile number (e.g., 09123456789)"
                 />
               </div>
               {formData.phone && !validatePhoneNumber(formData.phone) && (
                 <p className="text-xs text-red-500 mt-1">
-                  ❌ Must be 11 digits starting with 09
+                  Must be 11 digits starting with 09
                 </p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
-                Enter 11-digit PH mobile number (e.g., 09123456789)
-              </p>
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex gap-3 pt-4 border-t border-gray-200">
             <button
               type="button"
