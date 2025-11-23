@@ -45,20 +45,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'Email and name are required' });
     }
 
-    // DEBUG: Log environment variable status
-    console.log('🔍 Environment Variables Check:');
-    console.log('FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✅ Set' : '❌ Missing');
-    console.log('FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✅ Set' : '❌ Missing');
-    console.log('FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? '✅ Set' : '❌ Missing');
-    console.log('EMAIL_USER:', process.env.EMAIL_USER ? '✅ Set' : '❌ Missing');
-    console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? '✅ Set' : '❌ Missing');
-
     // Check Firebase credentials
     if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
       console.error('❌ Missing Firebase Admin credentials');
       return res.status(500).json({ 
         success: false,
-        error: 'Firebase Admin credentials not configured. Please add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY to Vercel environment variables.' 
+        error: 'Firebase Admin credentials not configured.' 
       });
     }
 
@@ -67,7 +59,7 @@ export default async function handler(req, res) {
       console.error('❌ Missing email credentials');
       return res.status(500).json({ 
         success: false,
-        error: 'Email service not configured. Please add EMAIL_USER and EMAIL_PASS to Vercel environment variables. Use Gmail App Password for EMAIL_PASS.' 
+        error: 'Email service not configured.' 
       });
     }
 
@@ -105,11 +97,9 @@ export default async function handler(req, res) {
       }
     }
 
-    // Generate password reset link
+    // Generate password reset link with correct domain
     const actionCodeSettings = {
-      url: process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}` 
-        : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:5173'),
+      url: 'https://timefly-eyecare.vercel.app/login',
       handleCodeInApp: false,
     };
 
@@ -129,13 +119,13 @@ export default async function handler(req, res) {
       },
     });
 
-    // Verify transporter configuration
+    // Verify transporter
     try {
       await transporter.verify();
       console.log('✅ Email transporter verified successfully');
     } catch (error) {
       console.error('❌ Email transporter verification failed:', error);
-      throw new Error('Email configuration is invalid. Please check your EMAIL_USER and EMAIL_PASS (use Gmail App Password).');
+      throw new Error('Email configuration is invalid.');
     }
 
     // Send email
@@ -218,13 +208,10 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('❌ Error sending doctor invitation:', error);
     
-    // Provide more specific error messages
     let errorMessage = 'Failed to send doctor invitation';
     
     if (error.code === 'EAUTH') {
-      errorMessage = 'Email authentication failed. Please check your Gmail App Password.';
-    } else if (error.code === 'ESOCKET') {
-      errorMessage = 'Network error. Please check your internet connection.';
+      errorMessage = 'Email authentication failed.';
     } else if (error.message) {
       errorMessage = error.message;
     }
