@@ -65,6 +65,8 @@ export default async function handler(req, res) {
 
     // Create or get user in Firebase Authentication
     let userRecord;
+    let isNewUser = false;
+    
     try {
       userRecord = await admin.auth().getUserByEmail(email);
       console.log('👤 User already exists:', userRecord.uid);
@@ -74,6 +76,8 @@ export default async function handler(req, res) {
         role: 'doctor',
         name: name 
       });
+      
+      console.log('✅ Updated custom claims for existing user');
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
         // Create new user with a temporary password
@@ -91,10 +95,41 @@ export default async function handler(req, res) {
           name: name 
         });
         
-        console.log('✅ New user created:', userRecord.uid);
+        isNewUser = true;
+        console.log('✅ New user created in Firebase Auth:', userRecord.uid);
       } else {
         throw error;
       }
+    }
+
+    // Create/Update user document in Firestore 'users' collection
+    const db = admin.firestore();
+    const userDocRef = db.collection('users').doc(userRecord.uid);
+    
+    const userDoc = await userDocRef.get();
+    
+    if (!userDoc.exists) {
+      // Create new user document
+      await userDocRef.set({
+        uid: userRecord.uid,
+        email: email,
+        displayName: `Dr. ${name}`,
+        role: 'doctor',
+        name: name,
+        emailVerified: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      console.log('✅ Created user document in Firestore users collection');
+    } else {
+      // Update existing user document
+      await userDocRef.update({
+        role: 'doctor',
+        name: name,
+        displayName: `Dr. ${name}`,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      console.log('✅ Updated user document in Firestore users collection');
     }
 
     // Generate password reset link with correct domain
@@ -202,7 +237,8 @@ export default async function handler(req, res) {
     return res.status(200).json({ 
       success: true, 
       message: 'Doctor invitation sent successfully',
-      userId: userRecord.uid
+      userId: userRecord.uid,
+      isNewUser: isNewUser
     });
 
   } catch (error) {

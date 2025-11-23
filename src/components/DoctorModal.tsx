@@ -50,9 +50,25 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Photo size must be less than 5MB');
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please upload a valid image file');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, photo: reader.result as string }));
+        toast.success('Photo uploaded successfully!');
+      };
+      reader.onerror = () => {
+        toast.error('Failed to upload photo. Please try again.');
       };
       reader.readAsDataURL(file);
     }
@@ -88,7 +104,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     setFormData(prev => ({ ...prev, specialty: value }));
   };
 
-  // Send invitation email via Vercel serverless function
   const sendDoctorInvitation = async (email: string, name: string) => {
     try {
       console.log('📧 Sending doctor invitation to:', email);
@@ -144,17 +159,28 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     
     // Validate phone number
     if (!validatePhoneNumber(formData.phone)) {
-      toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09');
+      toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09', {
+        position: 'top-right',
+        autoClose: 5000,
+      });
       return;
     }
 
     // Validate custom specialty if "Other" is selected
     if (formData.specialty === 'Other (Please Specify)' && !customSpecialty.trim()) {
-      toast.error('Please specify the specialty');
+      toast.error('Please specify the specialty', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
       return;
     }
 
     setIsLoading(true);
+
+    // Show loading toast
+    const loadingToast = toast.loading(
+      editDoctor ? 'Updating doctor...' : 'Creating doctor account and sending invitation...'
+    );
 
     try {
       const finalSpecialty = formData.specialty === 'Other (Please Specify)' ? customSpecialty : formData.specialty;
@@ -167,7 +193,14 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
           specialty: finalSpecialty,
           updatedAt: new Date().toISOString()
         });
-        toast.success('Doctor updated successfully!');
+        
+        // Update loading toast to success
+        toast.update(loadingToast, {
+          render: '✅ Doctor updated successfully!',
+          type: 'success',
+          isLoading: false,
+          autoClose: 3000,
+        });
       } else {
         // Add new doctor
         console.log('📄 Creating doctor account and sending invitation...');
@@ -190,8 +223,19 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
 
           await addDoc(collection(db, 'doctors'), doctorData);
           
-          toast.success('Doctor added successfully!');
-          toast.info(`Password setup email sent to ${formData.email}`);
+          // Update loading toast to success
+          toast.update(loadingToast, {
+            render: `✅ Dr. ${formData.name} added successfully!`,
+            type: 'success',
+            isLoading: false,
+            autoClose: 4000,
+          });
+
+          // Show additional info toast
+          toast.info(`📧 Password setup email sent to ${formData.email}`, {
+            position: 'top-right',
+            autoClose: 5000,
+          });
           
           console.log('✅ Doctor account created and saved to Firestore');
           
@@ -202,14 +246,24 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
             ? inviteError.message 
             : 'Failed to create doctor account or send invitation email';
           
+          // Update loading toast to error
+          toast.update(loadingToast, {
+            render: `❌ ${errorMessage}`,
+            type: 'error',
+            isLoading: false,
+            autoClose: 5000,
+          });
+          
           throw new Error(errorMessage);
         }
       }
 
+      // Call callback for data refresh
       if (onDoctorAdded) {
         onDoctorAdded();
       }
       
+      // Close modal and reset form
       onClose();
       setFormData({
         name: '',
@@ -222,8 +276,18 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       setCustomSpecialty('');
     } catch (error) {
       console.error('❌ Error saving doctor:', error);
+      
+      // Only show error toast if we haven't already updated the loading toast
+      if (!editDoctor) {
+        // Error was already handled in the try block above
+        return;
+      }
+      
       const errorMessage = error instanceof Error ? error.message : 'Please try again';
-      toast.error(`Failed to save doctor: ${errorMessage}`);
+      toast.error(`Failed to save doctor: ${errorMessage}`, {
+        position: 'top-right',
+        autoClose: 5000,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -248,7 +312,7 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div 
-        className="fixed inset-0 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 backdrop-blur-sm transition-opacity bg-black/30"
         onClick={onClose}
         aria-hidden="true"
       ></div>
@@ -392,12 +456,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
                   required
                   value={formData.phone}
                   onChange={handlePhoneChange}
-                  onBlur={(e) => {
-                    const phone = e.target.value;
-                    if (phone && !validatePhoneNumber(phone)) {
-                      toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09');
-                    }
-                  }}
                   className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="912 345 6789"
                   maxLength={11}
@@ -418,7 +476,8 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition"
+              disabled={isLoading}
+              className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
@@ -427,7 +486,17 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
               disabled={isLoading}
               className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Saving...' : editDoctor ? 'Update Doctor' : 'Add Doctor'}
+              {isLoading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                  </svg>
+                  {editDoctor ? 'Updating...' : 'Creating...'}
+                </span>
+              ) : (
+                editDoctor ? 'Update Doctor' : 'Add Doctor'
+              )}
             </button>
           </div>
         </form>
