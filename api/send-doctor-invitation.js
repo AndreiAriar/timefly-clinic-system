@@ -43,7 +43,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'Email and name are required' });
     }
 
-    // Check environment variables
+    // Check environment variables - USE EMAIL_PASS instead of EMAIL_PASSWORD
     if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
       console.error('❌ Missing Firebase Admin credentials');
       return res.status(500).json({ 
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.error('❌ Missing email credentials');
       return res.status(500).json({ 
         success: false,
@@ -103,12 +103,12 @@ export default async function handler(req, res) {
 
     console.log(`🔗 Generated Firebase password reset link for: ${email}`);
 
-    // Send email with Firebase password reset link
+    // Send email with Firebase password reset link - USE EMAIL_PASS
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
+        pass: process.env.EMAIL_PASS, // Changed from EMAIL_PASSWORD to EMAIL_PASS
       },
     });
 
