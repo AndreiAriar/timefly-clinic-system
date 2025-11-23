@@ -3,18 +3,23 @@ import admin from 'firebase-admin';
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+    });
+    console.log('✅ Firebase Admin initialized');
+  } catch (error) {
+    console.error('❌ Failed to initialize Firebase Admin:', error);
+  }
 }
 
 export default async function handler(req, res) {
   // Enable CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
@@ -25,26 +30,37 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { email, name } = req.body;
-
-  console.log('📧 Received request to send doctor invitation to:', email);
-
-  if (!email || !name) {
-    return res.status(400).json({ error: 'Email and name are required' });
-  }
-
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
-    console.log('❌ Missing email credentials');
-    return res.status(500).json({ 
-      error: 'Email service not configured' 
-    });
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
   try {
-    // Create user in Firebase Authentication (if doesn't exist)
+    const { email, name } = req.body;
+
+    console.log('📧 Received request to send doctor invitation to:', email);
+
+    // Validate input
+    if (!email || !name) {
+      return res.status(400).json({ success: false, error: 'Email and name are required' });
+    }
+
+    // Check environment variables
+    if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+      console.error('❌ Missing Firebase Admin credentials');
+      return res.status(500).json({ 
+        success: false,
+        error: 'Firebase Admin credentials not configured. Please contact administrator.' 
+      });
+    }
+
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+      console.error('❌ Missing email credentials');
+      return res.status(500).json({ 
+        success: false,
+        error: 'Email service not configured. Please contact administrator.' 
+      });
+    }
+
+    // Create user in Firebase Authentication
     let userRecord;
     try {
       userRecord = await admin.auth().getUserByEmail(email);
@@ -74,8 +90,9 @@ export default async function handler(req, res) {
 
     // Generate password reset link
     const actionCodeSettings = {
-      url: process.env.NEXT_PUBLIC_APP_URL || 
-           (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173'),
+      url: process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:5173'),
       handleCodeInApp: false,
     };
 
@@ -84,7 +101,7 @@ export default async function handler(req, res) {
       actionCodeSettings
     );
 
-    console.log(`🔐 Generated Firebase password reset link for: ${email}`);
+    console.log(`🔗 Generated Firebase password reset link for: ${email}`);
 
     // Send email with Firebase password reset link
     const transporter = nodemailer.createTransport({
@@ -165,18 +182,18 @@ export default async function handler(req, res) {
     const result = await transporter.sendMail(mailOptions);
     console.log('✅ Doctor invitation email sent successfully:', result.messageId);
 
-    res.status(200).json({ 
+    return res.status(200).json({ 
       success: true, 
       message: 'Doctor invitation sent successfully',
       userId: userRecord.uid
     });
 
   } catch (error) {
-    console.error('❌ Error sending doctor invitation:', error.message);
+    console.error('❌ Error sending doctor invitation:', error);
     
-    res.status(500).json({ 
+    return res.status(500).json({ 
       success: false,
-      error: `Failed to send doctor invitation: ${error.message}` 
+      error: error.message || 'Failed to send doctor invitation'
     });
   }
 }
