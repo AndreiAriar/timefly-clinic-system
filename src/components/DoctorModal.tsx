@@ -104,20 +104,20 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         })
       });
 
-      // Read response body once as text first
       const responseText = await response.text();
+      console.log('📥 Response status:', response.status);
+      console.log('📥 Response body:', responseText);
       
-      // Try to parse the text as JSON
       let result;
       try {
         result = JSON.parse(responseText);
       } catch {
         console.error('❌ Failed to parse response as JSON:', responseText);
-        throw new Error('Server error: ' + (responseText || 'Unknown error occurred'));
+        throw new Error('Server error: Invalid response format. ' + responseText);
       }
       
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to send invitation email');
+        throw new Error(result.error || `Server error: ${response.status}`);
       }
 
       if (!result.success) {
@@ -157,7 +157,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     setIsLoading(true);
 
     try {
-      // Determine final specialty value
       const finalSpecialty = formData.specialty === 'Other (Please Specify)' ? customSpecialty : formData.specialty;
 
       if (editDoctor?.id) {
@@ -170,11 +169,11 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         });
         toast.success('Doctor updated successfully!');
       } else {
-        // Add new doctor - create auth account and send invitation
+        // Add new doctor
+        console.log('📄 Creating doctor account and sending invitation...');
+        
         try {
-          console.log('🔄 Creating doctor account and sending invitation...');
-          
-          // Send invitation (creates Firebase Auth account + sends password reset email)
+          // Send invitation (creates Firebase Auth account + sends email)
           const invitationResult = await sendDoctorInvitation(formData.email, formData.name);
           
           console.log('✅ Invitation result:', invitationResult);
@@ -186,21 +185,19 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
             userId: invitationResult.userId,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            accountStatus: 'pending' // Will be 'active' after doctor sets password
+            accountStatus: 'pending'
           };
 
           await addDoc(collection(db, 'doctors'), doctorData);
           
-          // Show success notifications
           toast.success('Doctor added successfully!');
-          toast.info('Password reset email sent to ' + formData.email);
+          toast.info(`Password setup email sent to ${formData.email}`);
           
           console.log('✅ Doctor account created and saved to Firestore');
           
         } catch (inviteError) {
           console.error('❌ Error during invitation/creation:', inviteError);
           
-          // Show specific error message
           const errorMessage = inviteError instanceof Error 
             ? inviteError.message 
             : 'Failed to create doctor account or send invitation email';
@@ -209,12 +206,10 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         }
       }
 
-      // Call callback for data refresh (if provided)
       if (onDoctorAdded) {
         onDoctorAdded();
       }
       
-      // Close modal and reset form
       onClose();
       setFormData({
         name: '',
@@ -234,7 +229,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     }
   };
 
-  // Reset form when modal opens for new doctor
   useEffect(() => {
     if (isOpen && !editDoctor) {
       setFormData({
@@ -279,7 +273,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-6">
-          {/* Photo Upload Section */}
           <div className="text-center mb-6">
             <div className="relative inline-block">
               {formData.photo ? (
@@ -312,7 +305,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {/* Doctor Name */}
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
                 Doctor Name *
@@ -328,7 +320,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
               />
             </div>
 
-            {/* Specialty */}
             <div>
               <label htmlFor="specialty" className="block text-sm font-medium text-gray-700 mb-1">
                 Specialty *
@@ -348,7 +339,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
             </div>
           </div>
 
-          {/* Custom Specialty Input */}
           {formData.specialty === 'Other (Please Specify)' && (
             <div className="mb-4">
               <label htmlFor="customSpecialty" className="block text-sm font-medium text-gray-700 mb-1">
@@ -367,7 +357,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                 Email Address *
@@ -380,15 +369,15 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
                 onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="doctor@example.com"
+                disabled={!!editDoctor}
               />
               {!editDoctor && (
                 <p className="text-xs text-indigo-600 mt-1">
-                  📧 Password reset email will be sent automatically
+                  📧 Password setup email will be sent automatically
                 </p>
               )}
             </div>
 
-            {/* Phone */}
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
                 Phone Number *
@@ -406,15 +395,12 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
                   onBlur={(e) => {
                     const phone = e.target.value;
                     if (phone && !validatePhoneNumber(phone)) {
-                      toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g., 09123456789)');
-                      setFormData(prev => ({ ...prev, phone: '' }));
+                      toast.error('Please enter a valid 11-digit Philippine mobile number starting with 09');
                     }
                   }}
                   className="w-full pl-12 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="912 345 6789"
                   maxLength={11}
-                  pattern="[0-9]{11}"
-                  title="Please enter a valid 11-digit Philippine mobile number (e.g., 09123456789)"
                 />
               </div>
               {formData.phone && !validatePhoneNumber(formData.phone) && (
@@ -428,7 +414,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex gap-3 pt-4 border-t border-gray-200">
             <button
               type="button"

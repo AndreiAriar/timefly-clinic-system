@@ -4,11 +4,13 @@ import admin from 'firebase-admin';
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
   try {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        privateKey: privateKey,
       }),
     });
     console.log('✅ Firebase Admin initialized');
@@ -43,41 +45,43 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'Email and name are required' });
     }
 
-    // DEBUG: Log what environment variables exist
-    console.log('🔍 Checking environment variables...');
-    console.log('FIREBASE_PROJECT_ID exists:', !!process.env.FIREBASE_PROJECT_ID);
-    console.log('FIREBASE_CLIENT_EMAIL exists:', !!process.env.FIREBASE_CLIENT_EMAIL);
-    console.log('FIREBASE_PRIVATE_KEY exists:', !!process.env.FIREBASE_PRIVATE_KEY);
-    console.log('EMAIL_USER exists:', !!process.env.EMAIL_USER);
-    console.log('EMAIL_PASS exists:', !!process.env.EMAIL_PASS);
+    // DEBUG: Log environment variable status
+    console.log('🔍 Environment Variables Check:');
+    console.log('FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✅ Set' : '❌ Missing');
+    console.log('FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✅ Set' : '❌ Missing');
+    console.log('FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? '✅ Set' : '❌ Missing');
+    console.log('EMAIL_USER:', process.env.EMAIL_USER ? '✅ Set' : '❌ Missing');
+    console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? '✅ Set' : '❌ Missing');
 
-    // Check environment variables
+    // Check Firebase credentials
     if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
       console.error('❌ Missing Firebase Admin credentials');
-      console.error('Missing:', {
-        projectId: !process.env.FIREBASE_PROJECT_ID,
-        clientEmail: !process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: !process.env.FIREBASE_PRIVATE_KEY
-      });
       return res.status(500).json({ 
         success: false,
-        error: 'Firebase Admin credentials not configured. Please contact administrator.' 
+        error: 'Firebase Admin credentials not configured. Please add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY to Vercel environment variables.' 
       });
     }
 
+    // Check email credentials
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.error('❌ Missing email credentials');
       return res.status(500).json({ 
         success: false,
-        error: 'Email service not configured. Please contact administrator.' 
+        error: 'Email service not configured. Please add EMAIL_USER and EMAIL_PASS to Vercel environment variables. Use Gmail App Password for EMAIL_PASS.' 
       });
     }
 
-    // Create user in Firebase Authentication
+    // Create or get user in Firebase Authentication
     let userRecord;
     try {
       userRecord = await admin.auth().getUserByEmail(email);
       console.log('👤 User already exists:', userRecord.uid);
+      
+      // Update custom claims if user exists
+      await admin.auth().setCustomUserClaims(userRecord.uid, { 
+        role: 'doctor',
+        name: name 
+      });
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
         // Create new user with a temporary password
@@ -114,9 +118,9 @@ export default async function handler(req, res) {
       actionCodeSettings
     );
 
-    console.log(`🔗 Generated Firebase password reset link for: ${email}`);
+    console.log(`🔗 Generated password reset link for: ${email}`);
 
-    // Send email with Firebase password reset link
+    // Create email transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -125,8 +129,18 @@ export default async function handler(req, res) {
       },
     });
 
+    // Verify transporter configuration
+    try {
+      await transporter.verify();
+      console.log('✅ Email transporter verified successfully');
+    } catch (error) {
+      console.error('❌ Email transporter verification failed:', error);
+      throw new Error('Email configuration is invalid. Please check your EMAIL_USER and EMAIL_PASS (use Gmail App Password).');
+    }
+
+    // Send email
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: `TimeFly Healthcare <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Welcome to TimeFly - Set Up Your Account',
       html: `
@@ -204,9 +218,20 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('❌ Error sending doctor invitation:', error);
     
+    // Provide more specific error messages
+    let errorMessage = 'Failed to send doctor invitation';
+    
+    if (error.code === 'EAUTH') {
+      errorMessage = 'Email authentication failed. Please check your Gmail App Password.';
+    } else if (error.code === 'ESOCKET') {
+      errorMessage = 'Network error. Please check your internet connection.';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
     return res.status(500).json({ 
       success: false,
-      error: error.message || 'Failed to send doctor invitation'
+      error: errorMessage
     });
   }
 }
