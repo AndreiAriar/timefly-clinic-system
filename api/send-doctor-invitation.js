@@ -43,9 +43,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'Email and name are required' });
     }
 
-    // Check environment variables - USE EMAIL_PASS instead of EMAIL_PASSWORD
+    // DEBUG: Log what environment variables exist
+    console.log('🔍 Checking environment variables...');
+    console.log('FIREBASE_PROJECT_ID exists:', !!process.env.FIREBASE_PROJECT_ID);
+    console.log('FIREBASE_CLIENT_EMAIL exists:', !!process.env.FIREBASE_CLIENT_EMAIL);
+    console.log('FIREBASE_PRIVATE_KEY exists:', !!process.env.FIREBASE_PRIVATE_KEY);
+    console.log('EMAIL_USER exists:', !!process.env.EMAIL_USER);
+    console.log('EMAIL_PASS exists:', !!process.env.EMAIL_PASS);
+
+    // Check environment variables
     if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
       console.error('❌ Missing Firebase Admin credentials');
+      console.error('Missing:', {
+        projectId: !process.env.FIREBASE_PROJECT_ID,
+        clientEmail: !process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: !process.env.FIREBASE_PRIVATE_KEY
+      });
       return res.status(500).json({ 
         success: false,
         error: 'Firebase Admin credentials not configured. Please contact administrator.' 
@@ -103,12 +116,12 @@ export default async function handler(req, res) {
 
     console.log(`🔗 Generated Firebase password reset link for: ${email}`);
 
-    // Send email with Firebase password reset link - USE EMAIL_PASS
+    // Send email with Firebase password reset link
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS, // Changed from EMAIL_PASSWORD to EMAIL_PASS
+        pass: process.env.EMAIL_PASS,
       },
     });
 
