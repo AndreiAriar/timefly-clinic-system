@@ -63,8 +63,32 @@ const DoctorsTab = () => {
     return `${year}-${month}-${day}`;
   };
 
+  // Set up real-time listener for doctors (runs once on mount)
   useEffect(() => {
-    loadDoctors();
+    setIsLoading(true);
+    const doctorsRef = collection(db, 'doctors');
+    const q = query(doctorsRef, orderBy('createdAt', 'desc'));
+    
+    // Real-time listener for doctors
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const doctorsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Doctor[];
+        
+        setDoctors(doctorsData);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error('Error loading doctors:', error);
+        toast.error('Failed to load doctors. Please try again.');
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -94,39 +118,6 @@ const DoctorsTab = () => {
 
     setFilteredDoctors(filtered);
   }, [doctors, searchQuery, specialtyFilter, statusFilter]);
-
-  const loadDoctors = () => {
-    setIsLoading(true);
-    try {
-      const doctorsRef = collection(db, 'doctors');
-      const q = query(doctorsRef, orderBy('createdAt', 'desc'));
-      
-      // Real-time listener for doctors
-      const unsubscribe = onSnapshot(
-        q,
-        (querySnapshot) => {
-          const doctorsData = querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as Doctor[];
-          
-          setDoctors(doctorsData);
-          setIsLoading(false);
-        },
-        (error) => {
-          console.error('Error loading doctors:', error);
-          toast.error('Failed to load doctors. Please try again.');
-          setIsLoading(false);
-        }
-      );
-
-      return unsubscribe;
-    } catch (error) {
-      console.error('Error setting up doctors listener:', error);
-      toast.error('Failed to load doctors. Please try again.');
-      setIsLoading(false);
-    }
-  };
 
   // Real-time appointments listener
   useEffect(() => {
@@ -248,6 +239,12 @@ const DoctorsTab = () => {
   const handleDoctorModalClose = () => {
     setShowDoctorModal(false);
     setSelectedDoctor(null);
+  };
+
+  // This function does nothing now - the real-time listener handles updates automatically
+  const handleDoctorAdded = () => {
+    // No action needed - Firebase's onSnapshot will automatically update the doctors list
+    console.log('✅ Doctor added - real-time listener will update the list');
   };
 
   if (isLoading) {
@@ -500,7 +497,7 @@ const DoctorsTab = () => {
       <DoctorModal
         isOpen={showDoctorModal}
         onClose={handleDoctorModalClose}
-        onDoctorAdded={loadDoctors}
+        onDoctorAdded={handleDoctorAdded}
         editDoctor={selectedDoctor}
       />
 

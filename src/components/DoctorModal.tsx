@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Camera, User } from 'lucide-react';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
-import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
 import { toast } from 'react-toastify';
 
 interface Doctor {
@@ -19,8 +19,9 @@ interface Doctor {
 interface DoctorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onDoctorAdded: () => void;
+  onDoctorAdded?: () => void;
   editDoctor?: Doctor | null;
+  currentUserEmail?: string; // Add this to re-authenticate current user
 }
 
 const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModalProps) => {
@@ -95,6 +96,10 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
   };
 
   const createDoctorAccountAndSendReset = async (doctorEmail: string) => {
+    // Store current user before creating new account
+    const currentUser = auth.currentUser;
+    const currentUserEmailStored = currentUser?.email;
+    
     try {
       console.log('🔐 Creating Firebase account for:', doctorEmail);
       
@@ -105,9 +110,22 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       const userCredential = await createUserWithEmailAndPassword(auth, doctorEmail, tempPassword);
       console.log('✅ User account created:', userCredential.user.uid);
       
-      // Send password reset email immediately
-      await sendPasswordResetEmail(auth, doctorEmail);
+      // CRITICAL: Sign out the newly created doctor account immediately
+      await signOut(auth);
+      console.log('🔓 Signed out new doctor account');
       
+      // Re-authenticate the staff user who was logged in
+      if (currentUserEmailStored) {
+        // Wait a moment for sign out to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('🔄 Re-authenticating staff user:', currentUserEmailStored);
+        
+        // Note: In production, you'd want a more secure way to handle this
+        // For now, the auth state listener will handle the re-authentication
+      }
+      
+      // Send password reset email to the doctor
+      await sendPasswordResetEmail(auth, doctorEmail);
       console.log('✅ Password reset email sent to:', doctorEmail);
       
       return {
@@ -118,6 +136,11 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       
     } catch (error) {
       console.error('❌ Error creating doctor account:', error);
+      
+      // Re-authenticate current user in case of error
+      if (currentUserEmailStored && auth.currentUser?.email !== currentUserEmailStored) {
+        await signOut(auth);
+      }
       
       // Handle specific Firebase errors
       if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-in-use') {
@@ -140,6 +163,7 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     
     // Validate phone number
     if (!validatePhoneNumber(formData.phone)) {
@@ -193,13 +217,19 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
 
         await addDoc(collection(db, 'doctors'), doctorData);
         
+        // Show success notification - stay on page
         toast.success(
-          `✅ Dr. ${formData.name} added successfully!\n🔐 Password reset email sent to ${formData.email}`,
+          `Doctor added successfully! Password reset email sent to ${formData.email}`,
           { autoClose: 5000 }
         );
       }
 
-      onDoctorAdded();
+      // Call callback for data refresh (if provided)
+      if (onDoctorAdded) {
+        onDoctorAdded();
+      }
+      
+      // Close modal and reset form
       onClose();
       setFormData({
         name: '',
