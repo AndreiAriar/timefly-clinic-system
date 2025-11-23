@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, Camera, User } from 'lucide-react';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { toast } from 'react-toastify';
 
 interface Doctor {
@@ -77,7 +78,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     const value = e.target.value;
     setFormData(prev => ({ ...prev, specialty: value }));
     
-    // Clear custom specialty when switching away from "Other"
     if (value !== 'Other (Please Specify)') {
       setCustomSpecialty('');
     }
@@ -89,45 +89,55 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     setFormData(prev => ({ ...prev, specialty: value }));
   };
 
-  const sendDoctorInvitation = async (doctorEmail: string, doctorName: string) => {
+  // Generate a random temporary password
+  const generateTemporaryPassword = () => {
+    return Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+  };
+
+  const createDoctorAccountAndSendReset = async (doctorEmail: string) => {
     try {
-      console.log('📧 Sending invitation to:', doctorEmail);
+      console.log('🔐 Creating Firebase account for:', doctorEmail);
       
-      const response = await fetch('/api/send-doctor-invitation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: doctorEmail,
-          name: doctorName
-        }),
+      // Generate a temporary password (doctor won't use this)
+      const tempPassword = generateTemporaryPassword();
+      
+      // Create the user account in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, doctorEmail, tempPassword);
+      console.log('✅ User account created:', userCredential.user.uid);
+      
+      // Send password reset email immediately
+      await sendPasswordResetEmail(auth, doctorEmail, {
+        url: window.location.origin + '/login',
+        handleCodeInApp: false
       });
-
-      console.log('📨 Response status:', response.status);
       
-      // Check if response is JSON
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text();
-        console.error('❌ Server returned non-JSON response:', text.substring(0, 200));
-        throw new Error('Server error: Invalid response format');
-      }
-
-      const result = await response.json();
+      console.log('✅ Password reset email sent to:', doctorEmail);
       
-      if (!response.ok) {
-        throw new Error(result.error || `Server error: ${response.status}`);
-      }
-
-      console.log('✅ Invitation sent successfully:', result);
-      return result;
+      return {
+        success: true,
+        userId: userCredential.user.uid,
+        message: 'Account created and password reset email sent'
+      };
+      
     } catch (error) {
-      console.error('❌ Error sending doctor invitation:', error);
+      console.error('❌ Error creating doctor account:', error);
       
-      // Provide more specific error messages
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Cannot connect to server. Please make sure the email server is running on port 3001.');
+      // Handle specific Firebase errors
+      if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-in-use') {
+        // If user already exists, just send password reset email
+        console.log('👤 User already exists, sending password reset email...');
+        try {
+          await sendPasswordResetEmail(auth, doctorEmail, {
+            url: window.location.origin + '/login',
+            handleCodeInApp: false
+          });
+          return {
+            success: true,
+            message: 'Password reset email sent to existing account'
+          };
+        } catch {
+          throw new Error('Failed to send password reset email');
+        }
       }
       
       throw error;
@@ -165,28 +175,34 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         });
         toast.success('Doctor updated successfully!');
       } else {
-        // Add new doctor
-        await addDoc(collection(db, 'doctors'), {
+        // STEP 1: Create Firebase Authentication account and send password reset email
+        let authResult;
+        try {
+          authResult = await createDoctorAccountAndSendReset(formData.email);
+          console.log('✅ Auth setup complete:', authResult);
+        } catch (authError) {
+          console.error('❌ Failed to create auth account:', authError);
+          const errorMessage = authError instanceof Error ? authError.message : 'Unknown error occurred';
+          toast.error(`Failed to create doctor account: ${errorMessage}`);
+          setIsLoading(false);
+          return;
+        }
+
+        // STEP 2: Add doctor to Firestore database
+        const doctorData = {
           ...formData,
           specialty: finalSpecialty,
+          userId: authResult.userId || null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        });
+        };
 
-        // Send invitation email to new doctor
-        try {
-          await sendDoctorInvitation(formData.email, formData.name);
-          toast.success('Doctor added successfully! Invitation email sent.');
-        } catch (emailError: unknown) {
-          console.error('Doctor invitation email failed:', emailError);
-          
-          // Type guard to check if it's an Error object
-          if (emailError instanceof Error && emailError.message.includes('Cannot connect to server')) {
-            toast.warning('Doctor added successfully! However, the email server is not running - invitation not sent.');
-          } else {
-            toast.warning('Doctor added successfully! However, invitation email failed to send.');
-          }
-        }
+        await addDoc(collection(db, 'doctors'), doctorData);
+        
+        toast.success(
+          `✅ Dr. ${formData.name} added successfully!\n🔐 Password reset email sent to ${formData.email}`,
+          { autoClose: 5000 }
+        );
       }
 
       onDoctorAdded();
@@ -201,8 +217,9 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       });
       setCustomSpecialty('');
     } catch (error) {
-      console.error('Error saving doctor:', error);
-      toast.error('Failed to save doctor. Please try again.');
+      console.error('❌ Error saving doctor:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Please try again';
+      toast.error(`Failed to save doctor: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -355,6 +372,11 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="doctor@example.com"
               />
+              {!editDoctor && (
+                <p className="text-xs text-indigo-600 mt-1">
+                  🔐 A password reset email will be sent to this address
+                </p>
+              )}
             </div>
 
             {/* Phone */}
