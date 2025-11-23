@@ -203,7 +203,7 @@ const navItems = [
               alt="TimeFly Logo" 
               className="h-8 w-auto flex-shrink-0"
             />
-            <span className={`text-xl font-bold text-gray-900 transition-all duration-300 truncate ${
+            <span className={`text-xl font-bold text-blue-600 transition-all duration-300 truncate ${
               isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
             }`}>
               TimeFly
@@ -315,7 +315,7 @@ const navItems = [
                 alt="TimeFly Logo" 
                 className="h-8 w-auto"
               />
-              <span className="text-xl font-bold text-gray-900">TimeFly</span>
+              <span className="text-xl font-bold text-blue-600">TimeFly</span>
             </button>
             <div className="flex items-center space-x-3">
               {profilePhoto ? (

@@ -1,8 +1,16 @@
 import nodemailer from 'nodemailer';
-import crypto from 'crypto';
+import admin from 'firebase-admin';
 
-// Store invitations in memory (for production, use a database)
-const doctorInvitations = new Map();
+// Initialize Firebase Admin if not already initialized
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  });
+}
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -36,6 +44,49 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Create user in Firebase Authentication (if doesn't exist)
+    let userRecord;
+    try {
+      userRecord = await admin.auth().getUserByEmail(email);
+      console.log('👤 User already exists:', userRecord.uid);
+    } catch (error) {
+      if (error.code === 'auth/user-not-found') {
+        // Create new user with a temporary password
+        const tempPassword = Math.random().toString(36).slice(-16) + Math.random().toString(36).slice(-16);
+        userRecord = await admin.auth().createUser({
+          email: email,
+          password: tempPassword,
+          displayName: `Dr. ${name}`,
+          emailVerified: false,
+        });
+        
+        // Set custom claims for doctor role
+        await admin.auth().setCustomUserClaims(userRecord.uid, { 
+          role: 'doctor',
+          name: name 
+        });
+        
+        console.log('✅ New user created:', userRecord.uid);
+      } else {
+        throw error;
+      }
+    }
+
+    // Generate password reset link
+    const actionCodeSettings = {
+      url: process.env.NEXT_PUBLIC_APP_URL || 
+           (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173'),
+      handleCodeInApp: false,
+    };
+
+    const passwordResetLink = await admin.auth().generatePasswordResetLink(
+      email,
+      actionCodeSettings
+    );
+
+    console.log(`🔐 Generated Firebase password reset link for: ${email}`);
+
+    // Send email with Firebase password reset link
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -44,30 +95,6 @@ export default async function handler(req, res) {
       },
     });
 
-    // Generate secure token for password setup
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-    
-    // Store invitation data
-    doctorInvitations.set(token, {
-      email,
-      name,
-      expiresAt,
-      createdAt: Date.now()
-    });
-
-    // Get the base URL for the password setup link
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
-                    'http://localhost:5173';
-    
-    const setupUrl = `${baseUrl}/setup-password?token=${token}`;
-
-    console.log(`📧 Attempting to send doctor invitation to: ${email}`);
-    console.log(`🔑 Generated token: ${token}`);
-    console.log(`🔗 Setup URL: ${setupUrl}`);
-
-    // Send email with password setup link
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
@@ -95,7 +122,7 @@ export default async function handler(req, res) {
             <p>To complete your account setup and access the system, please click the button below to create your password:</p>
             
             <div style="text-align: center; margin: 25px 0;">
-              <a href="${setupUrl}" 
+              <a href="${passwordResetLink}" 
                  style="display: inline-block; padding: 15px 30px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                 Set Up Password
               </a>
@@ -103,13 +130,13 @@ export default async function handler(req, res) {
             
             <p style="font-size: 14px; color: #666;">Or copy and paste this link into your browser:</p>
             <p style="font-size: 12px; word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
-              ${setupUrl}
+              ${passwordResetLink}
             </p>
           </div>
           
           <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #ffeaa7;">
             <p style="color: #856404; margin: 0;">
-              <strong>⚠️ Important:</strong> This link will expire in 24 hours. If it expires, please contact the system administrator to resend the invitation.
+              <strong>⚠️ Important:</strong> This link will expire in 1 hour. If it expires, please use the "Forgot Password" option on the login page.
             </p>
           </div>
           
@@ -141,7 +168,7 @@ export default async function handler(req, res) {
     res.status(200).json({ 
       success: true, 
       message: 'Doctor invitation sent successfully',
-      token: token // Include token in response for testing (remove in production)
+      userId: userRecord.uid
     });
 
   } catch (error) {
@@ -153,6 +180,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-// Export the invitations map for use in verify-token endpoint
-export { doctorInvitations };
