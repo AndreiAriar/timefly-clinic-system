@@ -106,10 +106,7 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       console.log('✅ User account created:', userCredential.user.uid);
       
       // Send password reset email immediately
-      await sendPasswordResetEmail(auth, doctorEmail, {
-        url: window.location.origin + '/login',
-        handleCodeInApp: false
-      });
+      await sendPasswordResetEmail(auth, doctorEmail);
       
       console.log('✅ Password reset email sent to:', doctorEmail);
       
@@ -127,10 +124,7 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         // If user already exists, just send password reset email
         console.log('👤 User already exists, sending password reset email...');
         try {
-          await sendPasswordResetEmail(auth, doctorEmail, {
-            url: window.location.origin + '/login',
-            handleCodeInApp: false
-          });
+          await sendPasswordResetEmail(auth, doctorEmail);
           return {
             success: true,
             message: 'Password reset email sent to existing account'
