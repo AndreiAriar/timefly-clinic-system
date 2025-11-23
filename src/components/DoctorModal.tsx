@@ -93,10 +93,7 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
     try {
       console.log('📧 Sending doctor invitation to:', email);
       
-      // Use absolute URL for Vercel deployment
-      const apiUrl = window.location.origin + '/api/send-doctor-invitation';
-      
-      const response = await fetch(apiUrl, {
+      const response = await fetch('/api/send-doctor-invitation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -107,16 +104,15 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         })
       });
 
-      // Check if response is JSON before parsing
-      const contentType = response.headers.get('content-type');
-      
-      if (!contentType || !contentType.includes('application/json')) {
+      // Try to parse as JSON first
+      let result;
+      try {
+        result = await response.json();
+      } catch {
         const textResponse = await response.text();
-        console.error('❌ Non-JSON response received:', textResponse);
-        throw new Error('API returned an unexpected response. Please check if the serverless function is deployed correctly.');
+        console.error('❌ Failed to parse response as JSON:', textResponse);
+        throw new Error('Server error: Unable to process the response. Please check server logs.');
       }
-
-      const result = await response.json();
       
       if (!response.ok) {
         throw new Error(result.error || 'Failed to send invitation email');
@@ -131,11 +127,6 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
       
     } catch (error) {
       console.error('❌ Error sending invitation:', error);
-      
-      // Provide specific error messages
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Network error: Unable to connect to the server');
-      }
       
       if (error instanceof Error) {
         throw error;
