@@ -104,14 +104,16 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
         })
       });
 
-      // Try to parse as JSON first
+      // Read response body once as text first
+      const responseText = await response.text();
+      
+      // Try to parse the text as JSON
       let result;
       try {
-        result = await response.json();
+        result = JSON.parse(responseText);
       } catch {
-        const textResponse = await response.text();
-        console.error('❌ Failed to parse response as JSON:', textResponse);
-        throw new Error('Server error: Unable to process the response. Please check server logs.');
+        console.error('❌ Failed to parse response as JSON:', responseText);
+        throw new Error('Server error: ' + (responseText || 'Unknown error occurred'));
       }
       
       if (!response.ok) {
