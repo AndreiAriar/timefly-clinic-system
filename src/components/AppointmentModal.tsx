@@ -1000,8 +1000,7 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
         formData.appointmentDate,
         formData.timeSlot
       );
-
-      const appointmentData = await runTransaction(db, async (transaction) => {
+const appointmentData = await runTransaction(db, async (transaction) => {
         const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
         const slotLockDoc = await transaction.get(slotLockRef);
 
@@ -1041,11 +1040,14 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
           createdAt: new Date().toISOString()
         };
 
-        // FIXED: Save ONLY to patient_appointments (patient booking)
+        // ✅ FIXED: Save to BOTH collections (patient booking appears everywhere)
         const appointmentId = doc(collection(db, 'patient_appointments')).id;
         const patientAppointmentRef = doc(db, 'patient_appointments', appointmentId);
+        const staffAppointmentRef = doc(db, 'staff_appointments', appointmentId);
 
+        // Save to both collections with same ID
         transaction.set(patientAppointmentRef, appointment);
+        transaction.set(staffAppointmentRef, appointment);
 
         // Set slot lock
         transaction.set(slotLockRef, {
@@ -1070,7 +1072,7 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
 
         return { appointmentId: appointmentId, appointment, queueNumber };
       });
-
+      
       console.log('✅ Appointment booked successfully:', appointmentData.appointmentId);
 
       setQueueNumber(appointmentData.queueNumber);

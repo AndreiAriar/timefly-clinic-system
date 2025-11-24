@@ -54,8 +54,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check email credentials
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
       console.error('❌ Missing email credentials');
       return res.status(500).json({ 
         success: false,
