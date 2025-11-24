@@ -175,7 +175,7 @@ const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoc
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white hover:bg-opacity-10 rounded-lg text-white hover:text-gray-200"
+           className="p-1 sm:p-2 rounded-lg text-white flex-shrink-0 ml-2"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
@@ -754,7 +754,7 @@ const CalendarTab = () => {
               </div>
               <button
                 onClick={handleCloseDoctorSelector}
-                className="p-2 hover:bg-white hover:bg-opacity-10 rounded-lg text-white hover:text-gray-200"
+                className="p-1 sm:p-2 rounded-lg text-white flex-shrink-0 ml-2"
                 aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
