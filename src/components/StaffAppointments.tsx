@@ -457,26 +457,41 @@ const confirmCancel = async (reason: string) => {
   const handleDelete = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setShowDeleteModal(true);
-  };
-
-  const confirmDelete = async () => {
+  };const confirmDelete = async () => {
   if (!selectedAppointment) return;
 
   try {
-    // FIXED: Delete from BOTH staff and patient collections (not 'appointments')
     const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
-    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
     
+    // FIXED: Check if this was booked by staff or patient
+    const appointmentDoc = await getDoc(staffAppointmentRef);
+    
+    if (!appointmentDoc.exists()) {
+      showToast('Appointment not found.', 'error');
+      setShowDeleteModal(false);
+      return;
+    }
+
+    const appointmentData = appointmentDoc.data();
+    const isStaffBooked = appointmentData?.bookedByStaff === true;
+
     // Delete from staff collection
     await deleteDoc(staffAppointmentRef);
     console.log('✅ Deleted from staff_appointments');
     
-    // Delete from patient collection
-    try {
-      await deleteDoc(patientAppointmentRef);
-      console.log('✅ Deleted from patient_appointments');
-    } catch {
-      console.log('ℹ️ Patient appointment not found or already deleted');
+    // CRITICAL: Only delete from patient collection if it was staff-booked
+    if (isStaffBooked) {
+      try {
+        const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+        await deleteDoc(patientAppointmentRef);
+        console.log('✅ Deleted staff-booked appointment from patient_appointments');
+      } catch {
+        console.log('ℹ️ Patient appointment not found or already deleted');
+      }
+    } else {
+      // If patient-booked, only delete from staff collection (already done above)
+      // Patient's record in patient_appointments remains untouched
+      console.log('ℹ️ Patient-booked appointment: Left patient_appointments intact');
     }
 
     // FREE THE TIME SLOT: Delete the slot lock so others can book
@@ -486,21 +501,6 @@ const confirmCancel = async (reason: string) => {
       console.log('✅ Slot lock removed - time slot is now available');
     } catch {
       console.log('ℹ️ No slot lock found or already deleted');
-    }
-
-    // Decrement booking counter
-    const counterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}`);
-    try {
-      const counterDoc = await getDoc(counterRef);
-      if (counterDoc.exists()) {
-        const currentCount = counterDoc.data()?.count || 0;
-        if (currentCount > 0) {
-          await updateDoc(counterRef, { count: currentCount - 1 });
-          console.log('✅ Booking counter decremented');
-        }
-      }
-    } catch {
-      console.log('ℹ️ No booking counter found or already updated');
     }
 
     // Real-time listener will auto-update, no need to manually reload

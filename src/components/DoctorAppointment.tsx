@@ -34,6 +34,7 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
   const [isLoading, setIsLoading] = useState(true);
 
   // Real-time listeners for both appointment collections
+  // Real-time listeners for both appointment collections
   useEffect(() => {
     console.log('🔥 Setting up real-time listeners for doctor appointments...');
     console.log('Doctor Name:', doctorName);
@@ -46,32 +47,43 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
 
     setIsLoading(true);
     
+    // FIXED: Normalize doctor name for exact matching
+    const normalizedDoctorName = doctorName.trim();
+    
     const patientAppointmentsRef = collection(db, 'patient_appointments');
     const staffAppointmentsRef = collection(db, 'staff_appointments');
     
     const patientQuery = query(
       patientAppointmentsRef,
-      where('doctor', '==', doctorName),
+      where('doctor', '==', normalizedDoctorName), // Use normalized name
       orderBy('appointmentDate', 'desc')
     );
     
     const staffQuery = query(
       staffAppointmentsRef,
-      where('doctor', '==', doctorName),
+      where('doctor', '==', normalizedDoctorName), // Use normalized name
       orderBy('appointmentDate', 'desc')
     );
 
     let allAppointments: Appointment[] = [];
     const handleAppointmentsUpdate = (snapshot: QuerySnapshot<DocumentData>, source: string) => {
       const newAppointments = snapshot.docs
-        .map((doc) => ({
-          id: `${source}_${doc.id}`,
-          originalId: doc.id, // Keep original ID for reference
-          ...doc.data()
-        } as Appointment & { originalId: string }))
-        .filter((apt: Appointment) => !apt.deletedByStaff && !apt.deletedByPatient);
+        .map((doc) => {
+          const data = doc.data();
+          return {
+            id: `${source}_${doc.id}`,
+            originalId: doc.id,
+            ...data
+          } as Appointment & { originalId: string };
+        })
+        .filter((apt: Appointment) => {
+          // CRITICAL: Filter by exact doctor match AND deletion flags
+          const isDoctorMatch = apt.doctor.trim() === normalizedDoctorName;
+          const isNotDeleted = !apt.deletedByStaff && !apt.deletedByPatient;
+          return isDoctorMatch && isNotDeleted;
+        });
 
-      console.log(`📊 ${source} appointments after filtering:`, newAppointments.length);
+      console.log(`📊 ${source} appointments for Dr. ${normalizedDoctorName}:`, newAppointments.length);
 
       // Update the combined appointments array by filtering out old appointments from this source
       allAppointments = allAppointments.filter(apt => !apt.id.startsWith(`${source}_`));
@@ -79,7 +91,7 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
 
       // Deduplicate based on appointment details (same date, time, patient, doctor)
       const uniqueAppointments = allAppointments.reduce((acc, current) => {
-        const key = `${current.appointmentDate}_${current.timeSlot}_${current.fullName}_${current.doctor}`;
+        const key = `${current.appointmentDate}_${current.timeSlot}_${current.fullName}_${current.doctor.trim()}`;
         
         // If this appointment key doesn't exist yet, add it
         if (!acc.has(key)) {

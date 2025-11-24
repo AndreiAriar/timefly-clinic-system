@@ -71,8 +71,7 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
       return 'Invalid Date';
     }
   };
-
-  useEffect(() => {
+useEffect(() => {
     setError(null);
 
     if (!doctorName) {
@@ -83,21 +82,25 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
     }
 
     const today = getTodayDatePH();
+    
+    // FIXED: Normalize doctor name for exact matching
+    const normalizedDoctorName = doctorName.trim();
+    
     const patientAppointmentsRef = collection(db, 'patient_appointments');
     const staffAppointmentsRef = collection(db, 'staff_appointments');
     
-    // Query appointments for today and this specific doctor from both collections
+    // Query appointments for today and this EXACT doctor from both collections
     const patientQuery = query(
       patientAppointmentsRef,
       where('appointmentDate', '==', today),
-      where('doctor', '==', doctorName),
+      where('doctor', '==', normalizedDoctorName), // Use normalized name
       orderBy('queueNumber', 'asc')
     );
 
     const staffQuery = query(
       staffAppointmentsRef,
       where('appointmentDate', '==', today),
-      where('doctor', '==', doctorName),
+      where('doctor', '==', normalizedDoctorName), // Use normalized name
       orderBy('queueNumber', 'asc')
     );
 
@@ -105,14 +108,18 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
 
     const updateQueueData = (appointments: Appointment[]) => {
       // Filter out cancelled, completed, missed appointments AND deleted appointments
-      const filteredAppointments = appointments.filter(apt => 
-        apt.status !== 'cancelled' && 
-        apt.status !== 'completed' && 
-        apt.status !== 'missed' &&
-        !apt.deletedByStaff &&
-        !apt.deletedByPatient
-      );
+      // CRITICAL: Also filter by exact doctor match
+      const filteredAppointments = appointments.filter(apt => {
+        const isDoctorMatch = apt.doctor.trim() === normalizedDoctorName;
+        const isActiveStatus = apt.status !== 'cancelled' && 
+                               apt.status !== 'completed' && 
+                               apt.status !== 'missed';
+        const isNotDeleted = !apt.deletedByStaff && !apt.deletedByPatient;
+        
+        return isDoctorMatch && isActiveStatus && isNotDeleted;
+      });
 
+      console.log(`📊 Filtered queue for Dr. ${normalizedDoctorName}:`, filteredAppointments.length);
       setAppointments(filteredAppointments);
       
       // Find currently serving appointment
@@ -129,7 +136,7 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
               const data = doc.data();
               return {
                 id: `${source}_${doc.id}`,
-                originalId: doc.id, // Keep original ID for reference
+                originalId: doc.id,
                 fullName: data.fullName || '',
                 age: data.age || '',
                 photo: data.photo || '',
@@ -156,8 +163,8 @@ const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
           allAppointments = [...allAppointments, ...newAppointments];
 
           // Deduplicate based on appointment details (same date, time, patient, doctor)
-          const uniqueAppointments = allAppointments.reduce((acc, current) => {
-            const key = `${current.appointmentDate}_${current.timeSlot}_${current.fullName}_${current.doctor}_${current.queueNumber}`;
+         const uniqueAppointments = allAppointments.reduce((acc, current) => {
+            const key = `${current.appointmentDate}_${current.timeSlot}_${current.fullName}_${current.doctor.trim()}_${current.queueNumber}`;
             
             // If this appointment key doesn't exist yet, add it
             if (!acc.has(key)) {

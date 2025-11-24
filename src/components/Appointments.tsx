@@ -26,8 +26,8 @@ interface Appointment {
   deletedByStaff?: boolean;
   deletedByPatient?: boolean;
   email: string;
+  bookedByStaff?: boolean; // ADD THIS LINE
 }
-
 const Appointments = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
@@ -94,6 +94,7 @@ const Appointments = () => {
     const day = String(today.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+  
 useEffect(() => {
   const userEmail = auth.currentUser?.email;
   
@@ -115,20 +116,25 @@ useEffect(() => {
   const unsubscribe = onSnapshot(
     q,
     (snapshot) => {
-      // UPDATED: Filter to show only active appointments
+      // FIXED: Filter out staff-booked appointments completely
       const appointmentsData = snapshot.docs
         .map(doc => ({
           id: doc.id,
           ...doc.data()
         } as Appointment))
         .filter(apt => {
-          // Only show appointments that are not in terminal states
-          return apt.status !== 'cancelled' && 
-                 apt.status !== 'completed' && 
-                 apt.status !== 'missed';
+          // CRITICAL: Exclude ALL staff-booked appointments
+          const isNotStaffBooked = !apt.bookedByStaff;
+          
+          // Only show active appointments
+          const isActive = apt.status !== 'cancelled' && 
+                          apt.status !== 'completed' && 
+                          apt.status !== 'missed';
+          
+          return isNotStaffBooked && isActive;
         });
       
-      console.log('📊 Real-time update - Active Patient Appointments:', appointmentsData.length);
+      console.log('📊 Real-time update - Patient-Only Appointments:', appointmentsData.length);
       setAppointments(appointmentsData);
       setIsLoading(false);
     },
@@ -167,12 +173,23 @@ useEffect(() => {
     setSelectedAppointment(appointment);
     setShowRescheduleModal(true);
   };
-
-  const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
+  
+const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
   if (!selectedAppointment) return;
 
   try {
-    // Update both patient and staff collections
+    // FIXED: Check if staff-booked before allowing reschedule
+    if (selectedAppointment.bookedByStaff) {
+      toast.error('❌ This appointment was booked by staff. Please contact the clinic to reschedule.', {
+        position: "top-center",
+        autoClose: 5000,
+      });
+      setShowRescheduleModal(false);
+      setSelectedAppointment(null);
+      return;
+    }
+
+    // PATIENT CAN ONLY RESCHEDULE THEIR OWN APPOINTMENTS
     const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
     const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
     
@@ -210,11 +227,23 @@ const handleDelete = (appointment: Appointment) => {
   setSelectedAppointment(appointment);
   setShowDeleteModal(true);
 };
+
 const confirmCancel = async (reason: string) => {
   if (!selectedAppointment) return;
 
   try {
-    // Update both staff and patient collections
+    // FIXED: Check if staff-booked before allowing cancel
+    if (selectedAppointment.bookedByStaff) {
+      toast.error('❌ This appointment was booked by staff. Please contact the clinic to cancel.', {
+        position: "top-center",
+        autoClose: 5000,
+      });
+      setShowCancelModal(false);
+      setSelectedAppointment(null);
+      return;
+    }
+
+    // PATIENT CAN ONLY CANCEL THEIR OWN APPOINTMENTS
     const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
     const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
     
@@ -226,7 +255,6 @@ const confirmCancel = async (reason: string) => {
 
     await updateDoc(staffAppointmentRef, updateData);
     await updateDoc(patientAppointmentRef, updateData);
-
     console.log('✅ Firebase updated for cancellation');
 
     // FREE THE TIME SLOT: Delete the slot lock so others can book
@@ -267,12 +295,22 @@ const confirmCancel = async (reason: string) => {
       autoClose: 5000,
     });
   }
-};
-const confirmDelete = async () => {
+};const confirmDelete = async () => {
   if (!selectedAppointment) return;
 
   try {
-    // Delete from BOTH patient and staff collections
+    // FIXED: Check if staff-booked before allowing delete
+    if (selectedAppointment.bookedByStaff) {
+      toast.error('❌ This appointment was booked by staff. Please contact the clinic to cancel or modify.', {
+        position: "top-center",
+        autoClose: 5000,
+      });
+      setShowDeleteModal(false);
+      setSelectedAppointment(null);
+      return;
+    }
+
+    // PATIENT CAN ONLY DELETE THEIR OWN APPOINTMENTS
     const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
     const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
     
@@ -280,7 +318,7 @@ const confirmDelete = async () => {
     await deleteDoc(patientAppointmentRef);
     console.log('✅ Deleted from patient_appointments');
     
-    // Delete from staff collection as well
+    // Delete from staff collection as well (for sync)
     try {
       await deleteDoc(staffAppointmentRef);
       console.log('✅ Deleted from staff_appointments');
@@ -406,8 +444,8 @@ const confirmDelete = async () => {
           </span>
         </div>
 
-        {/* Action Buttons - Text Only with Icons - 2 per row */}
-        {showActions && (
+       {/* Action Buttons - Text Only with Icons - 2 per row */}
+        {showActions && !appointment.bookedByStaff && (
           <div className="pt-4 border-t grid grid-cols-2 gap-2">
             <button
               onClick={() => handleView(appointment)}
