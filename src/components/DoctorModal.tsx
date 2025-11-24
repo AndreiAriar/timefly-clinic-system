@@ -202,27 +202,29 @@ const DoctorModal = ({ isOpen, onClose, onDoctorAdded, editDoctor }: DoctorModal
           autoClose: 3000,
         });
       } else {
-        // Add new doctor
-        console.log('📄 Creating doctor account and sending invitation...');
-        
-        try {
-          // Send invitation (creates Firebase Auth account + sends email)
-          const invitationResult = await sendDoctorInvitation(formData.email, formData.name);
-          
-          console.log('✅ Invitation result:', invitationResult);
-          
-          // Save doctor data to Firestore
-          const doctorData = {
-            ...formData,
-            specialty: finalSpecialty,
-            userId: invitationResult.userId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            accountStatus: 'pending'
-          };
+  // Add new doctor
+    console.log('📄 Creating doctor account and sending invitation...');
+    try {
+      // Send invitation (creates Firebase Auth account + sends email)
+      const invitationResult = await sendDoctorInvitation(formData.email, formData.name);
+      
+      console.log('✅ Invitation result:', invitationResult);
+      
+      // Save doctor data to Firestore with DEFAULT MAX SLOTS
+      const doctorData = {
+        ...formData,
+        specialty: finalSpecialty,
+        userId: invitationResult.userId,
+        maxSlots: 10, // ✅ DEFAULT: 10 slots per day globally
+        maxSlotsPerDate: {}, // ✅ Initialize empty object for per-date overrides
+        availableSlots: {}, // ✅ Initialize empty object for unavailable time slots
+        unavailableDates: {}, // ✅ Initialize empty object for unavailable dates
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        accountStatus: 'pending'
+      };
 
-          await addDoc(collection(db, 'doctors'), doctorData);
-          
+      await addDoc(collection(db, 'doctors'), doctorData);
           // Update loading toast to success
           toast.update(loadingToast, {
             render: `✅ Dr. ${formData.name} added successfully!`,
