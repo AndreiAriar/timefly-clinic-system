@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, X, CheckCircle, AlertCircle, Info, Upload } from 'lucide-react';
-import { collection, addDoc, query, where, getDocs, doc, updateDoc, runTransaction, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, doc, runTransaction, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 
 interface AppointmentModalProps {
@@ -306,137 +306,7 @@ const checkBookingEligibility = useCallback(async () => {
     }
   }, [isOpen, formData.appointmentDate, formData.priorityLevel, checkBookingEligibility]);
 
-  // FIXED: Recalculate queue numbers chronologically by appointment time
-  const recalculateQueueNumbers = async (appointmentDate: string, doctor: string) => {
-    try {
-      // Query BOTH collections for this doctor and date
-      const patientRef = collection(db, 'patient_appointments');
-      const staffRef = collection(db, 'staff_appointments');
-      
-      const patientQuery = query(
-        patientRef,
-        where('doctor', '==', doctor),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const staffQuery = query(
-        staffRef,
-        where('doctor', '==', doctor),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const [patientSnapshot, staffSnapshot] = await Promise.all([
-        getDocs(patientQuery),
-        getDocs(staffQuery)
-      ]);
-      
-      // Combine appointments from both sources
-      const appointments = [
-        ...patientSnapshot.docs.map(docSnapshot => ({
-          id: docSnapshot.id,
-          timeSlot: docSnapshot.data().timeSlot as string,
-          source: 'patient'
-        })),
-        ...staffSnapshot.docs.map(docSnapshot => ({
-          id: docSnapshot.id,
-          timeSlot: docSnapshot.data().timeSlot as string,
-          source: 'staff'
-        }))
-      ];
-      
-      if (appointments.length === 0) return;
-      
-      // Sort chronologically by time slot (earliest first)
-      appointments.sort((a, b) => {
-        const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
-        const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
-        const timeA = hoursA * 60 + minutesA;
-        const timeB = hoursB * 60 + minutesB;
-        return timeA - timeB;
-      });
-      
-      // Update queue numbers in the correct collection
-      const updatePromises = appointments.map((apt, index) => {
-        const newQueueNumber = index + 1;
-        const collectionName = apt.source === 'patient' ? 'patient_appointments' : 'staff_appointments';
-        const appointmentRef = doc(db, collectionName, apt.id);
-        
-        return updateDoc(appointmentRef, { queueNumber: newQueueNumber });
-      });
-      
-      await Promise.all(updatePromises);
-      console.log('✅ Queue numbers recalculated chronologically for', doctor, 'on', appointmentDate);
-    } catch (error) {
-      console.error('Error recalculating queue numbers:', error);
-    }
-  };
-
-  // FIXED: Calculate queue number based on time slot position (chronological)
-  const calculateChronologicalQueueNumber = async (
-    doctor: string, 
-    appointmentDate: string, 
-    newTimeSlot: string
-  ): Promise<number> => {
-    try {
-      const [newHours, newMinutes] = newTimeSlot.split(':').map(Number);
-      const newTimeInMinutes = newHours * 60 + newMinutes;
-
-      // Check BOTH collections
-      const patientRef = collection(db, 'patient_appointments');
-      const staffRef = collection(db, 'staff_appointments');
-      
-      const patientQuery = query(
-        patientRef,
-        where('doctor', '==', doctor),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const staffQuery = query(
-        staffRef,
-        where('doctor', '==', doctor),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '!=', 'cancelled')
-      );
-      
-      const [patientSnapshot, staffSnapshot] = await Promise.all([
-        getDocs(patientQuery),
-        getDocs(staffQuery)
-      ]);
-      
-      let queuePosition = 1;
-      
-      // Count from patient appointments
-      patientSnapshot.docs.forEach(docSnapshot => {
-        const data = docSnapshot.data();
-        const [h, m] = data.timeSlot.split(':').map(Number);
-        const existingTime = h * 60 + m;
-        if (existingTime < newTimeInMinutes) {
-          queuePosition++;
-        }
-      });
-      
-      // Count from staff appointments
-      staffSnapshot.docs.forEach(docSnapshot => {
-        const data = docSnapshot.data();
-        const [h, m] = data.timeSlot.split(':').map(Number);
-        const existingTime = h * 60 + m;
-        if (existingTime < newTimeInMinutes) {
-          queuePosition++;
-        }
-      });
-      
-      return queuePosition;
-    } catch (error) {
-      console.error('Error calculating queue number:', error);
-      return 1;
-    }
-  };
-
-  const convertTo12Hour = (time24: string): string => {
-    const [hours, minutes] = time24.split(':').map(Number);
+    const convertTo12Hour = (time24: string): string => {    const [hours, minutes] = time24.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';
     const hours12 = hours % 12 || 12;
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
@@ -994,13 +864,8 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
       const globalMaxSlots = selectedDoctor?.maxSlots || 10;
       const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
 
-      // FIXED: Calculate chronological queue number BEFORE transaction
-      const calculatedQueueNumber = await calculateChronologicalQueueNumber(
-        formData.doctor,
-        formData.appointmentDate,
-        formData.timeSlot
-      );
-const appointmentData = await runTransaction(db, async (transaction) => {
+    
+        const appointmentData = await runTransaction(db, async (transaction) => {
         const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
         const slotLockDoc = await transaction.get(slotLockRef);
 
@@ -1014,15 +879,116 @@ const appointmentData = await runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
         const counterData = counterDoc.data();
         const currentCount = counterData?.count || 0;
-              
-        if (currentCount >= maxSlots) {
+         if (currentCount >= maxSlots) {
           console.log('📊 Doctor fully booked:', { currentCount, maxSlots });
           throw new Error('DOCTOR_FULLY_BOOKED');
         }
-        
-        // Use chronological queue number
-        const queueNumber = calculatedQueueNumber;
-        
+       // ✅ FIXED: Calculate queue number based ONLY on time slots
+        const patientRef = collection(db, 'patient_appointments');
+        const staffRef = collection(db, 'staff_appointments');
+
+        const patientQuery = query(
+          patientRef,
+          where('doctor', '==', formData.doctor),
+          where('appointmentDate', '==', formData.appointmentDate),
+          where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+        );
+
+        const staffQuery = query(
+          staffRef,
+          where('doctor', '==', formData.doctor),
+          where('appointmentDate', '==', formData.appointmentDate),
+          where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+        );
+
+        const [patientSnapshot, staffSnapshot] = await Promise.all([
+          getDocs(patientQuery),
+          getDocs(staffQuery)
+        ]);
+
+        // ✅ FIXED: Use Set to remove duplicate appointments
+      const appointmentSet = new Set();
+
+      // Combine all existing appointments and remove duplicates
+      const allExistingAppointments = [
+        ...patientSnapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          timeSlot: doc.data().timeSlot, 
+          queueNumber: doc.data().queueNumber,
+          collection: 'patient_appointments'
+        })),
+        ...staffSnapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          timeSlot: doc.data().timeSlot, 
+          queueNumber: doc.data().queueNumber,
+          collection: 'staff_appointments'
+        }))
+      ];
+
+      // Remove duplicates by using a Set with appointment IDs
+      const uniqueAppointments = allExistingAppointments.filter(appointment => {
+        if (appointmentSet.has(appointment.id)) {
+          return false; // Skip duplicate
+        }
+        appointmentSet.add(appointment.id);
+        return true;
+      });
+
+      // Add the NEW appointment
+      const allAppointments = [
+        ...uniqueAppointments,
+        {
+          id: 'NEW_APPOINTMENT',
+          timeSlot: formData.timeSlot,
+          queueNumber: 0, // Will be calculated
+          collection: 'patient_appointments'
+        }
+      ];
+        // Sort ALL appointments by time slot ONCE
+        allAppointments.sort((a, b) => {
+          const timeA = a.timeSlot.split(':').map(Number);
+          const timeB = b.timeSlot.split(':').map(Number);
+          return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
+        });
+
+        console.log('\n🎯 ===== QUEUE ASSIGNMENT (SORTED BY TIME) =====');
+        allAppointments.forEach((apt, idx) => {
+          console.log(`  Position ${idx + 1}: ${apt.timeSlot} - ${apt.id === 'NEW_APPOINTMENT' ? '🆕 NEW' : `ID: ${apt.id}`}`);
+        });
+        console.log('===============================================\n');
+
+        // Reassign ALL queue numbers sequentially 1, 2, 3, 4... based ONLY on time order
+        let queueNumber = 0;
+        const appointmentsToUpdate: Array<{ id: string; collection: string; newQueueNumber: number }> = [];
+
+        for (let i = 0; i < allAppointments.length; i++) {
+          const appointment = allAppointments[i];
+          const correctQueueNum = i + 1; // Sequential: 1, 2, 3, 4...
+          
+          if (appointment.id === 'NEW_APPOINTMENT') {
+            queueNumber = correctQueueNum;
+            console.log(`✅ NEW appointment gets queue #${queueNumber} at ${appointment.timeSlot}`);
+          } else if (appointment.queueNumber !== correctQueueNum) {
+            appointmentsToUpdate.push({
+              id: appointment.id,
+              collection: appointment.collection,
+              newQueueNumber: correctQueueNum
+            });
+            console.log(`🔄 Updating ${appointment.id}: #${appointment.queueNumber} → #${correctQueueNum} (${appointment.timeSlot})`);
+          }
+        }
+
+        console.log(`\n📊 Final: ${allAppointments.length} appointments with queue numbers 1-${allAppointments.length}\n`);
+
+        // Update existing appointments in BOTH collections
+        for (const update of appointmentsToUpdate) {
+          const patientDocRef = doc(db, 'patient_appointments', update.id);
+          const staffDocRef = doc(db, 'staff_appointments', update.id);
+          
+          transaction.update(patientDocRef, { queueNumber: update.newQueueNumber });
+          transaction.update(staffDocRef, { queueNumber: update.newQueueNumber });
+        }
+
         const appointment: Appointment = {
           fullName: formData.fullName,
           age: formData.age,
@@ -1081,11 +1047,6 @@ const appointmentData = await runTransaction(db, async (transaction) => {
       if (onBookingComplete) {
         onBookingComplete();
       }
-
-      // FIXED: Pass doctor parameter to recalculateQueueNumbers
-      recalculateQueueNumbers(formData.appointmentDate, formData.doctor).catch(err => 
-        console.error('Background queue recalculation failed:', err)
-      );
 
       fetch('/api/send-booking-notification', {
         method: 'POST',
@@ -1576,42 +1537,76 @@ const appointmentData = await runTransaction(db, async (transaction) => {
                                 📅 Choose Another Doctor/Date
                               </button>
                               <button
-                                type="button"
-                                onClick={async () => {
-                                  try {
-                                    const waitingListRef = collection(db, 'waitingList');
-                                    await addDoc(waitingListRef, {
-                                      fullName: formData.fullName || '',
-                                      age: formData.age || '',
-                                      photo: formData.photo || '',
-                                      doctor: formData.doctor,
-                                      appointmentDate: formData.appointmentDate,
-                                      gender: formData.gender || '',
-                                      medicalCondition: formData.medicalCondition === 'Other (Please Specify)' 
-                                        ? formData.customCondition 
-                                        : formData.medicalCondition,
-                                      phone: formData.phone || '',
-                                      priorityLevel: formData.priorityLevel,
-                                      preferredTimeSlot: formData.timeSlot || '',
-                                      requestedDate: formData.appointmentDate,
-                                      status: 'waiting',
-                                      createdAt: new Date().toISOString()
-                                    });
-                                    
-                                    showToast('✅ You have been added to the waiting list! We will notify you when a slot becomes available.', 'success');
-                                    handleClose();
-                                  } catch (error) {
-                                    console.error('Error adding to waiting list:', error);
-                                    showToast('Failed to join waiting list. Please try again.', 'error');
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const userEmail = auth.currentUser?.email;
+                                  const userId = auth.currentUser?.uid;
+                                  
+                                  // Validate required fields
+                                  if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+                                      !formData.medicalCondition || !formData.doctor || !formData.appointmentDate ||
+                                      (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())) {
+                                    showToast('Please fill in all required fields before joining the waiting list.', 'warning');
+                                    return;
                                   }
-                                }}
-                                disabled={!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
-                                          !formData.medicalCondition ||
-                                          (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())}
-                                className="px-4 py-2 bg-orange-600 text-white border-2 border-orange-600 rounded-lg text-sm font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
-                              >
-                                📋 Join Waiting List
-                              </button>
+
+                                  console.log('🔄 Adding patient to waiting list...', {
+                                    patient: formData.fullName,
+                                    doctor: formData.doctor,
+                                    date: formData.appointmentDate,
+                                    email: userEmail
+                                  });
+
+                                  // Create waiting list entry with all required data
+                                  const waitingListRef = collection(db, 'waitingList');
+                                  const waitingListData = {
+                                    fullName: formData.fullName,
+                                    age: formData.age,
+                                    photo: formData.photo || '',
+                                    doctor: formData.doctor,
+                                    appointmentDate: formData.appointmentDate,
+                                    gender: formData.gender,
+                                    medicalCondition: formData.medicalCondition === 'Other (Please Specify)' 
+                                      ? formData.customCondition 
+                                      : formData.medicalCondition,
+                                    phone: formData.phone,
+                                    email: userEmail || '',
+                                    priorityLevel: formData.priorityLevel,
+                                    preferredTimeSlot: formData.timeSlot || '',
+                                    requestedDate: formData.appointmentDate,
+                                    status: 'waiting',
+                                    createdAt: new Date().toISOString(),
+                                    patientId: userId || '',
+                                    // Additional fields for better tracking
+                                    lastUpdated: new Date().toISOString(),
+                                    autoAssignAttempts: 0 // Track how many times auto-assignment was attempted
+                                  };
+
+                                  // Add to waiting list collection
+                                  await addDoc(waitingListRef, waitingListData);
+                                  
+                                  console.log('✅ Successfully added to waiting list:', waitingListData);
+                                  
+                                  showToast('✅ You have been added to the waiting list! We will notify you when a slot becomes available.', 'success');
+                                  
+                                  // Close modal after successful addition
+                                  setTimeout(() => {
+                                    handleClose();
+                                  }, 2000);
+                                } catch (error) {
+                                  console.error('❌ Error adding to waiting list:', error);
+                                  console.error('Error details:', error);
+                                  showToast('Failed to join waiting list. Please try again.', 'error');
+                                }
+                              }}
+                              disabled={!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+                                        !formData.medicalCondition || !formData.doctor || !formData.appointmentDate ||
+                                        (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim())}
+                              className="px-4 py-2 bg-orange-600 text-white border-2 border-orange-600 rounded-lg text-sm font-medium hover:bg-orange-700 transition disabled:bg-gray-300 disabled:border-gray-300 disabled:cursor-not-allowed"
+                            >
+                              📋 Join Waiting List
+                            </button>
                             </div>
                           </div>
                         );
@@ -1869,4 +1864,3 @@ const appointmentData = await runTransaction(db, async (transaction) => {
 };
 
 export default AppointmentModal;
-                    

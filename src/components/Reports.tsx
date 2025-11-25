@@ -150,35 +150,83 @@ const Reports = () => {
   }, []);
 
   useEffect(() => {
-    console.log('🔥 Setting up real-time listeners...');
+    console.log('🔥 Setting up real-time listeners for reports...');
     
-    // Real-time listener for appointments
-    const appointmentsRef = collection(db, 'appointments');
-    const appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
+    // ✅ FIXED: Listen to BOTH staff_appointments and patient_appointments collections
+    const staffAppointmentsRef = collection(db, 'staff_appointments');
+    const patientAppointmentsRef = collection(db, 'patient_appointments');
     
-    const unsubscribeAppointments = onSnapshot(
-      appointmentsQuery,
-      (snapshot) => {
-        // Filter out deleted appointments
-        const appointmentsData = snapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as Appointment[];
+    const staffQuery = query(staffAppointmentsRef, orderBy('createdAt', 'desc'));
+    const patientQuery = query(patientAppointmentsRef, orderBy('createdAt', 'desc'));
+    
+    let unsubscribing = false;
+    
+    const unsubscribeStaff = onSnapshot(
+      staffQuery,
+      (staffSnapshot) => {
+        if (unsubscribing) return;
         
-        // Remove appointments deleted by staff or patient
-        const activeAppointments = appointmentsData.filter(
-          apt => !apt.deletedByStaff && !apt.deletedByPatient
+        const unsubscribePatient = onSnapshot(
+          patientQuery,
+          (patientSnapshot) => {
+            if (unsubscribing) return;
+            
+            // Combine appointments from both collections
+            const staffAppointments = staffSnapshot.docs
+              .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              })) as Appointment[];
+            
+            const patientAppointments = patientSnapshot.docs
+              .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              })) as Appointment[];
+            
+            // Merge and deduplicate appointments (same ID in both collections)
+            const allAppointmentsMap = new Map();
+            
+            [...staffAppointments, ...patientAppointments].forEach(apt => {
+              if (!allAppointmentsMap.has(apt.id)) {
+                allAppointmentsMap.set(apt.id, apt);
+              }
+            });
+            
+            const allAppointments = Array.from(allAppointmentsMap.values());
+            
+            // Filter out deleted appointments
+            const activeAppointments = allAppointments.filter(
+              apt => !apt.deletedByStaff && !apt.deletedByPatient
+            );
+            
+            console.log('📊 Real-time update - Combined Appointments:', {
+              staff: staffAppointments.length,
+              patient: patientAppointments.length,
+              combined: allAppointments.length,
+              active: activeAppointments.length
+            });
+            
+            setAppointments(activeAppointments);
+            calculateStats(activeAppointments);
+            setLastUpdated(new Date());
+            setIsLoading(false);
+          },
+          (error) => {
+            console.error('❌ Error in patient appointments listener:', error);
+            setIsLoading(false);
+          }
         );
         
-        console.log('📊 Real-time update - Active Appointments:', activeAppointments.length);
-        setAppointments(activeAppointments);
-        calculateStats(activeAppointments);
-        setLastUpdated(new Date());
-        setIsLoading(false);
+        // Store unsubscribe function for patient listener
+        return () => {
+          if (!unsubscribing) {
+            unsubscribePatient();
+          }
+        };
       },
       (error) => {
-        console.error('❌ Error in appointments listener:', error);
+        console.error('❌ Error in staff appointments listener:', error);
         setIsLoading(false);
       }
     );
@@ -203,10 +251,11 @@ const Reports = () => {
       }
     );
 
-    // Cleanup function to unsubscribe from listeners
+    // Cleanup function to unsubscribe from all listeners
     return () => {
       console.log('🔌 Cleaning up real-time listeners');
-      unsubscribeAppointments();
+      unsubscribing = true;
+      unsubscribeStaff();
       unsubscribeDoctors();
     };
   }, [calculateStats]);
@@ -337,16 +386,21 @@ const Reports = () => {
     const medicalConditionsData = getMedicalConditionsData();
     
     return (
-      <div className="flex flex-wrap justify-center gap-4 mt-4">
-        {medicalConditionsData.map((entry, index) => (
-          <div key={`legend-${entry.name}`} className="flex items-center gap-2">
+      <div className="flex flex-wrap justify-center gap-2 mt-4 px-2">
+        {medicalConditionsData.slice(0, 5).map((entry, index) => (
+          <div key={`legend-${entry.name}`} className="flex items-center gap-1">
             <div 
-              className="w-3 h-3 rounded-full"
+              className="w-2 h-2 rounded-full flex-shrink-0"
               style={{ backgroundColor: RAINBOW_COLORS[index % RAINBOW_COLORS.length] }}
             />
-            <span className="text-sm text-gray-700">{entry.name}</span>
+            <span className="text-xs text-gray-700 truncate max-w-[80px]">{entry.name}</span>
           </div>
         ))}
+        {medicalConditionsData.length > 5 && (
+          <div className="text-xs text-gray-500">
+            +{medicalConditionsData.length - 5} more
+          </div>
+        )}
       </div>
     );
   };
@@ -357,18 +411,18 @@ const Reports = () => {
     const total = priorityData.reduce((sum, item) => sum + item.value, 0);
     
     return (
-      <div className="flex flex-wrap justify-center gap-6 mt-4">
+      <div className="flex flex-wrap justify-center gap-3 mt-4 px-2">
         {priorityData.map((entry, index) => {
           const percentage = total > 0 ? Math.round((entry.value / total) * 100) : 0;
           const colors = ['#EF4444', '#F59E0B', '#10B981']; // Red, Orange, Green
           
           return (
-            <div key={`priority-legend-${entry.name}`} className="flex items-center gap-2">
+            <div key={`priority-legend-${entry.name}`} className="flex items-center gap-1">
               <div 
-                className="w-3 h-3 rounded-full"
+                className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: colors[index] }}
               />
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-xs font-medium text-gray-700">
                 {entry.name} ({percentage}%)
               </span>
             </div>
@@ -439,109 +493,112 @@ const Reports = () => {
       alert('Error exporting data. Please try again.');
     }
   };
-if (isLoading) {
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading reports...</p>
-      </div>
-    </div>
-  );
-}
 
-return (
- <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading reports...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
         {/* Header with Export Button Only */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
-              <p className="text-gray-600 mt-2">Comprehensive overview of clinic performance and patient statistics</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Reports & Analytics</h1>
+              <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">
+                Comprehensive overview of clinic performance and patient statistics
+              </p>
               <p className="text-xs text-gray-500 mt-1">
                 Last updated: {lastUpdated.toLocaleTimeString()}
               </p>
             </div>
             
             {/* Export CSV Button Only */}
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm w-full sm:w-auto justify-center"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm w-full sm:w-auto justify-center text-sm sm:text-base"
                 disabled={appointments.length === 0}
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>Export CSV</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Stats Cards - Mobile Responsive */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
           {/* Total Patients */}
-          <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-3 sm:p-4 lg:p-6 border-l-4 border-blue-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Patients</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalPatients}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Patients</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{stats.totalPatients}</p>
               </div>
-              <Users className="w-8 h-8 text-blue-500" />
+              <Users className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-blue-500" />
             </div>
           </div>
 
           {/* Appointments Completed */}
-          <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-3 sm:p-4 lg:p-6 border-l-4 border-green-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Completed</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.appointmentsCompleted}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Completed</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{stats.appointmentsCompleted}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-500" />
+              <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-green-500" />
             </div>
           </div>
 
           {/* Finished This Month */}
-          <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-3 sm:p-4 lg:p-6 border-l-4 border-purple-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">This Month</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.finishedThisMonth}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">This Month</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{stats.finishedThisMonth}</p>
                 <p className={`text-xs ${getMonthChange() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {getMonthChange() >= 0 ? '↑' : '↓'} {Math.abs(getMonthChange())}% from last month
                 </p>
               </div>
-              <Calendar className="w-8 h-8 text-purple-500" />
+              <Calendar className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-purple-500" />
             </div>
           </div>
 
           {/* Cancelled Appointments */}
-          <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-red-500">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-3 sm:p-4 lg:p-6 border-l-4 border-red-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Cancelled</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.cancelledAppointments}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Cancelled</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{stats.cancelledAppointments}</p>
               </div>
-              <XCircle className="w-8 h-8 text-red-500" />
+              <XCircle className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-red-500" />
             </div>
           </div>
         </div>
 
         {/* Charts Section */}
-        <div className="space-y-8">
+        <div className="space-y-4 sm:space-y-6 lg:space-y-8">
           {/* Weekly Patient Volume */}
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
               Weekly Patient Volume (Current Month)
             </h3>
-            <div className="h-80">
+            <div className="h-60 sm:h-64 lg:h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={getWeeklyVolumeData()}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
+                  <XAxis dataKey="name" fontSize={12} />
+                  <YAxis fontSize={12} />
                   <Tooltip />
                   <Legend />
                   <Bar dataKey="Appointments" fill="#3B82F6" name="Appointments" />
@@ -551,17 +608,17 @@ return (
           </div>
 
           {/* 6-Month Patient Trend */}
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
               6-Month Patient Trend
             </h3>
-            <div className="h-80">
+            <div className="h-60 sm:h-64 lg:h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={getSixMonthTrendData()}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
+                  <XAxis dataKey="name" fontSize={12} />
+                  <YAxis fontSize={12} />
                   <Tooltip />
                   <Legend />
                   <Line 
@@ -577,14 +634,14 @@ return (
           </div>
 
           {/* Medical Conditions & Priority Analysis */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Common Medical Conditions */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <PieChart className="w-5 h-5" />
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+                <PieChart className="w-4 h-4 sm:w-5 sm:h-5" />
                 Common Medical Conditions
               </h3>
-              <div className="h-80">
+              <div className="h-60 sm:h-64 lg:h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPieChart>
                     <Pie
@@ -593,7 +650,7 @@ return (
                       cy="50%"
                       labelLine={false}
                       label={false}
-                      outerRadius={80}
+                      outerRadius={60}
                       fill="#8884d8"
                       dataKey="value"
                     >
@@ -612,12 +669,12 @@ return (
             </div>
 
             {/* Priority Level Analysis Chart */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5" />
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
                 Priority Distribution
               </h3>
-              <div className="h-80">
+              <div className="h-60 sm:h-64 lg:h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPieChart>
                     <Pie
@@ -626,7 +683,7 @@ return (
                       cy="50%"
                       labelLine={false}
                       label={false}
-                      outerRadius={80}
+                      outerRadius={60}
                       fill="#8884d8"
                       dataKey="value"
                     >
@@ -643,69 +700,69 @@ return (
           </div>
 
           {/* Doctor Performance */}
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Stethoscope className="w-5 h-5" />
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm sm:shadow-md p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+              <Stethoscope className="w-4 h-4 sm:w-5 sm:h-5" />
               Doctor Performance
             </h3>
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {getDoctorPerformanceData().map((doctor) => (
-                <div key={doctor.name} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-semibold text-gray-900">{doctor.name}</span>
-                    <span className="text-sm text-gray-600">
+                <div key={doctor.name} className="border rounded-lg p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+                    <span className="font-semibold text-gray-900 text-sm sm:text-base">{doctor.name}</span>
+                    <span className="text-xs sm:text-sm text-gray-600">
                       Completion Rate: {doctor.completionRate}%
                     </span>
                   </div>
                   
-                  {/* Status Counts with Colored Text */}
-                  <div className="flex justify-between text-sm mb-3">
+                  {/* Status Counts with Colored Text - Mobile Responsive */}
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-between text-xs sm:text-sm mb-3">
                     <span className="text-green-600 font-medium">Completed: {doctor.completed}</span>
-                    <span className="text-green-500 font-medium">Confirmed: {doctor.confirmed}</span>
+                    <span className="text-green-800 font-medium">Confirmed: {doctor.confirmed}</span>
                     <span className="text-yellow-600 font-medium">Pending: {doctor.pending}</span>
                     <span className="text-gray-600 font-medium">Total: {doctor.total}</span>
                   </div>
 
                   {/* Separate Progress Bars for Each Status */}
-                  <div className="space-y-2">
-                    {/* Completed Progress Bar */}
+                  <div className="space-y-1.5 sm:space-y-2">
+                    {/* Completed Progress Bar - GREEN */}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-green-600 font-medium w-20">Completed</span>
-                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                      <span className="text-xs text-green-600 font-medium w-16 sm:w-20">Completed</span>
+                      <div className="flex-1 bg-gray-200 rounded-full h-1.5 sm:h-2">
                         <div 
-                          className="bg-green-400 h-2 rounded-full"
+                          className="bg-green-500 h-1.5 sm:h-2 rounded-full transition-all duration-300"
                           style={{ width: `${calculateStatusPercentage(doctor, 'completed')}%` }}
                         />
                       </div>
-                      <span className="text-xs text-gray-600 w-8 text-right">
+                      <span className="text-xs text-gray-600 w-6 sm:w-8 text-right">
                         {calculateStatusPercentage(doctor, 'completed')}%
                       </span>
                     </div>
 
-                    {/* Confirmed Progress Bar */}
+                    {/* Confirmed Progress Bar - DARK GREEN */}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-green-500 font-medium w-20">Confirmed</span>
-                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                      <span className="text-xs text-green-800 font-medium w-16 sm:w-20">Confirmed</span>
+                      <div className="flex-1 bg-gray-200 rounded-full h-1.5 sm:h-2">
                         <div 
-                          className="bg-green-600 h-2 rounded-full"
+                          className="bg-green-700 h-1.5 sm:h-2 rounded-full transition-all duration-300"
                           style={{ width: `${calculateStatusPercentage(doctor, 'confirmed')}%` }}
                         />
                       </div>
-                      <span className="text-xs text-gray-600 w-8 text-right">
+                      <span className="text-xs text-gray-600 w-6 sm:w-8 text-right">
                         {calculateStatusPercentage(doctor, 'confirmed')}%
                       </span>
                     </div>
 
-                    {/* Pending Progress Bar */}
+                    {/* Pending Progress Bar - YELLOW */}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-yellow-600 font-medium w-20">Pending</span>
-                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                      <span className="text-xs text-yellow-600 font-medium w-16 sm:w-20">Pending</span>
+                      <div className="flex-1 bg-gray-200 rounded-full h-1.5 sm:h-2">
                         <div 
-                          className="bg-green-600 h-2 rounded-full"
+                          className="bg-yellow-500 h-1.5 sm:h-2 rounded-full transition-all duration-300"
                           style={{ width: `${calculateStatusPercentage(doctor, 'pending')}%` }}
                         />
                       </div>
-                      <span className="text-xs text-gray-600 w-8 text-right">
+                      <span className="text-xs text-gray-600 w-6 sm:w-8 text-right">
                         {calculateStatusPercentage(doctor, 'pending')}%
                       </span>
                     </div>

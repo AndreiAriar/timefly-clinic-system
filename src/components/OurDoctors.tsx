@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { User, Mail, Phone, Stethoscope, Calendar } from 'lucide-react';
 import { collection, query, onSnapshot, where, orderBy } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -21,10 +21,10 @@ interface Doctor {
 
 interface Appointment {
   id: string;
-  doctorId: string;
+  doctor: string;
   status: string;
-  date: string;
-  time: string;
+  appointmentDate: string;
+  timeSlot: string;
 }
 
 const OurDoctors = () => {
@@ -32,21 +32,118 @@ const OurDoctors = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [currentDate, setCurrentDate] = useState<string>('');
 
-  const getTodayPH = () => {
+  // Memoized function to get today's date
+  const getTodayPH = useCallback(() => {
     const now = new Date();
     const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     const year = phTime.getFullYear();
     const month = String(phTime.getMonth() + 1).padStart(2, '0');
     const day = String(phTime.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  };
-
-  useEffect(() => {
-    loadDoctors();
   }, []);
 
-  const loadDoctors = () => {
+  // Update current date every minute to handle day changes
+  useEffect(() => {
+    const updateDate = () => {
+      setCurrentDate(getTodayPH());
+    };
+    
+    // Set initial date
+    updateDate();
+    
+    // Update date every minute to handle day changes
+    const interval = setInterval(updateDate, 60000);
+    
+    return () => clearInterval(interval);
+  }, [getTodayPH]);
+
+  const loadAppointments = useCallback(() => {
+    const todayPH = currentDate || getTodayPH();
+    
+    if (!todayPH) return;
+    
+    const staffAppointmentsRef = collection(db, 'staff_appointments');
+    const patientAppointmentsRef = collection(db, 'patient_appointments');
+    
+    const staffQuery = query(
+      staffAppointmentsRef,
+      where('appointmentDate', '==', todayPH),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+    );
+    
+    const patientQuery = query(
+      patientAppointmentsRef,
+      where('appointmentDate', '==', todayPH),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+    );
+    
+    // Listen to staff appointments
+    const unsubscribeStaff = onSnapshot(
+      staffQuery,
+      (staffSnapshot) => {
+        const unsubscribePatient = onSnapshot(
+          patientQuery,
+          (patientSnapshot) => {
+            const staffAppointments = staffSnapshot.docs
+              .map(doc => {
+                const data = doc.data();
+                return {
+                  id: doc.id,
+                  doctor: data.doctor || '',
+                  status: data.status,
+                  appointmentDate: data.appointmentDate,
+                  timeSlot: data.timeSlot
+                };
+              }) as Appointment[];
+            
+            const patientAppointments = patientSnapshot.docs
+              .map(doc => {
+                const data = doc.data();
+                return {
+                  id: doc.id,
+                  doctor: data.doctor || '',
+                  status: data.status,
+                  appointmentDate: data.appointmentDate,
+                  timeSlot: data.timeSlot
+                };
+              }) as Appointment[];
+            
+            const allAppointmentsMap = new Map();
+            
+            [...staffAppointments, ...patientAppointments].forEach(apt => {
+              if (!allAppointmentsMap.has(apt.id)) {
+                allAppointmentsMap.set(apt.id, apt);
+              }
+            });
+            
+            const allAppointments = Array.from(allAppointmentsMap.values());
+            
+            console.log('📊 Real-time appointments update for', todayPH, ':', {
+              staff: staffAppointments.length,
+              patient: patientAppointments.length,
+              combined: allAppointments.length
+            });
+            
+            setAppointments(allAppointments);
+          },
+          (error) => {
+            console.error('Error listening to patient appointments:', error);
+          }
+        );
+        
+        return () => unsubscribePatient();
+      },
+      (error) => {
+        console.error('Error listening to staff appointments:', error);
+      }
+    );
+    
+    return () => unsubscribeStaff();
+  }, [currentDate, getTodayPH]);
+
+  const loadDoctors = useCallback(() => {
     setIsLoading(true);
     setError('');
     try {
@@ -74,78 +171,67 @@ const OurDoctors = () => {
       setError('Failed to load doctors. Please check your Firebase configuration.');
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    const todayPH = getTodayPH();
-    const appointmentsRef = collection(db, 'appointments');
-    const q = query(
-      appointmentsRef,
-      where('appointmentDate', '==', todayPH)
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        const appointmentsData = querySnapshot.docs
-          .map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              doctorId: data.doctor || '',
-              status: data.status,
-              date: data.appointmentDate,
-              time: data.timeSlot
-            };
-          })
-          .filter(apt => 
-            apt.status !== 'cancelled' && 
-            apt.status !== 'completed' && 
-            apt.status !== 'missed'
-          ) as Appointment[];
-        console.log('📊 Real-time appointments update:', appointmentsData.length);
-        setAppointments(appointmentsData);
-      },
-      (error) => {
-        console.error('Error listening to appointments:', error);
-      }
-    );
-    return () => unsubscribe();
   }, []);
 
-  const getDoctorAppointments = (doctorName: string) => {
-    const filtered = appointments.filter(appointment => 
-      appointment.doctorId === doctorName || 
-      appointment.doctorId === `Dr. ${doctorName}`
-    );
-    console.log(`🔍 Appointments for ${doctorName}:`, filtered.length);
-    return filtered;
-  };
+  useEffect(() => {
+    const unsubscribeDoctors = loadDoctors();
+    const unsubscribeAppointments = loadAppointments();
 
-  const getDoctorSlotCount = (doctorName: string) => {
+    return () => {
+      if (unsubscribeDoctors) {
+        unsubscribeDoctors();
+      }
+      if (unsubscribeAppointments) {
+        unsubscribeAppointments();
+      }
+    };
+  }, [loadDoctors, loadAppointments]);
+
+  const getDoctorAppointments = useCallback((doctorName: string) => {
+    const todayPH = currentDate || getTodayPH();
+    const filtered = appointments.filter(appointment => 
+      (appointment.doctor === doctorName || 
+       appointment.doctor === `Dr. ${doctorName}` ||
+       appointment.doctor.includes(doctorName)) &&
+      appointment.appointmentDate === todayPH
+    );
+    console.log(`🔍 Appointments for ${doctorName} on ${todayPH}:`, filtered.length);
+    return filtered;
+  }, [appointments, currentDate, getTodayPH]);
+
+  const getDoctorSlotCount = useCallback((doctorName: string) => {
     const doctorAppointments = getDoctorAppointments(doctorName);
     return doctorAppointments.length;
-  };
+  }, [getDoctorAppointments]);
 
-  const getDoctorTotalSlots = (doctor: Doctor) => {
-    const today = getTodayPH();
+  const getDoctorTotalSlots = useCallback((doctor: Doctor) => {
+    const today = currentDate || getTodayPH();
+    
     if (doctor.unavailableDates?.[today]) {
       return 0;
     }
+    
     const dateSpecificSlots = doctor.maxSlotsPerDate?.[today];
     const globalSlots = doctor.maxSlots || 8;
     const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
+    
     const unavailableTimeSlots = doctor.availableSlots?.[today] || [];
     const availableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
+    
+    console.log(`📊 Doctor ${doctor.name} slots on ${today}: ${availableSlots} (max: ${maxSlots}, unavailable times: ${unavailableTimeSlots.length})`);
     return availableSlots;
-  };
+  }, [currentDate, getTodayPH]);
 
-  const isDoctorAvailable = (doctor: Doctor) => {
+  const isDoctorAvailable = useCallback((doctor: Doctor) => {
     const slotCount = getDoctorSlotCount(doctor.name);
     const totalSlots = getDoctorTotalSlots(doctor);
     const active = doctor.isActive === undefined ? true : doctor.isActive;
-    console.log(`🔎 Doctor ${doctor.name} - Slots: ${slotCount}/${totalSlots}, Active: ${active}, Available: ${active && totalSlots > 0 && slotCount < totalSlots}`);
-    return active && totalSlots > 0 && slotCount < totalSlots;
-  };
+    
+    const isAvailable = active && totalSlots > 0 && slotCount < totalSlots;
+    console.log(`🔎 Doctor ${doctor.name} - Slots: ${slotCount}/${totalSlots}, Active: ${active}, Available: ${isAvailable}`);
+    
+    return isAvailable;
+  }, [getDoctorSlotCount, getDoctorTotalSlots]);
 
   if (isLoading) {
     return (
@@ -167,6 +253,9 @@ const OurDoctors = () => {
             Meet our team of highly qualified and experienced healthcare professionals 
             dedicated to providing you with the best medical care.
           </p>
+          <div className="mt-4 text-sm text-gray-500">
+            Displaying schedule for: <strong>{currentDate || getTodayPH()}</strong>
+          </div>
         </div>
         {error && (
           <div className="mb-8 bg-red-50 border border-red-200 rounded-lg p-4">
@@ -201,6 +290,8 @@ const OurDoctors = () => {
               const slotCount = getDoctorSlotCount(doctor.name);
               const totalSlots = getDoctorTotalSlots(doctor);
               const available = isDoctorAvailable(doctor);
+              const percentage = totalSlots > 0 ? Math.min((slotCount / totalSlots) * 100, 100) : 0;
+              
               return (
                 <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 relative">
                   <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-semibold z-10 ${
@@ -268,8 +359,11 @@ const OurDoctors = () => {
                           className={`h-2 rounded-full transition-all duration-300 ${
                             slotCount >= totalSlots && totalSlots > 0 ? 'bg-red-600' : 'bg-indigo-600'
                           }`}
-                          style={{ width: `${totalSlots > 0 ? Math.min((slotCount / totalSlots) * 100, 100) : 0}%` }}
+                          style={{ width: `${percentage}%` }}
                         />
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 text-center">
+                        {percentage.toFixed(0)}% booked • {currentDate || getTodayPH()}
                       </div>
                     </div>
                     <div className="space-y-3 pt-2">

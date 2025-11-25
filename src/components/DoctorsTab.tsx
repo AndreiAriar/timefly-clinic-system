@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Search, Filter, Plus, Edit2, Trash2, User, Mail, Phone, Stethoscope, Calendar, X } from 'lucide-react';
 import { collection, query, onSnapshot, deleteDoc, doc, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -41,6 +41,7 @@ const DoctorsTab = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [doctorToDelete, setDoctorToDelete] = useState<Doctor | null>(null);
+  const [currentDate, setCurrentDate] = useState<string>('');
 
   const specialties = [
     'Ophthalmology',
@@ -53,23 +54,37 @@ const DoctorsTab = () => {
     'Neuro-ophthalmology'
   ];
 
-  // Helper function to get today's date in Philippine timezone
-  const getTodayPH = () => {
+  // Memoized function to get today's date in Philippine timezone
+  const getTodayPH = useCallback(() => {
     const now = new Date();
     const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     const year = phTime.getFullYear();
     const month = String(phTime.getMonth() + 1).padStart(2, '0');
     const day = String(phTime.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  };
+  }, []);
 
-  // Set up real-time listener for doctors (runs once on mount)
+  // Update current date every minute to handle day changes
+  useEffect(() => {
+    const updateDate = () => {
+      setCurrentDate(getTodayPH());
+    };
+    
+    // Set initial date
+    updateDate();
+    
+    // Update date every minute to handle day changes
+    const interval = setInterval(updateDate, 60000);
+    
+    return () => clearInterval(interval);
+  }, [getTodayPH]);
+
+  // Set up real-time listener for doctors
   useEffect(() => {
     setIsLoading(true);
     const doctorsRef = collection(db, 'doctors');
     const q = query(doctorsRef, orderBy('createdAt', 'desc'));
     
-    // Real-time listener for doctors
     const unsubscribe = onSnapshot(
       q,
       (querySnapshot) => {
@@ -90,6 +105,49 @@ const DoctorsTab = () => {
 
     return () => unsubscribe();
   }, []);
+
+  // Real-time appointments listener with current date dependency
+  useEffect(() => {
+    const todayPH = currentDate || getTodayPH();
+    
+    if (!todayPH) return;
+    
+    const appointmentsRef = collection(db, 'appointments');
+    const q = query(
+      appointmentsRef,
+      where('appointmentDate', '==', todayPH)
+    );
+    
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const appointmentsData = querySnapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              doctorId: data.doctor || '',
+              status: data.status,
+              date: data.appointmentDate,
+              time: data.timeSlot
+            };
+          })
+          .filter(apt => 
+            apt.status !== 'cancelled' && 
+            apt.status !== 'completed' && 
+            apt.status !== 'missed'
+          ) as Appointment[];
+        
+        console.log('📊 Real-time appointments update for', todayPH, ':', appointmentsData.length);
+        setAppointments(appointmentsData);
+      },
+      (error) => {
+        console.error('Error listening to appointments:', error);
+      }
+    );
+    
+    return () => unsubscribe();
+  }, [currentDate, getTodayPH]);
 
   useEffect(() => {
     let filtered = [...doctors];
@@ -119,63 +177,23 @@ const DoctorsTab = () => {
     setFilteredDoctors(filtered);
   }, [doctors, searchQuery, specialtyFilter, statusFilter]);
 
-  // Real-time appointments listener
-  useEffect(() => {
-    const todayPH = getTodayPH();
-    
-    const appointmentsRef = collection(db, 'appointments');
-    const q = query(
-      appointmentsRef,
-      where('appointmentDate', '==', todayPH)
-    );
-    
-    // Subscribe to real-time updates
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        const appointmentsData = querySnapshot.docs
-          .map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              doctorId: data.doctor || '',
-              status: data.status,
-              date: data.appointmentDate,
-              time: data.timeSlot
-            };
-          })
-          .filter(apt => 
-            apt.status !== 'cancelled' && 
-            apt.status !== 'completed' && 
-            apt.status !== 'missed'
-          ) as Appointment[];
-        
-        console.log('📊 Real-time appointments update:', appointmentsData.length);
-        setAppointments(appointmentsData);
-      },
-      (error) => {
-        console.error('Error listening to appointments:', error);
-      }
-    );
-    
-    return () => unsubscribe();
-  }, []);
-
-  const getDoctorAppointments = (doctorName: string) => {
+  const getDoctorAppointments = useCallback((doctorName: string) => {
+    const todayPH = currentDate || getTodayPH();
     const filtered = appointments.filter(appointment => 
-      appointment.doctorId === doctorName || 
-      appointment.doctorId === `Dr. ${doctorName}`
+      (appointment.doctorId === doctorName || 
+       appointment.doctorId === `Dr. ${doctorName}`) &&
+      appointment.date === todayPH
     );
     return filtered;
-  };
+  }, [appointments, currentDate, getTodayPH]);
 
-  const getDoctorSlotCount = (doctorName: string) => {
+  const getDoctorSlotCount = useCallback((doctorName: string) => {
     const doctorAppointments = getDoctorAppointments(doctorName);
     return doctorAppointments.length;
-  };
+  }, [getDoctorAppointments]);
 
-  const getDoctorTotalSlots = (doctor: Doctor) => {
-    const today = getTodayPH();
+  const getDoctorTotalSlots = useCallback((doctor: Doctor) => {
+    const today = currentDate || getTodayPH();
     
     // Check if doctor is completely unavailable today
     if (doctor.unavailableDates?.[today]) {
@@ -192,15 +210,28 @@ const DoctorsTab = () => {
     const availableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
     
     return availableSlots;
-  };
+  }, [currentDate, getTodayPH]);
 
-  const isDoctorAvailable = (doctor: Doctor) => {
+  const isDoctorAvailable = useCallback((doctor: Doctor) => {
     const slotCount = getDoctorSlotCount(doctor.name);
     const totalSlots = getDoctorTotalSlots(doctor);
     const active = doctor.isActive === undefined ? true : doctor.isActive;
     
     return active && totalSlots > 0 && slotCount < totalSlots;
-  };
+  }, [getDoctorSlotCount, getDoctorTotalSlots]);
+
+  // Calculate progress percentage for the progress bar
+  const getProgressPercentage = useCallback((doctor: Doctor) => {
+    const slotCount = getDoctorSlotCount(doctor.name);
+    const totalSlots = getDoctorTotalSlots(doctor);
+    
+    if (totalSlots === 0) {
+      return 0;
+    }
+    
+    const percentage = (slotCount / totalSlots) * 100;
+    return Math.min(percentage, 100); // Cap at 100%
+  }, [getDoctorSlotCount, getDoctorTotalSlots]);
 
   const handleAddDoctor = () => {
     setSelectedDoctor(null);
@@ -241,9 +272,7 @@ const DoctorsTab = () => {
     setSelectedDoctor(null);
   };
 
-  // This function does nothing now - the real-time listener handles updates automatically
   const handleDoctorAdded = () => {
-    // No action needed - Firebase's onSnapshot will automatically update the doctors list
     console.log('✅ Doctor added - real-time listener will update the list');
   };
 
@@ -266,6 +295,9 @@ const DoctorsTab = () => {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Doctors Management</h1>
             <p className="text-gray-600 mt-2">Manage hospital doctors and their specialties</p>
+            <div className="text-sm text-gray-500 mt-1">
+              Displaying schedule for: <strong>{currentDate || getTodayPH()}</strong>
+            </div>
           </div>
           <button
             onClick={handleAddDoctor}
@@ -385,6 +417,7 @@ const DoctorsTab = () => {
               const slotCount = getDoctorSlotCount(doctor.name);
               const totalSlots = getDoctorTotalSlots(doctor);
               const available = isDoctorAvailable(doctor);
+              const progressPercentage = getProgressPercentage(doctor);
 
               return (
                 <div key={doctor.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg relative">
@@ -451,9 +484,12 @@ const DoctorsTab = () => {
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                         <div 
-                          className="bg-indigo-600 h-2 rounded-full"
-                          style={{ width: `${totalSlots > 0 ? (slotCount / totalSlots) * 100 : 0}%` }}
+                          className="bg-indigo-600 h-2 rounded-full transition-all duration-300 ease-in-out"
+                          style={{ width: `${progressPercentage}%` }}
                         />
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 text-center">
+                        {progressPercentage.toFixed(0)}% filled • {currentDate || getTodayPH()}
                       </div>
                     </div>
 
@@ -472,14 +508,14 @@ const DoctorsTab = () => {
                     <div className="flex justify-center items-center gap-4 pt-3">
                       <button
                         onClick={() => handleEditDoctor(doctor)}
-                        className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium"
+                        className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium hover:bg-gray-100 transition-colors"
                       >
                         <Edit2 className="w-4 h-4" />
                         Edit
                       </button>
                       <button
                         onClick={() => handleDeleteDoctor(doctor)}
-                        className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium"
+                        className="px-4 py-2 text-gray-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium hover:bg-gray-100 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                         Delete

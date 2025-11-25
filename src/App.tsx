@@ -8,6 +8,7 @@ import { db } from './firebase/config';
 import TermsOfUse from './components/TermsOfUse';
 import PrivacyPolicy from './components/PrivacyPolicy';
 
+
 // Lazy load components for better performance
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const StaffDashboard = lazy(() => import('./components/StaffDashboard'));

@@ -457,7 +457,8 @@ const confirmCancel = async (reason: string) => {
   const handleDelete = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setShowDeleteModal(true);
-  };const confirmDelete = async () => {
+  };
+  const confirmDelete = async () => {
   if (!selectedAppointment) return;
 
   try {
