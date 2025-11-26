@@ -612,7 +612,6 @@ const confirmCancel = async (reason: string) => {
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
                 <option value="confirmed">Confirmed</option>
-                <option value="scheduled">Scheduled</option>
                 <option value="rescheduled">Rescheduled</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>

@@ -316,9 +316,8 @@ const getBookedTimeSlots = useCallback(async (doctor: string, appointmentDate: s
   if (!doctor || !appointmentDate) return [];
   
   try {
-    // UPDATED: Check BOTH collections for active appointments
+    // ✅ FIXED: Query ONLY patient_appointments (primary collection) to avoid double-counting
     const patientRef = collection(db, 'patient_appointments');
-    const staffRef = collection(db, 'staff_appointments');
     
     const patientQuery = query(
       patientRef,
@@ -327,44 +326,22 @@ const getBookedTimeSlots = useCallback(async (doctor: string, appointmentDate: s
       where('status', 'in', ['pending', 'confirmed', 'scheduled'])
     );
     
-    const staffQuery = query(
-      staffRef,
-      where('doctor', '==', doctor),
-      where('appointmentDate', '==', appointmentDate),
-      where('status', 'in', ['pending', 'confirmed', 'scheduled'])
-    );
+    const patientSnapshot = await getDocs(patientQuery);
     
-    const [patientSnapshot, staffSnapshot] = await Promise.all([
-      getDocs(patientQuery),
-      getDocs(staffQuery)
-    ]);
+    // Get booked slots from primary collection only
+    const bookedSlots = patientSnapshot.docs.map(docSnapshot => {
+      const data = docSnapshot.data();
+      console.log('📌 Booked appointment found:', {
+        doctor: data.doctor,
+        date: data.appointmentDate,
+        timeSlot: data.timeSlot,
+        status: data.status
+      });
+      return data.timeSlot as string;
+    });
     
-    // Combine booked slots from both collections
-    const bookedSlots = [
-      ...patientSnapshot.docs.map(docSnapshot => {
-        const data = docSnapshot.data();
-        console.log('📌 Booked appointment found (patient):', {
-          doctor: data.doctor,
-          date: data.appointmentDate,
-          timeSlot: data.timeSlot,
-          status: data.status
-        });
-        return data.timeSlot as string;
-      }),
-      ...staffSnapshot.docs.map(docSnapshot => {
-        const data = docSnapshot.data();
-        console.log('📌 Booked appointment found (staff):', {
-          doctor: data.doctor,
-          date: data.appointmentDate,
-          timeSlot: data.timeSlot,
-          status: data.status
-        });
-        return data.timeSlot as string;
-      })
-    ];
-    
-    // Remove duplicates (in case same slot exists in both collections)
-    const uniqueBookedSlots = Array.from(new Set(bookedSlots));
+    // No need to remove duplicates since we're only querying one collection
+    const uniqueBookedSlots = bookedSlots;
     
     // Get slot locks
     const slotLocksRef = collection(db, 'slot_locks');
@@ -431,13 +408,16 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
     const doctorQuery = query(doctorsRef, where('name', '==', doctor));
     const doctorSnapshot = await getDocs(doctorQuery);
     
-    if (doctorSnapshot.empty) return {isFullyBooked: false, isUnavailable: false};
+    if (doctorSnapshot.empty) {
+      console.error('âŒ Doctor not found in database:', doctor);
+      return {isFullyBooked: false, isUnavailable: false};
+    }
     
     const doctorData = doctorSnapshot.docs[0].data();
     
     const unavailableDates = doctorData.unavailableDates || {};
     if (unavailableDates[appointmentDate] === true) {
-      console.log('🚫 Doctor is marked as unavailable on this date');
+      console.log('ðŸš« Doctor is marked as unavailable on this date');
       return {isFullyBooked: false, isUnavailable: true};
     }
     
@@ -446,11 +426,25 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
     const globalMaxSlots = doctorData.maxSlots || 10;
     const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
     
-    console.log('📊 Max slots for this date:', maxSlots);
+    console.log('ðŸ"Š DETAILED Doctor Availability Check:', {
+      doctor: doctor,
+      date: appointmentDate,
+      rawMaxSlotsPerDate: maxSlotsPerDate,
+      dateSpecificMaxSlots: dateSpecificMaxSlots,
+      dateSpecificExists: dateSpecificMaxSlots !== undefined,
+      globalMaxSlots: globalMaxSlots,
+      finalMaxSlots: maxSlots,
+      unavailableDates: unavailableDates,
+      timestamp: new Date().toISOString()
+    });
     
-    // UPDATED: Count active appointments from BOTH collections
+    if (maxSlots === 0) {
+      console.log('🚫 Max slots is 0 - doctor is fully booked for this date');
+      return {isFullyBooked: true, isUnavailable: false};
+    }
+    
+    // ✅ FIXED: Count ONLY from patient_appointments (primary collection) to avoid double-counting
     const patientRef = collection(db, 'patient_appointments');
-    const staffRef = collection(db, 'staff_appointments');
     
     const patientQuery = query(
       patientRef,
@@ -459,22 +453,11 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
       where('status', 'in', ['pending', 'confirmed', 'scheduled'])
     );
     
-    const staffQuery = query(
-      staffRef,
-      where('doctor', '==', doctor),
-      where('appointmentDate', '==', appointmentDate),
-      where('status', 'in', ['pending', 'confirmed', 'scheduled'])
-    );
+    const patientSnapshot = await getDocs(patientQuery);
+    const bookedCount = patientSnapshot.size;
     
-    const [patientSnapshot, staffSnapshot] = await Promise.all([
-      getDocs(patientQuery),
-      getDocs(staffQuery)
-    ]);
-    
-    const bookedCount = patientSnapshot.size + staffSnapshot.size;
-    
-    console.log('📋 Current booked appointments:', bookedCount, '(patient:', patientSnapshot.size, '+ staff:', staffSnapshot.size, ')');
-    console.log('🔍 Is fully booked?', bookedCount >= maxSlots);
+    console.log('📋 Current booked appointments (from primary collection):', bookedCount);
+    console.log('🔍 Is fully booked?', bookedCount >= maxSlots, `(${bookedCount} >= ${maxSlots})`);
     
     return {isFullyBooked: bookedCount >= maxSlots, isUnavailable: false};
   } catch (error) {
@@ -482,7 +465,6 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
     return {isFullyBooked: false, isUnavailable: false};
   }
 }, []);
-
   const isPastTime = (date: string, time: string): boolean => {
     const now = new Date();
     const [year, month, day] = date.split('-').map(Number);
@@ -798,141 +780,172 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
     if (file) {
       handlePhotoUpload(file);
     }
-  };
+  };const handleSubmit = async () => {
+  if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
+      !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
+    showToast('Please fill in all required fields', 'warning');
+    return;
+  }
 
-  const handleSubmit = async () => {
-    if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
-        !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
-      showToast('Please fill in all required fields', 'warning');
-      return;
-    }
+  if (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim()) {
+    showToast('Please specify your medical condition', 'warning');
+    return;
+  }
 
-    if (formData.medicalCondition === 'Other (Please Specify)' && !formData.customCondition.trim()) {
-      showToast('Please specify your medical condition', 'warning');
-      return;
-    }
+  if (bookingEligibility && !bookingEligibility.canBook) {
+    showToast('🚫 ' + bookingEligibility.reason, 'error');
+    return;
+  }
 
-    if (bookingEligibility && !bookingEligibility.canBook) {
-      showToast('🚫 ' + bookingEligibility.reason, 'error');
-      return;
-    }
-
-    const dailyLimits = bookingEligibility?.dailyLimits;
-    if (dailyLimits) {
-      const currentPriority = formData.priorityLevel;
-      
-      if (currentPriority === 'normal' && dailyLimits.normal >= 2) {
-        showToast('❌ Daily limit reached: You can only book 2 Normal appointments per day. Choose another date or priority.', 'error');
-        return;
-      }
-      
-      if (currentPriority === 'urgent' && dailyLimits.urgent >= 1) {
-        showToast('❌ Daily limit reached: You can only book 1 Urgent appointment per day. Choose another date or priority.', 'error');
-        return;
-      }
-      
-      if (currentPriority === 'emergency' && dailyLimits.emergency >= 1) {
-        showToast('❌ Daily limit reached: You can only book 1 Emergency appointment per day. Choose another date or priority.', 'error');
-        return;
-      }
-    }
-
-    const userEmail = auth.currentUser?.email;
-    if (!userEmail) {
-      showToast('User email not found. Please log in again.', 'error');
-      return;
-    }
-
-    setIsSubmitting(true);
+  const dailyLimits = bookingEligibility?.dailyLimits;
+  if (dailyLimits) {
+    const currentPriority = formData.priorityLevel;
     
-    try {
-      const finalMedicalCondition = formData.medicalCondition === 'Other (Please Specify)' 
-        ? formData.customCondition 
-        : formData.medicalCondition;
+    if (currentPriority === 'normal' && dailyLimits.normal >= 2) {
+      showToast('❌ Daily limit reached: You can only book 2 Normal appointments per day. Choose another date or priority.', 'error');
+      return;
+    }
+    
+    if (currentPriority === 'urgent' && dailyLimits.urgent >= 1) {
+      showToast('❌ Daily limit reached: You can only book 1 Urgent appointment per day. Choose another date or priority.', 'error');
+      return;
+    }
+    
+    if (currentPriority === 'emergency' && dailyLimits.emergency >= 1) {
+      showToast('❌ Daily limit reached: You can only book 1 Emergency appointment per day. Choose another date or priority.', 'error');
+      return;
+    }
+  }
 
-      const selectedDoctor = doctors.find(d => d.name === formData.doctor);
-      
-      if (selectedDoctor) {
-        const unavailableDates = selectedDoctor.unavailableDates || {};
-        if (unavailableDates[formData.appointmentDate] === true) {
-          throw new Error('DOCTOR_UNAVAILABLE');
-        }
+  const userEmail = auth.currentUser?.email;
+  if (!userEmail) {
+    showToast('User email not found. Please log in again.', 'error');
+    return;
+  }
+
+  setIsSubmitting(true);
+  
+  try {
+    const finalMedicalCondition = formData.medicalCondition === 'Other (Please Specify)' 
+      ? formData.customCondition 
+      : formData.medicalCondition;
+
+    const selectedDoctor = doctors.find(d => d.name === formData.doctor);
+    
+    if (selectedDoctor) {
+      const unavailableDates = selectedDoctor.unavailableDates || {};
+      if (unavailableDates[formData.appointmentDate] === true) {
+        throw new Error('DOCTOR_UNAVAILABLE');
       }
-      
-      const maxSlotsPerDate = selectedDoctor?.maxSlotsPerDate || {};
+    }
+    
+    // ✅ CRITICAL FIX: Fetch LATEST doctor data to get accurate maxSlotsPerDate
+    const doctorsRef = collection(db, 'doctors');
+    const doctorQuery = query(doctorsRef, where('name', '==', formData.doctor));
+    const doctorSnapshot = await getDocs(doctorQuery);
+
+    let maxSlots = 10; // Default fallback
+
+    if (!doctorSnapshot.empty) {
+      const latestDoctorData = doctorSnapshot.docs[0].data();
+      const maxSlotsPerDate = latestDoctorData.maxSlotsPerDate || {};
       const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
-      const globalMaxSlots = selectedDoctor?.maxSlots || 10;
-      const maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+      const globalMaxSlots = latestDoctorData.maxSlots || 10;
+      
+      // Use date-specific slots if they exist (even if 0), otherwise use global
+      maxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
 
-    
-        const appointmentData = await runTransaction(db, async (transaction) => {
-        const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
-        const slotLockDoc = await transaction.get(slotLockRef);
-
-        if (slotLockDoc.exists()) {
-          const lockData = slotLockDoc.data();
-          console.log('🔒 Slot is locked:', lockData);
-          throw new Error('SLOT_TAKEN');
-        }
-
-        const counterRef = doc(db, 'booking_counters', `${formData.doctor}_${formData.appointmentDate}`);
-        const counterDoc = await transaction.get(counterRef);
-        const counterData = counterDoc.data();
-        const currentCount = counterData?.count || 0;
-         if (currentCount >= maxSlots) {
-          console.log('📊 Doctor fully booked:', { currentCount, maxSlots });
-          throw new Error('DOCTOR_FULLY_BOOKED');
-        }
-       // ✅ FIXED: Calculate queue number based ONLY on time slots
-        const patientRef = collection(db, 'patient_appointments');
-        const staffRef = collection(db, 'staff_appointments');
-
-        const patientQuery = query(
-          patientRef,
-          where('doctor', '==', formData.doctor),
-          where('appointmentDate', '==', formData.appointmentDate),
-          where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
-        );
-
-        const staffQuery = query(
-          staffRef,
-          where('doctor', '==', formData.doctor),
-          where('appointmentDate', '==', formData.appointmentDate),
-          where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
-        );
-
-        const [patientSnapshot, staffSnapshot] = await Promise.all([
-          getDocs(patientQuery),
-          getDocs(staffQuery)
-        ]);
-
-        // ✅ FIXED: Use Set to remove duplicate appointments
-      const appointmentSet = new Set();
-
-      // Combine all existing appointments and remove duplicates
-      const allExistingAppointments = [
-        ...patientSnapshot.docs.map(doc => ({ 
-          id: doc.id, 
-          timeSlot: doc.data().timeSlot, 
-          queueNumber: doc.data().queueNumber,
-          collection: 'patient_appointments'
-        })),
-        ...staffSnapshot.docs.map(doc => ({ 
-          id: doc.id, 
-          timeSlot: doc.data().timeSlot, 
-          queueNumber: doc.data().queueNumber,
-          collection: 'staff_appointments'
-        }))
-      ];
-
-      // Remove duplicates by using a Set with appointment IDs
-      const uniqueAppointments = allExistingAppointments.filter(appointment => {
-        if (appointmentSet.has(appointment.id)) {
-          return false; // Skip duplicate
-        }
-        appointmentSet.add(appointment.id);
-        return true;
+      console.log('🔧 CRITICAL: Fetched LATEST max slots for booking check:', {
+        doctor: formData.doctor,
+        date: formData.appointmentDate,
+        dateSpecificMaxSlots: dateSpecificMaxSlots,
+        globalMaxSlots: globalMaxSlots,
+        finalMaxSlots: maxSlots,
+        maxSlotsPerDate: maxSlotsPerDate,
+        timestamp: new Date().toISOString()
       });
+    } else {
+      console.error('❌ Doctor not found in database:', formData.doctor);
+      throw new Error('DOCTOR_NOT_FOUND');
+    }
+
+    // ✅ Check if max slots is 0 (completely blocked)
+    if (maxSlots === 0) {
+      console.log('🚫 Max slots is 0 - doctor is fully booked for this date');
+      throw new Error('DOCTOR_FULLY_BOOKED');
+    }
+
+    const appointmentData = await runTransaction(db, async (transaction) => {
+      const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
+      const slotLockDoc = await transaction.get(slotLockRef);
+
+      if (slotLockDoc.exists()) {
+        const lockData = slotLockDoc.data();
+        console.log('🔒 Slot is locked:', lockData);
+        throw new Error('SLOT_TAKEN');
+      }
+
+      // ✅ CRITICAL FIX: Fetch LATEST maxSlots INSIDE transaction to avoid stale data
+      const doctorQueryInTransaction = query(
+        collection(db, 'doctors'),
+        where('name', '==', formData.doctor)
+      );
+      const doctorSnapshotInTransaction = await getDocs(doctorQueryInTransaction);
+
+      let transactionMaxSlots = 10; // Default fallback
+
+      if (!doctorSnapshotInTransaction.empty) {
+        const transactionDoctorData = doctorSnapshotInTransaction.docs[0].data();
+        const maxSlotsPerDate = transactionDoctorData.maxSlotsPerDate || {};
+        const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
+        const globalMaxSlots = transactionDoctorData.maxSlots || 10;
+        
+        transactionMaxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
+        
+        console.log('🔐 TRANSACTION: Using FRESH max slots:', {
+          doctor: formData.doctor,
+          date: formData.appointmentDate,
+          dateSpecificMaxSlots: dateSpecificMaxSlots,
+          globalMaxSlots: globalMaxSlots,
+          finalMaxSlots: transactionMaxSlots,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error('❌ TRANSACTION: Doctor document not found');
+        throw new Error('DOCTOR_NOT_FOUND');
+      }
+
+      // ✅ CRITICAL FIX: Query ONLY patient_appointments to avoid permission issues
+      const patientRef = collection(db, 'patient_appointments');
+
+      const patientQuery = query(
+        patientRef,
+        where('doctor', '==', formData.doctor),
+        where('appointmentDate', '==', formData.appointmentDate),
+        where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+      );
+
+      // Only query patient_appointments (no need for staff_appointments query)
+      const patientSnapshot = await getDocs(patientQuery);
+
+      // ✅ Count ONLY from patient_appointments to avoid double-counting
+      const currentBookedCount = patientSnapshot.size;
+      console.log('📊 TRANSACTION: Current booked count (from patient_appointments only):', currentBookedCount, 'Max slots:', transactionMaxSlots);
+
+      if (currentBookedCount >= transactionMaxSlots) {
+        console.log('🚫 TRANSACTION: Doctor fully booked - cannot add new appointment');
+        throw new Error('DOCTOR_FULLY_BOOKED');
+      }
+
+      // ✅ Get all existing appointments from patient_appointments only
+      const allExistingAppointments = patientSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        timeSlot: doc.data().timeSlot, 
+        queueNumber: doc.data().queueNumber,
+        collection: 'patient_appointments'
+      }));
+
+      const uniqueAppointments = allExistingAppointments;
 
       // Add the NEW appointment
       const allAppointments = [
@@ -944,156 +957,162 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
           collection: 'patient_appointments'
         }
       ];
-        // Sort ALL appointments by time slot ONCE
-        allAppointments.sort((a, b) => {
-          const timeA = a.timeSlot.split(':').map(Number);
-          const timeB = b.timeSlot.split(':').map(Number);
-          return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
-        });
 
-        console.log('\n🎯 ===== QUEUE ASSIGNMENT (SORTED BY TIME) =====');
-        allAppointments.forEach((apt, idx) => {
-          console.log(`  Position ${idx + 1}: ${apt.timeSlot} - ${apt.id === 'NEW_APPOINTMENT' ? '🆕 NEW' : `ID: ${apt.id}`}`);
-        });
-        console.log('===============================================\n');
+      // Sort ALL appointments by time slot ONCE
+      allAppointments.sort((a, b) => {
+        const timeA = a.timeSlot.split(':').map(Number);
+        const timeB = b.timeSlot.split(':').map(Number);
+        return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
+      });
 
-        // Reassign ALL queue numbers sequentially 1, 2, 3, 4... based ONLY on time order
-        let queueNumber = 0;
-        const appointmentsToUpdate: Array<{ id: string; collection: string; newQueueNumber: number }> = [];
+      console.log('\n🎯 ===== QUEUE ASSIGNMENT (SORTED BY TIME) =====');
+      allAppointments.forEach((apt, idx) => {
+        console.log(`  Position ${idx + 1}: ${apt.timeSlot} - ${apt.id === 'NEW_APPOINTMENT' ? '🆕 NEW' : `ID: ${apt.id}`}`);
+      });
+      console.log('===============================================\n');
 
-        for (let i = 0; i < allAppointments.length; i++) {
-          const appointment = allAppointments[i];
-          const correctQueueNum = i + 1; // Sequential: 1, 2, 3, 4...
-          
-          if (appointment.id === 'NEW_APPOINTMENT') {
-            queueNumber = correctQueueNum;
-            console.log(`✅ NEW appointment gets queue #${queueNumber} at ${appointment.timeSlot}`);
-          } else if (appointment.queueNumber !== correctQueueNum) {
-            appointmentsToUpdate.push({
-              id: appointment.id,
-              collection: appointment.collection,
-              newQueueNumber: correctQueueNum
-            });
-            console.log(`🔄 Updating ${appointment.id}: #${appointment.queueNumber} → #${correctQueueNum} (${appointment.timeSlot})`);
-          }
+      // Reassign ALL queue numbers sequentially 1, 2, 3, 4... based ONLY on time order
+      let queueNumber = 0;
+      const appointmentsToUpdate: Array<{ id: string; collection: string; newQueueNumber: number }> = [];
+
+      for (let i = 0; i < allAppointments.length; i++) {
+        const appointment = allAppointments[i];
+        const correctQueueNum = i + 1; // Sequential: 1, 2, 3, 4...
+        
+        if (appointment.id === 'NEW_APPOINTMENT') {
+          queueNumber = correctQueueNum;
+          console.log(`✅ NEW appointment gets queue #${queueNumber} at ${appointment.timeSlot}`);
+        } else if (appointment.queueNumber !== correctQueueNum) {
+          appointmentsToUpdate.push({
+            id: appointment.id,
+            collection: appointment.collection,
+            newQueueNumber: correctQueueNum
+          });
+          console.log(`🔄 Updating ${appointment.id}: #${appointment.queueNumber} → #${correctQueueNum} (${appointment.timeSlot})`);
         }
+      }
 
-        console.log(`\n📊 Final: ${allAppointments.length} appointments with queue numbers 1-${allAppointments.length}\n`);
+      console.log(`\n📊 Final: ${allAppointments.length} appointments with queue numbers 1-${allAppointments.length}\n`);
 
-        // Update existing appointments in BOTH collections
-        for (const update of appointmentsToUpdate) {
+      // ✅ CRITICAL FIX: Update existing appointments in BOTH collections with proper error handling
+      for (const update of appointmentsToUpdate) {
+        try {
           const patientDocRef = doc(db, 'patient_appointments', update.id);
           const staffDocRef = doc(db, 'staff_appointments', update.id);
           
-          transaction.update(patientDocRef, { queueNumber: update.newQueueNumber });
-          transaction.update(staffDocRef, { queueNumber: update.newQueueNumber });
+          // Get current data from patient collection
+          const patientDoc = await transaction.get(patientDocRef);
+          if (patientDoc.exists()) {
+            const currentData = patientDoc.data();
+            
+            // Update both collections
+            transaction.update(patientDocRef, { queueNumber: update.newQueueNumber });
+            transaction.set(staffDocRef, { 
+              ...currentData, 
+              queueNumber: update.newQueueNumber 
+            }, { merge: true });
+            
+            console.log(`✅ Updated queue #${update.newQueueNumber} for appointment ${update.id}`);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to update queue for appointment ${update.id}:`, error);
+          // Continue with other updates even if one fails
         }
-
-        const appointment: Appointment = {
-          fullName: formData.fullName,
-          age: formData.age,
-          photo: formData.photo,
-          doctor: formData.doctor,
-          appointmentDate: formData.appointmentDate,
-          gender: formData.gender,
-          medicalCondition: finalMedicalCondition,
-          phone: formData.phone,
-          email: userEmail,
-          priorityLevel: formData.priorityLevel,
-          timeSlot: formData.timeSlot,
-          queueNumber: queueNumber,
-          status: 'pending',
-          createdAt: new Date().toISOString()
-        };
-
-        // ✅ FIXED: Save to BOTH collections (patient booking appears everywhere)
-        const appointmentId = doc(collection(db, 'patient_appointments')).id;
-        const patientAppointmentRef = doc(db, 'patient_appointments', appointmentId);
-        const staffAppointmentRef = doc(db, 'staff_appointments', appointmentId);
-
-        // Save to both collections with same ID
-        transaction.set(patientAppointmentRef, appointment);
-        transaction.set(staffAppointmentRef, appointment);
-
-        // Set slot lock
-        transaction.set(slotLockRef, {
-          doctor: formData.doctor,
-          appointmentDate: formData.appointmentDate,
-          timeSlot: formData.timeSlot,
-          appointmentId: appointmentId,
-          bookedAt: new Date().toISOString(),
-          bookedBy: userEmail
-        });
-
-        // Update counter
-        if (counterDoc.exists()) {
-          transaction.update(counterRef, { count: currentCount + 1 });
-        } else {
-          transaction.set(counterRef, { 
-            doctor: formData.doctor,
-            date: formData.appointmentDate,
-            count: 1 
-          });
-        }
-
-        return { appointmentId: appointmentId, appointment, queueNumber };
-      });
-      
-      console.log('✅ Appointment booked successfully:', appointmentData.appointmentId);
-
-      setQueueNumber(appointmentData.queueNumber);
-      showToast('🎉 Appointment booked successfully!', 'success');
-
-      if (onBookingComplete) {
-        onBookingComplete();
       }
 
-      fetch('/api/send-booking-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientName: formData.fullName,
-          patientEmail: userEmail,
-          doctor: formData.doctor,
-          appointmentDate: formData.appointmentDate,
-          timeSlot: formData.timeSlot,
-          queueNumber: appointmentData.queueNumber,
-          priorityLevel: formData.priorityLevel
-        }),
-      }).catch(err => console.error('Background email failed:', err));
+      const appointment: Appointment = {
+        fullName: formData.fullName,
+        age: formData.age,
+        photo: formData.photo,
+        doctor: formData.doctor,
+        appointmentDate: formData.appointmentDate,
+        gender: formData.gender,
+        medicalCondition: finalMedicalCondition,
+        phone: formData.phone,
+        email: userEmail,
+        priorityLevel: formData.priorityLevel,
+        timeSlot: formData.timeSlot,
+        queueNumber: queueNumber,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
 
-      setTimeout(() => {
-        handleClose();
-      }, 2000);
-      
-    } catch (error: unknown) {
-      console.error('Error booking appointment:', error);
-      
-      if (error instanceof Error) {
-        if (error.message === 'SLOT_TAKEN') {
-          showToast('⚠️ This time slot was just booked by another user. Please choose another time.', 'warning');
-          if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-            generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
-          }
-        } else if (error.message === 'DOCTOR_UNAVAILABLE') {
-          showToast('⚠️ This doctor is no longer available on the selected date. Please choose another date.', 'warning');
-        } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
-          showToast('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.', 'warning');
-          if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
-            generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
-          }
-        } else {
-          console.error('Unexpected error:', error);
-          showToast('Failed to book appointment. Please try again.', 'error');
+      // ✅ FIXED: Save to BOTH collections (patient booking appears everywhere)
+      const appointmentId = doc(collection(db, 'patient_appointments')).id;
+      const patientAppointmentRef = doc(db, 'patient_appointments', appointmentId);
+      const staffAppointmentRef = doc(db, 'staff_appointments', appointmentId);
+
+      // Save to both collections with same ID
+      transaction.set(patientAppointmentRef, appointment);
+      transaction.set(staffAppointmentRef, appointment);
+
+      // Set slot lock
+      transaction.set(slotLockRef, {
+        doctor: formData.doctor,
+        appointmentDate: formData.appointmentDate,
+        timeSlot: formData.timeSlot,
+        appointmentId: appointmentId,
+        bookedAt: new Date().toISOString(),
+        bookedBy: userEmail
+      });
+
+      return { appointmentId: appointmentId, appointment, queueNumber };
+    });
+    
+    console.log('✅ Appointment booked successfully:', appointmentData.appointmentId);
+
+    setQueueNumber(appointmentData.queueNumber);
+    showToast('🎉 Appointment booked successfully!', 'success');
+
+    if (onBookingComplete) {
+      onBookingComplete();
+    }
+
+    fetch('/api/send-booking-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patientName: formData.fullName,
+        patientEmail: userEmail,
+        doctor: formData.doctor,
+        appointmentDate: formData.appointmentDate,
+        timeSlot: formData.timeSlot,
+        queueNumber: appointmentData.queueNumber,
+        priorityLevel: formData.priorityLevel
+      }),
+    }).catch(err => console.error('Background email failed:', err));
+
+    setTimeout(() => {
+      handleClose();
+    }, 2000);
+    
+  } catch (error: unknown) {
+    console.error('Error booking appointment:', error);
+    
+    if (error instanceof Error) {
+      if (error.message === 'SLOT_TAKEN') {
+        showToast('⚠️ This time slot was just booked by another user. Please choose another time.', 'warning');
+        if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+          generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
+        }
+      } else if (error.message === 'DOCTOR_UNAVAILABLE') {
+        showToast('⚠️ This doctor is no longer available on the selected date. Please choose another date.', 'warning');
+      } else if (error.message === 'DOCTOR_FULLY_BOOKED') {
+        showToast('⚠️ This doctor is now fully booked for the selected date. Please choose another doctor or date.', 'warning');
+        if (formData.doctor && formData.appointmentDate && formData.priorityLevel) {
+          generateTimeSlots(formData.priorityLevel, formData.doctor, formData.appointmentDate);
         }
       } else {
+        console.error('Unexpected error:', error);
         showToast('Failed to book appointment. Please try again.', 'error');
       }
-    } finally {
-      setIsSubmitting(false);
+    } else {
+      showToast('Failed to book appointment. Please try again.', 'error');
     }
-  };
-
+  } finally {
+    setIsSubmitting(false);
+  }
+};
   const handleClose = () => {
     setFormData({
       fullName: '',

@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, query, getDocs, doc, deleteDoc, where, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { Clock, User, Calendar, Trash2, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { Clock, User, Calendar, Trash2, CheckCircle, AlertCircle, RefreshCw, X } from 'lucide-react';
 import { toast } from 'react-toastify';
+
+// Import RescheduleModal component
+import RescheduleModal from './RescheduleModal';
+import WaitingListRescheduleModal from './waitingListRescheduleModal';
 
 interface WaitingListEntry {
   id: string;
@@ -37,6 +41,11 @@ interface Appointment {
   queueNumber: number;
   timeSlot: string;
   status: string;
+  fullName: string;
+  email?: string;
+  doctor: string;
+  appointmentDate: string;
+  priorityLevel: string; 
 }
 
 const WaitingList = () => {
@@ -46,6 +55,10 @@ const WaitingList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
+  const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [isWaitingListRescheduleModalOpen, setIsWaitingListRescheduleModalOpen] = useState(false);
+  const [selectedWaitingListEntry, setSelectedWaitingListEntry] = useState<WaitingListEntry | null>(null);
 
   // Enhanced real-time listener for waiting list with error handling
   useEffect(() => {
@@ -310,9 +323,17 @@ const WaitingList = () => {
       patientSnapshot.docs.forEach(doc => {
         if (!appointmentIds.has(doc.id)) {
           appointmentIds.add(doc.id);
+          const data = doc.data();
           allAppointments.push({
             id: doc.id,
-            ...doc.data()
+            queueNumber: data.queueNumber || 0,
+            timeSlot: data.timeSlot,
+            status: data.status || 'pending',
+            fullName: data.fullName || '',
+            doctor: data.doctor || '',
+            priorityLevel: data.priorityLevel || '',
+            appointmentDate: data.appointmentDate || '',
+            email: data.email || ''
           } as Appointment);
         }
       });
@@ -320,9 +341,16 @@ const WaitingList = () => {
       staffSnapshot.docs.forEach(doc => {
         if (!appointmentIds.has(doc.id)) {
           appointmentIds.add(doc.id);
+          const data = doc.data();
           allAppointments.push({
             id: doc.id,
-            ...doc.data()
+            queueNumber: data.queueNumber || 0,
+            timeSlot: data.timeSlot,
+            status: data.status || 'pending',
+            fullName: data.fullName || '',
+            doctor: data.doctor || '',
+            appointmentDate: data.appointmentDate || '',
+            email: data.email || ''
           } as Appointment);
         }
       });
@@ -332,7 +360,11 @@ const WaitingList = () => {
         id: 'NEW_APPOINTMENT',
         queueNumber: 0,
         timeSlot: timeSlot,
-        status: 'confirmed'
+        status: 'pending',
+        fullName: '',
+        doctor: doctorName,
+        appointmentDate: appointmentDate,
+        priorityLevel: '' 
       });
       
       // Sort by time slot chronologically
@@ -502,6 +534,91 @@ const WaitingList = () => {
       console.error('❌ Error sending assignment email:', error);
     }
   }, []);
+
+  // NEW: Send reschedule email notification
+  const sendRescheduleEmail = useCallback(async (
+    patientEmail: string, 
+    patientName: string, 
+    doctor: string, 
+    oldDate: string, 
+    oldTime: string,
+    newDate: string, 
+    newTime: string,
+    queueNumber: number
+  ) => {
+    if (!patientEmail) {
+      console.log('ℹ️ No email provided, skipping reschedule notification');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/send-reschedule-notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          patientEmail,
+          patientName,
+          doctor,
+          oldDate,
+          oldTime,
+          newDate,
+          newTime,
+          queueNumber
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send reschedule notification');
+      }
+
+      console.log('✅ Reschedule email sent successfully to:', patientEmail);
+    } catch (error) {
+      console.error('❌ Error sending reschedule email:', error);
+    }
+  }, []);
+
+  // NEW: Send waiting list reschedule email notification
+  const sendWaitingListRescheduleEmail = useCallback(async (
+    patientEmail: string, 
+    patientName: string, 
+    doctor: string, 
+    originalDate: string,
+    reason: string,
+    customReason?: string
+  ) => {
+    if (!patientEmail) {
+      console.log('ℹ️ No email provided, skipping waiting list reschedule notification');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/send-waitinglist-reschedule-notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          patientEmail,
+          patientName,
+          doctor,
+          originalDate,
+          reason,
+          customReason,
+          rescheduledBy: 'Staff'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send waiting list reschedule notification');
+      }
+
+      console.log('✅ Waiting list reschedule email sent successfully to:', patientEmail);
+    } catch (error) {
+      console.error('❌ Error sending waiting list reschedule email:', error);
+    }
+  }, []);
   
   // FIXED: Enhanced autoAssignToAppointment with proper queue number assignment and dependencies
   const autoAssignToAppointment = useCallback(async (entry: WaitingListEntry) => {
@@ -546,7 +663,7 @@ const WaitingList = () => {
         priorityLevel: entry.priorityLevel,
         timeSlot: timeSlot,
         queueNumber: queueNumber, // ✅ Now using proper queue number
-        status: 'confirmed',
+        status: 'pending', // CHANGED: Keep as pending instead of confirmed
         createdAt: new Date().toISOString(),
         assignedFromWaitingList: true,
         autoAssigned: true,
@@ -619,7 +736,7 @@ const WaitingList = () => {
       }
     };
 
-   // Check every 5 seconds, but only if we have patients
+    // Check every 5 seconds, but only if we have patients
     const interval = setInterval(checkAndAutoAssign, 5000);
     
     // Also check immediately when list changes, but with a small delay to avoid race conditions
@@ -678,7 +795,7 @@ const WaitingList = () => {
         priorityLevel: selectedEntry.priorityLevel,
         timeSlot: timeSlot,
         queueNumber: queueNumber, // ✅ Now using proper queue number
-        status: 'confirmed',
+        status: 'pending', // CHANGED: Keep as pending instead of confirmed
         createdAt: new Date().toISOString(),
         assignedFromWaitingList: true,
         manuallyAssigned: true,
@@ -727,6 +844,131 @@ const WaitingList = () => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // NEW: Handle reschedule appointment
+  const handleRescheduleAppointment = async (appointmentId: string, updatedData: { appointmentDate: string; timeSlot: string }) => {
+    setIsProcessing(true);
+    try {
+      console.log('🔄 Rescheduling appointment:', appointmentId, updatedData);
+      
+      // Get the original appointment data
+      const patientAppointmentRef = doc(db, 'patient_appointments', appointmentId);
+      const staffAppointmentRef = doc(db, 'staff_appointments', appointmentId);
+      
+      const patientAppointmentDoc = await getDocs(query(collection(db, 'patient_appointments'), where('__name__', '==', appointmentId)));
+      const originalAppointment = patientAppointmentDoc.docs[0]?.data() as Appointment;
+      
+      if (!originalAppointment) {
+        throw new Error('Appointment not found');
+      }
+      
+      // Update both collections
+      const batch = writeBatch(db);
+      batch.update(patientAppointmentRef, {
+        appointmentDate: updatedData.appointmentDate,
+        timeSlot: updatedData.timeSlot,
+        status: 'rescheduled', // Mark as rescheduled
+        lastUpdated: new Date().toISOString()
+      });
+      
+      batch.update(staffAppointmentRef, {
+        appointmentDate: updatedData.appointmentDate,
+        timeSlot: updatedData.timeSlot,
+        status: 'rescheduled', // Mark as rescheduled
+        lastUpdated: new Date().toISOString()
+      });
+      
+      await batch.commit();
+      
+      // Send reschedule email notification
+      if (originalAppointment.email) {
+        await sendRescheduleEmail(
+          originalAppointment.email,
+          originalAppointment.fullName,
+          originalAppointment.doctor,
+          originalAppointment.appointmentDate,
+          originalAppointment.timeSlot,
+          updatedData.appointmentDate,
+          updatedData.timeSlot,
+          originalAppointment.queueNumber
+        );
+      }
+      
+      toast.success(`✅ ${originalAppointment.fullName}'s appointment has been rescheduled successfully`, {
+        autoClose: 5000,
+        position: 'top-right'
+      });
+      
+      setIsRescheduleModalOpen(false);
+      setRescheduleAppointment(null);
+      
+    } catch (error) {
+      console.error('❌ Error rescheduling appointment:', error);
+      toast.error('Failed to reschedule appointment: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // NEW: Handle waiting list reschedule
+  const handleWaitingListReschedule = async (entryId: string, rescheduleData: { reason: string; customReason?: string }) => {
+    setIsProcessing(true);
+    try {
+      console.log('🔄 Rescheduling waiting list entry:', entryId, rescheduleData);
+      
+      const entry = waitingList.find(e => e.id === entryId);
+      if (!entry) {
+        throw new Error('Waiting list entry not found');
+      }
+
+      // Update waiting list entry with reschedule information
+      const waitingListRef = doc(db, 'waitingList', entryId);
+      const batch = writeBatch(db);
+      
+      batch.update(waitingListRef, {
+        status: 'rescheduled',
+        rescheduleReason: rescheduleData.reason,
+        customRescheduleReason: rescheduleData.customReason || '',
+        rescheduledAt: new Date().toISOString(),
+        previousAppointmentDate: entry.appointmentDate,
+      });
+
+      await batch.commit();
+
+      // Send email notification if email is available
+      if (entry.email) {
+        await sendWaitingListRescheduleEmail(
+          entry.email,
+          entry.fullName,
+          entry.doctor,
+          entry.appointmentDate,
+          rescheduleData.reason,
+          rescheduleData.customReason
+        );
+      }
+
+      toast.success(`✅ ${entry.fullName}'s waiting list entry has been rescheduled`, {
+        autoClose: 5000,
+        position: 'top-right'
+      });
+
+      setIsWaitingListRescheduleModalOpen(false);
+      setSelectedWaitingListEntry(null);
+      
+    } catch (error) {
+      console.error('❌ Error rescheduling waiting list entry:', error);
+      toast.error('Failed to reschedule waiting list entry: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+
+  // NEW: Open waiting list reschedule modal
+  const handleOpenWaitingListRescheduleModal = (entry: WaitingListEntry) => {
+    setSelectedWaitingListEntry(entry);
+    setIsWaitingListRescheduleModalOpen(true);
   };
 
   const handleRemoveFromWaitingList = async (entryId: string) => {
@@ -837,7 +1079,7 @@ const WaitingList = () => {
             <p className="text-sm font-medium text-blue-900">Automatic Assignment Enabled</p>
             <p className="text-sm text-blue-700 mt-1">
               Patients will be automatically assigned to appointments when slots become available. 
-              The system checks every 30 seconds for openings and assigns proper queue numbers.
+              The system checks every 5 seconds for openings and assigns proper queue numbers.
             </p>
           </div>
         </div>
@@ -925,26 +1167,33 @@ const WaitingList = () => {
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2 ml-4">
-                    <button
-                      onClick={() => {
-                        setSelectedEntry(entry);
-                        setIsModalOpen(true);
-                      }}
-                      className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-100 font-medium text-sm flex items-center gap-2 transition-colors"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      Assign Now
-                    </button>
-                    <button
-                      onClick={() => handleRemoveFromWaitingList(entry.id)}
-                      className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm flex items-center gap-2 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Remove
-                    </button>
-                  </div>
+                {/* Actions */}
+                <div className="flex gap-2 ml-4">
+                  <button
+                    onClick={() => {
+                      setSelectedEntry(entry);
+                      setIsModalOpen(true);
+                    }}
+                    className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-100 font-medium text-sm flex items-center gap-2 transition-colors"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Assign Now
+                  </button>
+                  <button
+                    onClick={() => handleOpenWaitingListRescheduleModal(entry)}
+                    className="px-4 py-2 bg-yellow-50 text-yellow-600 border border-yellow-200 rounded-lg hover:bg-yellow-100 font-medium text-sm flex items-center gap-2 transition-colors"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Reschedule
+                  </button>
+                  <button
+                    onClick={() => handleRemoveFromWaitingList(entry.id)}
+                    className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm flex items-center gap-2 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Remove
+                  </button>
+                </div>
                 </div>
               </div>
             ))}
@@ -954,7 +1203,7 @@ const WaitingList = () => {
 
       {/* Confirmation Modal */}
       {isModalOpen && selectedEntry && (
-       <div className="fixed inset-0 bg-transparent backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-transparent backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-2xl max-w-md w-full">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-xl font-bold text-gray-900">Assign to Appointment</h2>
@@ -1018,6 +1267,34 @@ const WaitingList = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reschedule Modal */}
+      {isRescheduleModalOpen && rescheduleAppointment && (
+        <RescheduleModal
+          isOpen={isRescheduleModalOpen}
+          onClose={() => {
+            setIsRescheduleModalOpen(false);
+            setRescheduleAppointment(null);
+          }}
+          appointment={rescheduleAppointment}
+          onConfirm={(updatedData: { appointmentDate: string; timeSlot: string }) => handleRescheduleAppointment(rescheduleAppointment.id, updatedData)}
+          isSubmitting={isProcessing}
+        />
+      )}
+
+      {/* Waiting List Reschedule Modal */}
+      {isWaitingListRescheduleModalOpen && selectedWaitingListEntry && (
+        <WaitingListRescheduleModal
+          isOpen={isWaitingListRescheduleModalOpen}
+          onClose={() => {
+            setIsWaitingListRescheduleModalOpen(false);
+            setSelectedWaitingListEntry(null);
+          }}
+          waitingListEntry={selectedWaitingListEntry}
+          onConfirm={handleWaitingListReschedule}
+          isSubmitting={isProcessing}
+        />
       )}
     </div>
   );
