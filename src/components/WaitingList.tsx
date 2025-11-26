@@ -42,7 +42,7 @@ interface Appointment {
   timeSlot: string;
   status: string;
   fullName: string;
-  email?: string;
+  email: string;
   doctor: string;
   appointmentDate: string;
   priorityLevel: string; 
@@ -355,17 +355,17 @@ const WaitingList = () => {
         }
       });
       
-      // Add the new appointment we're about to create
-      allAppointments.push({
-        id: 'NEW_APPOINTMENT',
-        queueNumber: 0,
-        timeSlot: timeSlot,
-        status: 'pending',
-        fullName: '',
-        doctor: doctorName,
-        appointmentDate: appointmentDate,
-        priorityLevel: '' 
-      });
+     allAppointments.push({
+      id: 'NEW_APPOINTMENT',
+      queueNumber: 0,
+      timeSlot: timeSlot,
+      status: 'pending',
+      fullName: '',
+      doctor: doctorName,
+      appointmentDate: appointmentDate,
+      priorityLevel: '',
+      email: ''          
+    });
       
       // Sort by time slot chronologically
       allAppointments.sort((a, b) => {
