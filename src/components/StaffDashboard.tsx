@@ -333,9 +333,9 @@ const navItems = [
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-auto">
-          {renderPage()}
-        </main>
+        <main className="flex-1 overflow-auto relative">
+        {renderPage()}
+      </main>
       </div>
       <input
         ref={fileInputRef}

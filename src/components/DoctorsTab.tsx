@@ -23,10 +23,10 @@ interface Doctor {
 
 interface Appointment {
   id: string;
-  doctorId: string;
+  doctor: string;
   status: string;
-  date: string;
-  time: string;
+  appointmentDate: string;
+  timeSlot: string;
 }
 
 const DoctorsTab = () => {
@@ -106,47 +106,90 @@ const DoctorsTab = () => {
     return () => unsubscribe();
   }, []);
 
-  // Real-time appointments listener with current date dependency
+  // FIXED: Real-time appointments listener for BOTH collections
   useEffect(() => {
     const todayPH = currentDate || getTodayPH();
     
     if (!todayPH) return;
     
-    const appointmentsRef = collection(db, 'appointments');
-    const q = query(
-      appointmentsRef,
-      where('appointmentDate', '==', todayPH)
+    const staffAppointmentsRef = collection(db, 'staff_appointments');
+    const patientAppointmentsRef = collection(db, 'patient_appointments');
+    
+    const staffQuery = query(
+      staffAppointmentsRef,
+      where('appointmentDate', '==', todayPH),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
     );
     
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        const appointmentsData = querySnapshot.docs
-          .map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              doctorId: data.doctor || '',
-              status: data.status,
-              date: data.appointmentDate,
-              time: data.timeSlot
-            };
-          })
-          .filter(apt => 
-            apt.status !== 'cancelled' && 
-            apt.status !== 'completed' && 
-            apt.status !== 'missed'
-          ) as Appointment[];
+    const patientQuery = query(
+      patientAppointmentsRef,
+      where('appointmentDate', '==', todayPH),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+    );
+    
+    // Listen to staff appointments
+    const unsubscribeStaff = onSnapshot(
+      staffQuery,
+      (staffSnapshot) => {
+        const unsubscribePatient = onSnapshot(
+          patientQuery,
+          (patientSnapshot) => {
+            const staffAppointments = staffSnapshot.docs
+              .map(doc => {
+                const data = doc.data();
+                return {
+                  id: doc.id,
+                  doctor: data.doctor || '',
+                  status: data.status,
+                  appointmentDate: data.appointmentDate,
+                  timeSlot: data.timeSlot
+                };
+              }) as Appointment[];
+            
+            const patientAppointments = patientSnapshot.docs
+              .map(doc => {
+                const data = doc.data();
+                return {
+                  id: doc.id,
+                  doctor: data.doctor || '',
+                  status: data.status,
+                  appointmentDate: data.appointmentDate,
+                  timeSlot: data.timeSlot
+                };
+              }) as Appointment[];
+            
+            // Use Map to remove duplicates by appointment ID
+            const allAppointmentsMap = new Map();
+            
+            [...staffAppointments, ...patientAppointments].forEach(apt => {
+              if (!allAppointmentsMap.has(apt.id)) {
+                allAppointmentsMap.set(apt.id, apt);
+              }
+            });
+            
+            const allAppointments = Array.from(allAppointmentsMap.values());
+            
+            console.log('📊 Real-time appointments update for', todayPH, ':', {
+              staff: staffAppointments.length,
+              patient: patientAppointments.length,
+              combined: allAppointments.length
+            });
+            
+            setAppointments(allAppointments);
+          },
+          (error) => {
+            console.error('Error listening to patient appointments:', error);
+          }
+        );
         
-        console.log('📊 Real-time appointments update for', todayPH, ':', appointmentsData.length);
-        setAppointments(appointmentsData);
+        return () => unsubscribePatient();
       },
       (error) => {
-        console.error('Error listening to appointments:', error);
+        console.error('Error listening to staff appointments:', error);
       }
     );
     
-    return () => unsubscribe();
+    return () => unsubscribeStaff();
   }, [currentDate, getTodayPH]);
 
   useEffect(() => {
@@ -180,10 +223,12 @@ const DoctorsTab = () => {
   const getDoctorAppointments = useCallback((doctorName: string) => {
     const todayPH = currentDate || getTodayPH();
     const filtered = appointments.filter(appointment => 
-      (appointment.doctorId === doctorName || 
-       appointment.doctorId === `Dr. ${doctorName}`) &&
-      appointment.date === todayPH
+      (appointment.doctor === doctorName || 
+       appointment.doctor === `Dr. ${doctorName}` ||
+       appointment.doctor.includes(doctorName)) &&
+      appointment.appointmentDate === todayPH
     );
+    console.log(`🔍 Appointments for ${doctorName} on ${todayPH}:`, filtered.length);
     return filtered;
   }, [appointments, currentDate, getTodayPH]);
 
@@ -209,6 +254,7 @@ const DoctorsTab = () => {
     const unavailableTimeSlots = doctor.availableSlots?.[today] || [];
     const availableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
     
+    console.log(`📊 Doctor ${doctor.name} slots on ${today}: ${availableSlots} (max: ${maxSlots}, unavailable times: ${unavailableTimeSlots.length})`);
     return availableSlots;
   }, [currentDate, getTodayPH]);
 
@@ -217,7 +263,10 @@ const DoctorsTab = () => {
     const totalSlots = getDoctorTotalSlots(doctor);
     const active = doctor.isActive === undefined ? true : doctor.isActive;
     
-    return active && totalSlots > 0 && slotCount < totalSlots;
+    const isAvailable = active && totalSlots > 0 && slotCount < totalSlots;
+    console.log(`🔎 Doctor ${doctor.name} - Slots: ${slotCount}/${totalSlots}, Active: ${active}, Available: ${isAvailable}`);
+    
+    return isAvailable;
   }, [getDoctorSlotCount, getDoctorTotalSlots]);
 
   // Calculate progress percentage for the progress bar
@@ -484,7 +533,9 @@ const DoctorsTab = () => {
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                         <div 
-                          className="bg-indigo-600 h-2 rounded-full transition-all duration-300 ease-in-out"
+                          className={`h-2 rounded-full transition-all duration-300 ease-in-out ${
+                            slotCount >= totalSlots && totalSlots > 0 ? 'bg-red-600' : 'bg-indigo-600'
+                          }`}
                           style={{ width: `${progressPercentage}%` }}
                         />
                       </div>

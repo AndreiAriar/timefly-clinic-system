@@ -490,27 +490,26 @@ const calculateWaitingTime = (timeSlot: string): string => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Time Up Banner - Flashing Reminder */}
-        {showTimeUpBanner && (
-          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
-            <div className="bg-red-600 text-white px-8 py-4 rounded-lg shadow-lg flex items-center gap-3 animate-flash">
-              <Bell className="w-6 h-6" />
-              <div className="text-center">
-                <p className="font-bold text-lg">⏰ TIME TO SERVE PATIENTS!</p>
-                <p className="text-sm opacity-90">Patient appointment times have reached zero. Please start serving.</p>
+        {/* Time Up Banner - Positioned at top-right of content area */}
+          {showTimeUpBanner && (
+            <div className="absolute top-0 right-0 z-50 p-4">
+              <div className="bg-yellow-400 border-2 border-yellow-400 text-white px-6 py-4 rounded-lg shadow-lg flex items-start gap-3 animate-pulse-gentle max-w-md">
+                <Bell className="w-6 h-6 text-white mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-bold text-lg leading-tight">TIME TO SERVE PATIENTS!</p>
+                  <p className="text-sm font-medium mt-1">Patient appointment times have reached zero. Please start serving.</p>
+                </div>
+                <button
+                  onClick={() => setShowTimeUpBanner(false)}
+                  className="hover:bg-yellow-600 rounded-full p-1 transition text-white hover:text-white flex-shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowTimeUpBanner(false)}
-                className="ml-4 hover:bg-red-700 rounded p-1 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
             </div>
-          </div>
-        )}
-
-        {/* Notifications */}
-        <div className="fixed top-4 right-4 z-50 space-y-2">
+          )}
+         {/* Notifications - Adjusted to avoid overlap with time-up banner */}
+        <div className="fixed top-24 right-4 z-50 space-y-2">
           {notifications.map((notification) => (
             <div
               key={notification.id}
@@ -891,6 +890,22 @@ const calculateWaitingTime = (timeSlot: string): string => {
         }
         .animate-flash {
           animation: flash 1s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-gentle {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+          }
+          50% {
+            opacity: 0.9;
+            transform: scale(1.01);
+            box-shadow: 0 20px 25px -5px rgba(245, 158, 11, 0.3), 0 10px 10px -5px rgba(245, 158, 11, 0.2);
+          }
+        }
+        .animate-pulse-gentle {
+          animation: pulse-gentle 2s ease-in-out infinite;
         }
         
         @keyframes pulse {
