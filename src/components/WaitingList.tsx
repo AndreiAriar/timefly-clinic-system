@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, query, getDocs, doc, deleteDoc, where, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { Clock, User, Calendar, Trash2, CheckCircle, AlertCircle, RefreshCw, X } from 'lucide-react';
+import { Clock, User, Calendar, Trash2, CheckCircle, AlertCircle, RefreshCw, X, Phone, Mail, Stethoscope } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 // Import RescheduleModal component
@@ -1127,38 +1127,36 @@ const WaitingList = () => {
                           ID: {entry.id.slice(-6)}
                         </span>
                       </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
-                        <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-gray-400" />
-                          <span>{entry.age} years old, {entry.gender}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-gray-400" />
-                          <span>Requested: {formatDate(entry.appointmentDate)}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400">📞</span>
-                          <span>{entry.phone}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400">👨‍⚕️</span>
-                          <span>{entry.doctor}</span>
-                        </div>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <span>{entry.age} years old, {entry.gender}</span>
                       </div>
-
-                      {entry.email && (
-                        <div className="mt-2 text-sm text-gray-600">
-                          <span className="text-gray-400">📧</span>
-                          <span className="ml-2">{entry.email}</span>
-                        </div>
-                      )}
-
-                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-700">
-                          <span className="font-medium">Condition:</span> {entry.medicalCondition}
-                        </p>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <span>Requested: {formatDate(entry.appointmentDate)}</span>
                       </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <span>{entry.phone}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Stethoscope className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <span>{entry.doctor}</span>
+                      </div>
+                    </div>
+                    
+                    {entry.email && (
+                    <div className="flex items-center gap-2 mt-3">
+                      <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <span className="text-sm text-gray-600">{entry.email}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-3">
+                    <span className="text-sm text-gray-700">
+                      <span className="font-medium">Condition:</span> {entry.medicalCondition}
+                    </span>
+                  </div>
 
                       <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
                         <Clock className="w-3 h-3" />
