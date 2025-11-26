@@ -802,7 +802,10 @@ const StaffAppointments = () => {
                       <div className="text-sm text-gray-900">{appointment.doctor}</div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{appointment.phone}</div>
+                      <div className="flex items-center gap-1 text-sm text-gray-900">
+                        <Phone className="w-4 h-4 text-gray-400" />
+                        {appointment.phone}
+                      </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-1 text-sm text-gray-900">
