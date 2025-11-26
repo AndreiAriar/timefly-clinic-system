@@ -51,6 +51,7 @@ const StaffQueue = () => {
     onConfirm: () => {},
     onCancel: () => {},
   });
+  const [showTimeUpBanner, setShowTimeUpBanner] = useState(false);
 
   // Add notification - using stable reference
   const addNotification = useCallback((type: 'success' | 'error' | 'info' | 'warning', message: string) => {
@@ -106,6 +107,31 @@ const StaffQueue = () => {
     };
     return date.toLocaleDateString('en-US', options);
   };
+
+  // Check if any appointment has reached zero waiting time
+  const checkForTimeUpAppointments = useCallback(() => {
+    const hasTimeUpAppointment = appointments.some(appointment => {
+      const waitingTime = calculateWaitingTime(appointment.timeSlot);
+      return waitingTime === '0 min remaining' && 
+             (appointment.status === 'pending' || appointment.status === 'scheduled');
+    });
+    
+    setShowTimeUpBanner(hasTimeUpAppointment);
+  }, [appointments]);
+
+  useEffect(() => {
+    checkForTimeUpAppointments();
+  }, [checkForTimeUpAppointments]);
+
+  // Set up interval to check for time-up appointments every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkForTimeUpAppointments();
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [checkForTimeUpAppointments]);
+
   useEffect(() => {
   setIsLoading(true);
   
@@ -464,6 +490,25 @@ const calculateWaitingTime = (timeSlot: string): string => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Time Up Banner - Flashing Reminder */}
+        {showTimeUpBanner && (
+          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
+            <div className="bg-red-600 text-white px-8 py-4 rounded-lg shadow-lg flex items-center gap-3 animate-flash">
+              <Bell className="w-6 h-6" />
+              <div className="text-center">
+                <p className="font-bold text-lg">⏰ TIME TO SERVE PATIENTS!</p>
+                <p className="text-sm opacity-90">Patient appointment times have reached zero. Please start serving.</p>
+              </div>
+              <button
+                onClick={() => setShowTimeUpBanner(false)}
+                className="ml-4 hover:bg-red-700 rounded p-1 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Notifications */}
         <div className="fixed top-4 right-4 z-50 space-y-2">
           {notifications.map((notification) => (
@@ -832,6 +877,32 @@ const calculateWaitingTime = (timeSlot: string): string => {
         }
         .animate-slide-in {
           animation: slide-in 0.3s ease-out;
+        }
+        
+        @keyframes flash {
+          0%, 100% {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+          }
+          50% {
+            opacity: 0.7;
+            transform: translateX(-50%) scale(1.02);
+          }
+        }
+        .animate-flash {
+          animation: flash 1s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+        .animate-pulse {
+          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
       `}</style>
     </div>

@@ -1,10 +1,9 @@
-
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown, Mail } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, orderBy, where, onSnapshot, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import StaffViewAppointments from './StaffViewAppointments';
-import RescheduleModal from './RescheduleModal';
+import StaffRescheduleModal from './StaffRescheduleModal';
 import StaffCancel from './StaffCancel';
 import ToastNotification from './ToastNotification';
 
@@ -55,96 +54,97 @@ const StaffAppointments = () => {
     type: 'info',
     isVisible: false
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Show toast notification
   const showToast = (message: string, type: ToastType) => {
     setToast({ message, type, isVisible: true });
   };
 
-    useEffect(() => {
-      console.log('🔥 Setting up real-time listeners for staff...');
-      
-      const userEmail = auth.currentUser?.email;
-      
-      if (!userEmail) {
-        console.error('No user email found');
-        setIsLoading(false);
-        return;
-      }
+  useEffect(() => {
+    console.log('🔥 Setting up real-time listeners for staff...');
+    
+    const userEmail = auth.currentUser?.email;
+    
+    if (!userEmail) {
+      console.error('No user email found');
+      setIsLoading(false);
+      return;
+    }
 
-      let unsubscribeAppointments: (() => void) | undefined;
+    let unsubscribeAppointments: (() => void) | undefined;
 
-      const setupListeners = async () => {
-        try {
-          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+    const setupListeners = async () => {
+      try {
+        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+        const userRole = userDoc.docs[0]?.data()?.role || 'patient';
 
-          const appointmentsRef = collection(db, 'staff_appointments');
-          let appointmentsQuery;
-          
-          if (userRole === 'staff' || userRole === 'doctor') {
-            appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
-          } else {
-            appointmentsQuery = query(
-              appointmentsRef, 
-              where('email', '==', userEmail),
-              orderBy('createdAt', 'desc')
-            );
-          }
-          
-          unsubscribeAppointments = onSnapshot(
-            appointmentsQuery,
-            (snapshot) => {
-              // UPDATED: Show all appointments but allow filtering in the UI
-              // Staff can see all statuses including cancelled, completed, missed
-              const appointmentsData = snapshot.docs
-                .map(doc => ({
-                  id: doc.id,
-                  ...doc.data()
-                } as Appointment));
-              
-              console.log('📊 Real-time update - Staff Appointments (all):', appointmentsData.length);
-              setAppointments(appointmentsData);
-              setIsLoading(false);
-            },
-            (error) => {
-              console.error('❌ Error in appointments listener:', error);
-              showToast('Failed to load appointments. Please try again.', 'error');
-              setIsLoading(false);
-            }
+        const appointmentsRef = collection(db, 'staff_appointments');
+        let appointmentsQuery;
+        
+        if (userRole === 'staff' || userRole === 'doctor') {
+          appointmentsQuery = query(appointmentsRef, orderBy('createdAt', 'desc'));
+        } else {
+          appointmentsQuery = query(
+            appointmentsRef, 
+            where('email', '==', userEmail),
+            orderBy('createdAt', 'desc')
           );
-        } catch (error) {
-          console.error('Error setting up listeners:', error);
-          showToast('Failed to load appointments. Please try again.', 'error');
-          setIsLoading(false);
         }
-      };
+        
+        unsubscribeAppointments = onSnapshot(
+          appointmentsQuery,
+          (snapshot) => {
+            // UPDATED: Show all appointments but allow filtering in the UI
+            // Staff can see all statuses including cancelled, completed, missed
+            const appointmentsData = snapshot.docs
+              .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              } as Appointment));
+            
+            console.log('📊 Real-time update - Staff Appointments (all):', appointmentsData.length);
+            setAppointments(appointmentsData);
+            setIsLoading(false);
+          },
+          (error) => {
+            console.error('❌ Error in appointments listener:', error);
+            showToast('Failed to load appointments. Please try again.', 'error');
+            setIsLoading(false);
+          }
+        );
+      } catch (error) {
+        console.error('Error setting up listeners:', error);
+        showToast('Failed to load appointments. Please try again.', 'error');
+        setIsLoading(false);
+      }
+    };
 
-      setupListeners();
+    setupListeners();
 
-      const loadDoctors = async () => {
-        try {
-          const doctorsRef = collection(db, 'doctors');
-          const q = query(doctorsRef, where('isActive', '==', true));
-          const querySnapshot = await getDocs(q);
-          
-          const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
-          setDoctors(doctorsData);
-        } catch {
-          console.error('Error loading doctors:');
-          showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
-        }
-      };
+    const loadDoctors = async () => {
+      try {
+        const doctorsRef = collection(db, 'doctors');
+        const q = query(doctorsRef, where('isActive', '==', true));
+        const querySnapshot = await getDocs(q);
+        
+        const doctorsData = querySnapshot.docs.map(doc => doc.data().name);
+        setDoctors(doctorsData);
+      } catch {
+        console.error('Error loading doctors:');
+        showToast('Failed to load doctors. Please check your permissions or try again.', 'error');
+      }
+    };
 
-      loadDoctors();
+    loadDoctors();
 
-      return () => {
-        console.log('🔌 Cleaning up staff appointments listener');
-        if (unsubscribeAppointments) {
-          unsubscribeAppointments();
-        }
-      };
-    }, []);
+    return () => {
+      console.log('🔌 Cleaning up staff appointments listener');
+      if (unsubscribeAppointments) {
+        unsubscribeAppointments();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let filtered = [...appointments];
@@ -234,285 +234,319 @@ const StaffAppointments = () => {
     setShowRescheduleModal(true);
   };
 
-const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string }) => {
-  if (!selectedAppointment) return;
+  const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string; rescheduleReason: string }) => {
+    if (!selectedAppointment) return;
 
-  try {
-    // Update both staff and patient collections
-    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
-    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
-    
-    const updateData = {
-      appointmentDate: updatedData.appointmentDate,
-      timeSlot: updatedData.timeSlot,
-      status: 'rescheduled',
-      rescheduledAt: new Date().toISOString()
-    };
-
-    await updateDoc(staffAppointmentRef, updateData);
-    await updateDoc(patientAppointmentRef, updateData);
-
-    console.log('✅ Firebase updated for reschedule');
-
-    // FREE THE OLD TIME SLOT: Delete the old slot lock
-    const oldSlotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
+    setIsSubmitting(true);
     try {
-      await deleteDoc(oldSlotLockRef);
-      console.log('✅ Old slot lock removed - old time slot is now available');
-    } catch {
-      console.log('ℹ️ No old slot lock found or already deleted');
-    }
-
-    // CREATE NEW SLOT LOCK for the new time
-    const newSlotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${updatedData.appointmentDate}_${updatedData.timeSlot}`);
-    try {
-      const { setDoc } = await import('firebase/firestore');
-      await setDoc(newSlotLockRef, {
-        doctor: selectedAppointment.doctor,
+      // Update both staff and patient collections
+      const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+      const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+      
+      const updateData = {
         appointmentDate: updatedData.appointmentDate,
         timeSlot: updatedData.timeSlot,
-        appointmentId: selectedAppointment.id,
-        bookedAt: new Date().toISOString(),
-        bookedBy: selectedAppointment.email,
-        rescheduledFrom: {
-          date: selectedAppointment.appointmentDate,
-          timeSlot: selectedAppointment.timeSlot
-        }
-      });
-      console.log('✅ New slot lock created for rescheduled appointment');
-    } catch (error) {
-      console.error('⚠️ Failed to create new slot lock:', error);
-    }
+        status: 'rescheduled',
+        rescheduledAt: new Date().toISOString(),
+        rescheduleReason: updatedData.rescheduleReason,
+        rescheduledBy: 'staff'
+      };
 
-    // Update booking counters if date changed
-    if (selectedAppointment.appointmentDate !== updatedData.appointmentDate) {
-      // Decrement old date counter
-      const oldCounterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}`);
+      await updateDoc(staffAppointmentRef, updateData);
+      await updateDoc(patientAppointmentRef, updateData);
+
+      console.log('✅ Firebase updated for reschedule');
+
+      // FREE THE OLD TIME SLOT: Delete the old slot lock
+      const oldSlotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
       try {
-        const oldCounterDoc = await getDoc(oldCounterRef);
-        if (oldCounterDoc.exists()) {
-          const currentCount = oldCounterDoc.data()?.count || 0;
-          if (currentCount > 0) {
-            await updateDoc(oldCounterRef, { count: currentCount - 1 });
-            console.log('✅ Old date booking counter decremented');
+        await deleteDoc(oldSlotLockRef);
+        console.log('✅ Old slot lock removed - old time slot is now available');
+      } catch {
+        console.log('ℹ️ No old slot lock found or already deleted');
+      }
+
+      // CREATE NEW SLOT LOCK for the new time
+      const newSlotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${updatedData.appointmentDate}_${updatedData.timeSlot}`);
+      try {
+        const { setDoc } = await import('firebase/firestore');
+        await setDoc(newSlotLockRef, {
+          doctor: selectedAppointment.doctor,
+          appointmentDate: updatedData.appointmentDate,
+          timeSlot: updatedData.timeSlot,
+          appointmentId: selectedAppointment.id,
+          bookedAt: new Date().toISOString(),
+          bookedBy: selectedAppointment.email,
+          rescheduledFrom: {
+            date: selectedAppointment.appointmentDate,
+            timeSlot: selectedAppointment.timeSlot
+          },
+          rescheduleReason: updatedData.rescheduleReason
+        });
+        console.log('✅ New slot lock created for rescheduled appointment');
+      } catch (error) {
+        console.error('⚠️ Failed to create new slot lock:', error);
+      }
+
+      // Update booking counters if date changed
+      if (selectedAppointment.appointmentDate !== updatedData.appointmentDate) {
+        // Decrement old date counter
+        const oldCounterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}`);
+        try {
+          const oldCounterDoc = await getDoc(oldCounterRef);
+          if (oldCounterDoc.exists()) {
+            const currentCount = oldCounterDoc.data()?.count || 0;
+            if (currentCount > 0) {
+              await updateDoc(oldCounterRef, { count: currentCount - 1 });
+              console.log('✅ Old date booking counter decremented');
+            }
           }
+        } catch {
+          console.log('ℹ️ No old booking counter found');
         }
-      } catch {
-        console.log('ℹ️ No old booking counter found');
+
+        // Increment new date counter
+        const newCounterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${updatedData.appointmentDate}`);
+        try {
+          const newCounterDoc = await getDoc(newCounterRef);
+          if (newCounterDoc.exists()) {
+            const currentCount = newCounterDoc.data()?.count || 0;
+            await updateDoc(newCounterRef, { count: currentCount + 1 });
+          } else {
+            const { setDoc } = await import('firebase/firestore');
+            await setDoc(newCounterRef, {
+              doctor: selectedAppointment.doctor,
+              date: updatedData.appointmentDate,
+              count: 1
+            });
+          }
+          console.log('✅ New date booking counter updated');
+        } catch {
+          console.log('ℹ️ Failed to update new booking counter');
+        }
       }
 
-      // Increment new date counter
-      const newCounterRef = doc(db, 'booking_counters', `${selectedAppointment.doctor}_${updatedData.appointmentDate}`);
-      try {
-        const newCounterDoc = await getDoc(newCounterRef);
-        if (newCounterDoc.exists()) {
-          const currentCount = newCounterDoc.data()?.count || 0;
-          await updateDoc(newCounterRef, { count: currentCount + 1 });
-        } else {
-          const { setDoc } = await import('firebase/firestore');
-          await setDoc(newCounterRef, {
-            doctor: selectedAppointment.doctor,
-            date: updatedData.appointmentDate,
-            count: 1
-          });
-        }
-        console.log('✅ New date booking counter updated');
-      } catch {
-        console.log('ℹ️ Failed to update new booking counter');
+      // Send email notifications to both staff and patient
+      const staffResponse = await fetch('/api/staff-reschedule-appointment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          patientEmail: selectedAppointment.email,
+          patientName: selectedAppointment.fullName,
+          originalAppointmentDate: selectedAppointment.appointmentDate,
+          originalTimeSlot: selectedAppointment.timeSlot,
+          newAppointmentDate: updatedData.appointmentDate,
+          newTimeSlot: updatedData.timeSlot,
+          doctor: selectedAppointment.doctor,
+          queueNumber: selectedAppointment.queueNumber,
+          rescheduleReason: updatedData.rescheduleReason,
+          rescheduledBy: 'staff'
+        }),
+      });
+
+      const staffData = await staffResponse.json();
+
+      if (!staffResponse.ok || !staffData.success) {
+        console.error('Staff email notification failed:', staffData.error);
       }
+
+      // Also send notification to patient using the existing endpoint
+      const patientResponse = await fetch('/api/reschedule-appointment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appointmentId: selectedAppointment.id,
+          appointmentDate: updatedData.appointmentDate,
+          timeSlot: updatedData.timeSlot,
+          patientEmail: selectedAppointment.email,
+          patientName: selectedAppointment.fullName,
+          doctor: selectedAppointment.doctor,
+          queueNumber: selectedAppointment.queueNumber,
+          oldDate: selectedAppointment.appointmentDate,
+          oldTimeSlot: selectedAppointment.timeSlot,
+          rescheduleReason: updatedData.rescheduleReason
+        }),
+      });
+
+      const patientData = await patientResponse.json();
+
+      if (!patientResponse.ok || !patientData.success) {
+        console.error('Patient email notification failed:', patientData.error);
+      }
+
+      // Real-time listener will auto-update appointments
+      setShowRescheduleModal(false);
+      setSelectedAppointment(null);
+      showToast('Appointment rescheduled successfully! Notifications sent to staff and patient.', 'success');
+    } catch (error) {
+      console.error('Error rescheduling appointment:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
+  };
 
-    // Then send email notification
-    const response = await fetch('/api/reschedule-appointment', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        appointmentId: selectedAppointment.id,
-        appointmentDate: updatedData.appointmentDate,
-        timeSlot: updatedData.timeSlot,
-        patientEmail: selectedAppointment.email,
-        patientName: selectedAppointment.fullName,
-        doctor: selectedAppointment.doctor,
-        queueNumber: selectedAppointment.queueNumber,
-        oldDate: selectedAppointment.appointmentDate,
-        oldTimeSlot: selectedAppointment.timeSlot,
-      }),
-    });
+  const handleCancel = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setShowStaffCancelModal(true);
+  };
 
-    const data = await response.json();
+  const confirmCancel = async (reason: string) => {
+    if (!selectedAppointment) return;
 
-    if (!response.ok || !data.success) {
-      // Don't throw - reschedule was already done, just log email failure
-      console.error('Email notification failed:', data.error);
-    }
-
-    // Real-time listener will auto-update appointments
-    setShowRescheduleModal(false);
-    setSelectedAppointment(null);
-    showToast('Appointment rescheduled successfully! Email notification sent.', 'success');
-  } catch (error) {
-    console.error('Error rescheduling appointment:', error);
-    showToast(error instanceof Error ? error.message : 'Failed to reschedule appointment. Please try again.', 'error');
-  }
-};
-
-const handleCancel = (appointment: Appointment) => {
-  setSelectedAppointment(appointment);
-  setShowStaffCancelModal(true);
-};
-
-const confirmCancel = async (reason: string) => {
-  if (!selectedAppointment) return;
-
-  try {
-    // UPDATED: Update both staff and patient collections
-    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
-    const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
-    
-    const updateData = {
-      status: 'cancelled',
-      cancelReason: reason,
-      cancelledAt: new Date().toISOString()
-    };
-
-    await updateDoc(staffAppointmentRef, updateData);
-    await updateDoc(patientAppointmentRef, updateData);
-
-    console.log('✅ Firebase updated for cancellation');
-
-    // Then send email notification
-    const response = await fetch('/api/cancel-appointment', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        appointmentId: selectedAppointment.id,
+    try {
+      // UPDATED: Update both staff and patient collections
+      const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+      const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+      
+      const updateData = {
+        status: 'cancelled',
         cancelReason: reason,
-        patientEmail: selectedAppointment.email,
-        patientName: selectedAppointment.fullName,
-        appointmentDate: selectedAppointment.appointmentDate,
-        timeSlot: selectedAppointment.timeSlot,
-        doctor: selectedAppointment.doctor,
-        queueNumber: selectedAppointment.queueNumber,
-      }),
-    });
+        cancelledAt: new Date().toISOString()
+      };
 
-    const data = await response.json();
+      await updateDoc(staffAppointmentRef, updateData);
+      await updateDoc(patientAppointmentRef, updateData);
 
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Failed to send cancellation email');
-    }
+      console.log('✅ Firebase updated for cancellation');
 
-    // Reload appointments to reflect real-time updates
-    const loadAppointments = async () => {
-      try {
-        // UPDATED: Changed to staff_appointments collection
-        const appointmentsRef = collection(db, 'staff_appointments');
-        const userEmail = auth.currentUser?.email;
-        
-        if (!userEmail) return;
+      // Then send email notification
+      const response = await fetch('/api/cancel-appointment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appointmentId: selectedAppointment.id,
+          cancelReason: reason,
+          patientEmail: selectedAppointment.email,
+          patientName: selectedAppointment.fullName,
+          appointmentDate: selectedAppointment.appointmentDate,
+          timeSlot: selectedAppointment.timeSlot,
+          doctor: selectedAppointment.doctor,
+          queueNumber: selectedAppointment.queueNumber,
+        }),
+      });
 
-        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-        const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+      const data = await response.json();
 
-        let q;
-        
-        if (userRole === 'staff' || userRole === 'doctor') {
-          q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-        } else {
-          q = query(
-            appointmentsRef, 
-            where('email', '==', userEmail),
-            orderBy('createdAt', 'desc')
-          );
-        }
-        
-        const querySnapshot = await getDocs(q);
-        const appointmentsData = querySnapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as Appointment))
-          .filter(apt => !apt.deletedByStaff);
-        
-        setAppointments(appointmentsData);
-      } catch {
-        console.error('Error loading appointments:');
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send cancellation email');
       }
-    };
 
-    await loadAppointments();
-    setShowStaffCancelModal(false);
-    setSelectedAppointment(null);
-    showToast('Appointment cancelled successfully! Email notification sent.', 'success');
-  } catch (error) {
-    console.error('Error cancelling appointment:', error);
-    showToast(error instanceof Error ? error.message : 'Failed to cancel appointment. Please try again.', 'error');
-  }
-};
+      // Reload appointments to reflect real-time updates
+      const loadAppointments = async () => {
+        try {
+          // UPDATED: Changed to staff_appointments collection
+          const appointmentsRef = collection(db, 'staff_appointments');
+          const userEmail = auth.currentUser?.email;
+          
+          if (!userEmail) return;
+
+          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
+          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
+
+          let q;
+          
+          if (userRole === 'staff' || userRole === 'doctor') {
+            q = query(appointmentsRef, orderBy('createdAt', 'desc'));
+          } else {
+            q = query(
+              appointmentsRef, 
+              where('email', '==', userEmail),
+              orderBy('createdAt', 'desc')
+            );
+          }
+          
+          const querySnapshot = await getDocs(q);
+          const appointmentsData = querySnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Appointment))
+            .filter(apt => !apt.deletedByStaff);
+          
+          setAppointments(appointmentsData);
+        } catch {
+          console.error('Error loading appointments:');
+        }
+      };
+
+      await loadAppointments();
+      setShowStaffCancelModal(false);
+      setSelectedAppointment(null);
+      showToast('Appointment cancelled successfully! Email notification sent.', 'success');
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to cancel appointment. Please try again.', 'error');
+    }
+  };
 
   const handleDelete = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setShowDeleteModal(true);
   };
+
   const confirmDelete = async () => {
-  if (!selectedAppointment) return;
+    if (!selectedAppointment) return;
 
-  try {
-    const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
-    
-    // FIXED: Check if this was booked by staff or patient
-    const appointmentDoc = await getDoc(staffAppointmentRef);
-    
-    if (!appointmentDoc.exists()) {
-      showToast('Appointment not found.', 'error');
-      setShowDeleteModal(false);
-      return;
-    }
-
-    const appointmentData = appointmentDoc.data();
-    const isStaffBooked = appointmentData?.bookedByStaff === true;
-
-    // Delete from staff collection
-    await deleteDoc(staffAppointmentRef);
-    console.log('✅ Deleted from staff_appointments');
-    
-    // CRITICAL: Only delete from patient collection if it was staff-booked
-    if (isStaffBooked) {
-      try {
-        const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
-        await deleteDoc(patientAppointmentRef);
-        console.log('✅ Deleted staff-booked appointment from patient_appointments');
-      } catch {
-        console.log('ℹ️ Patient appointment not found or already deleted');
-      }
-    } else {
-      // If patient-booked, only delete from staff collection (already done above)
-      // Patient's record in patient_appointments remains untouched
-      console.log('ℹ️ Patient-booked appointment: Left patient_appointments intact');
-    }
-
-    // FREE THE TIME SLOT: Delete the slot lock so others can book
-    const slotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
     try {
-      await deleteDoc(slotLockRef);
-      console.log('✅ Slot lock removed - time slot is now available');
-    } catch {
-      console.log('ℹ️ No slot lock found or already deleted');
-    }
+      const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
+      
+      // FIXED: Check if this was booked by staff or patient
+      const appointmentDoc = await getDoc(staffAppointmentRef);
+      
+      if (!appointmentDoc.exists()) {
+        showToast('Appointment not found.', 'error');
+        setShowDeleteModal(false);
+        return;
+      }
 
-    // Real-time listener will auto-update, no need to manually reload
-    setShowDeleteModal(false);
-    setSelectedAppointment(null);
-    showToast('Appointment permanently deleted!', 'success');
-  } catch (error) {
-    console.error('Error deleting appointment:', error);
-    showToast('Failed to delete appointment. Please try again.', 'error');
-  }
-};
+      const appointmentData = appointmentDoc.data();
+      const isStaffBooked = appointmentData?.bookedByStaff === true;
+
+      // Delete from staff collection
+      await deleteDoc(staffAppointmentRef);
+      console.log('✅ Deleted from staff_appointments');
+      
+      // CRITICAL: Only delete from patient collection if it was staff-booked
+      if (isStaffBooked) {
+        try {
+          const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
+          await deleteDoc(patientAppointmentRef);
+          console.log('✅ Deleted staff-booked appointment from patient_appointments');
+        } catch {
+          console.log('ℹ️ Patient appointment not found or already deleted');
+        }
+      } else {
+        // If patient-booked, only delete from staff collection (already done above)
+        // Patient's record in patient_appointments remains untouched
+        console.log('ℹ️ Patient-booked appointment: Left patient_appointments intact');
+      }
+
+      // FREE THE TIME SLOT: Delete the slot lock so others can book
+      const slotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
+      try {
+        await deleteDoc(slotLockRef);
+        console.log('✅ Slot lock removed - time slot is now available');
+      } catch {
+        console.log('ℹ️ No slot lock found or already deleted');
+      }
+
+      // Real-time listener will auto-update, no need to manually reload
+      setShowDeleteModal(false);
+      setSelectedAppointment(null);
+      showToast('Appointment permanently deleted!', 'success');
+    } catch (error) {
+      console.error('Error deleting appointment:', error);
+      showToast('Failed to delete appointment. Please try again.', 'error');
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'emergency': return 'bg-red-100 text-red-800';
@@ -1019,9 +1053,9 @@ const confirmCancel = async (reason: string) => {
         />
       )}
 
-      {/* Reschedule Modal */}
+      {/* Staff Reschedule Modal */}
       {showRescheduleModal && selectedAppointment && (
-        <RescheduleModal
+        <StaffRescheduleModal
           isOpen={showRescheduleModal}
           onClose={() => {
             setShowRescheduleModal(false);
@@ -1029,6 +1063,7 @@ const confirmCancel = async (reason: string) => {
           }}
           appointment={selectedAppointment}
           onConfirm={confirmReschedule}
+          isSubmitting={isSubmitting}
         />
       )}
 

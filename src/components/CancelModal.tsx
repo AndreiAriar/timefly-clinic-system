@@ -8,18 +8,20 @@ interface Appointment {
   appointmentDate: string;
   timeSlot: string;
   queueNumber: number;
+  email: string;
 }
 
 interface CancelModalProps {
   isOpen: boolean;
   onClose: () => void;
   appointment: Appointment;
-  onConfirm: (reason: string) => void;
+  onConfirm: (reason: string) => Promise<void>;
 }
 
 const CancelModal = ({ isOpen, onClose, appointment, onConfirm }: CancelModalProps) => {
   const [cancelReason, setCancelReason] = useState('');
   const [selectedReason, setSelectedReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const predefinedReasons = [
     'Schedule conflict',
@@ -30,12 +32,58 @@ const CancelModal = ({ isOpen, onClose, appointment, onConfirm }: CancelModalPro
     'Other'
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalReason = selectedReason === 'Other' ? cancelReason : selectedReason;
-    onConfirm(finalReason);
-    setCancelReason('');
-    setSelectedReason('');
+    
+    setIsSubmitting(true);
+    try {
+      // Send email notification to staff first
+      await sendCancellationNotification(finalReason);
+      
+      // Then call the original onConfirm function
+      await onConfirm(finalReason);
+      
+      setCancelReason('');
+      setSelectedReason('');
+    } catch (error) {
+      console.error('Error in cancellation process:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const sendCancellationNotification = async (reason: string) => {
+    try {
+      const response = await fetch('/api/patient-cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          patientEmail: appointment.email,
+          patientName: appointment.fullName,
+          appointmentDate: appointment.appointmentDate,
+          timeSlot: appointment.timeSlot,
+          doctor: appointment.doctor,
+          queueNumber: appointment.queueNumber,
+          cancelReason: reason
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        console.error('Failed to send cancellation notification:', data.error);
+        throw new Error(data.error || 'Failed to send cancellation notification');
+      }
+
+      console.log('✅ Cancellation email notification sent to staff');
+      return data;
+    } catch (error) {
+      console.error('Error sending cancellation notification:', error);
+      throw error;
+    }
   };
 
   if (!isOpen) return null;
@@ -109,6 +157,7 @@ const CancelModal = ({ isOpen, onClose, appointment, onConfirm }: CancelModalPro
                       checked={selectedReason === reason}
                       onChange={(e) => setSelectedReason(e.target.value)}
                       className="w-4 h-4 text-red-600 focus:ring-red-500"
+                      disabled={isSubmitting}
                     />
                     <span className="ml-3 text-gray-700">{reason}</span>
                   </label>
@@ -130,6 +179,7 @@ const CancelModal = ({ isOpen, onClose, appointment, onConfirm }: CancelModalPro
                   rows={4}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   placeholder="Please provide details about your cancellation reason..."
+                  disabled={isSubmitting}
                 />
               </div>
             )}
@@ -141,6 +191,7 @@ const CancelModal = ({ isOpen, onClose, appointment, onConfirm }: CancelModalPro
                   <h5 className="text-sm font-medium text-red-800 mb-1">Warning</h5>
                   <p className="text-sm text-red-700">
                     This action cannot be undone. You will need to book a new appointment if you wish to see the doctor again.
+                    Staff will be notified automatically via email.
                   </p>
                 </div>
               </div>
@@ -150,16 +201,24 @@ const CancelModal = ({ isOpen, onClose, appointment, onConfirm }: CancelModalPro
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition"
+                disabled={isSubmitting}
+                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
                 Keep Appointment
               </button>
               <button
                 type="submit"
-                disabled={!selectedReason || (selectedReason === 'Other' && !cancelReason.trim())}
-                className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+                disabled={!selectedReason || (selectedReason === 'Other' && !cancelReason.trim()) || isSubmitting}
+                className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Cancel Appointment
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Sending Notification...
+                  </>
+                ) : (
+                  'Cancel Appointment'
+                )}
               </button>
             </div>
           </form>

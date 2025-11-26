@@ -21,6 +21,7 @@ interface UserStats {
   isRestricted: boolean;
   restrictionReason?: string;
   restrictionUntil?: string;
+  dailyAppointmentsCount?: number;
 }
 
 const UserManagement = () => {
@@ -41,6 +42,9 @@ const UserManagement = () => {
       // Create a Map to store unique users by email
       const uniqueUsersMap = new Map<string, UserStats>();
       
+      // Get today's date for daily appointment limit check
+      const today = new Date().toISOString().split('T')[0];
+      
       usersSnapshot.docs.forEach((userDoc) => {
         const userData = userDoc.data();
         const userEmail = userData.email || userDoc.id;
@@ -50,30 +54,42 @@ const UserManagement = () => {
           console.log(`⚠️ Duplicate email found: ${userEmail}, skipping document ${userDoc.id}`);
           return;
         }
-        // Inside the calculateUserStats function, update the filtering:
 
-          // Filter appointments for this user - ONLY COUNT ACTIVE ONES
-          const userAppointments = appointmentsData.filter(apt => 
-            apt.email === userEmail && 
-            apt.status !== 'cancelled' && 
-            apt.status !== 'completed' && 
-            apt.status !== 'missed'
-          );
+        // Filter appointments for this user - ONLY COUNT ACTIVE ONES
+        const userAppointments = appointmentsData.filter(apt => 
+          apt.email === userEmail && 
+          apt.status !== 'cancelled' && 
+          apt.status !== 'completed' && 
+          apt.status !== 'missed'
+        );
 
-          // Calculate stats
-          const activeAppointments = userAppointments.filter(apt => 
-            apt.status === 'pending' || apt.status === 'confirmed' || apt.status === 'scheduled'
-          ).length;
+        // Calculate daily appointments count for today
+        const dailyAppointmentsCount = appointmentsData.filter(apt => 
+          apt.email === userEmail && 
+          apt.appointmentDate === today &&
+          apt.status !== 'cancelled' && 
+          apt.status !== 'completed' && 
+          apt.status !== 'missed'
+        ).length;
 
-          const totalBookings = userAppointments.length;
+        // Calculate stats
+        const activeAppointments = userAppointments.filter(apt => 
+          apt.status === 'pending' || apt.status === 'confirmed' || apt.status === 'scheduled'
+        ).length;
 
-          const noShowCount = appointmentsData.filter(apt => 
-            apt.email === userEmail && apt.status === 'missed'
-          ).length;
+        const totalBookings = userAppointments.length;
 
-          const cancelledBookings = appointmentsData.filter(apt => 
-            apt.email === userEmail && apt.status === 'cancelled'
-          ).length;
+        const noShowCount = appointmentsData.filter(apt => 
+          apt.email === userEmail && apt.status === 'missed'
+        ).length;
+
+        const cancelledBookings = appointmentsData.filter(apt => 
+          apt.email === userEmail && apt.status === 'cancelled'
+        ).length;
+
+        // Check if user should be automatically restricted based on daily limit
+        const hasReachedDailyLimit = dailyAppointmentsCount >= 2;
+        const isAutoRestricted = hasReachedDailyLimit || noShowCount >= 3;
         
         uniqueUsersMap.set(userEmail, {
           id: userDoc.id,
@@ -82,8 +98,9 @@ const UserManagement = () => {
           totalBookings,
           noShowCount,
           cancelledBookings,
-          isRestricted: userData.isRestricted || noShowCount >= 3,
-          restrictionReason: userData.restrictionReason,
+          dailyAppointmentsCount,
+          isRestricted: userData.isRestricted || isAutoRestricted,
+          restrictionReason: userData.restrictionReason || (hasReachedDailyLimit ? 'Daily appointment limit reached' : undefined),
           restrictionUntil: userData.restrictionUntil
         });
       });
@@ -220,6 +237,25 @@ const UserManagement = () => {
     }
   };
 
+  // Helper function to determine if user has reached daily limit
+  const hasReachedDailyLimit = (user: UserStats) => {
+    return (user.dailyAppointmentsCount || 0) >= 2;
+  };
+
+  // Helper function to get restriction reason display
+  const getRestrictionReason = (user: UserStats) => {
+    if (user.restrictionReason) {
+      return user.restrictionReason;
+    }
+    if (hasReachedDailyLimit(user)) {
+      return 'Daily appointment limit reached';
+    }
+    if (user.noShowCount >= 3) {
+      return 'Too many no-shows';
+    }
+    return 'Manually restricted';
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
@@ -237,87 +273,99 @@ const UserManagement = () => {
       
       {/* MOBILE CARD LAYOUT - Hidden on Desktop */}
       <div className="block md:hidden space-y-4">
-        {users.map(user => (
-          <div 
-            key={user.id} 
-            className={`rounded-lg shadow-md p-4 ${
-              user.isRestricted ? 'bg-red-50 border-2 border-red-200' : 'bg-white border border-gray-200'
-            }`}
-          >
-            {/* Email & Status */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 truncate">{user.email}</p>
+        {users.map(user => {
+          const reachedDailyLimit = hasReachedDailyLimit(user);
+          const showUnrestrictButton = user.isRestricted || reachedDailyLimit;
+          
+          return (
+            <div 
+              key={user.id} 
+              className={`rounded-lg shadow-md p-4 ${
+                user.isRestricted || reachedDailyLimit ? 'bg-red-50 border-2 border-red-200' : 'bg-white border border-gray-200'
+              }`}
+            >
+              {/* Email & Status */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{user.email}</p>
+                  {(user.isRestricted || reachedDailyLimit) && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {getRestrictionReason(user)}
+                    </p>
+                  )}
+                </div>
+                <div className="ml-2 flex-shrink-0">
+                  {user.isRestricted || reachedDailyLimit ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                      <XCircle className="w-3 h-3" />
+                      Restricted
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                      <CheckCircle className="w-3 h-3" />
+                      Active
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="ml-2 flex-shrink-0">
-                {user.isRestricted ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                    <XCircle className="w-3 h-3" />
-                    Restricted
-                  </span>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="bg-gray-50 rounded p-2">
+                  <p className="text-xs text-gray-600 mb-1">Active</p>
+                  <p className="text-lg font-semibold text-gray-900">{user.activeAppointments}</p>
+                </div>
+                <div className="bg-gray-50 rounded p-2">
+                  <p className="text-xs text-gray-600 mb-1">Total</p>
+                  <p className="text-lg font-semibold text-gray-900">{user.totalBookings}</p>
+                </div>
+                <div className="bg-gray-50 rounded p-2">
+                  <p className="text-xs text-gray-600 mb-1">No-Shows</p>
+                  <p className={`text-lg font-semibold ${user.noShowCount >= 3 ? 'text-red-600' : 'text-gray-900'}`}>
+                    {user.noShowCount}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded p-2">
+                  <p className="text-xs text-gray-600 mb-1">Today</p>
+                  <p className={`text-lg font-semibold ${reachedDailyLimit ? 'text-red-600' : 'text-gray-900'}`}>
+                    {user.dailyAppointmentsCount || 0}/2
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-wrap gap-2">
+                {showUnrestrictButton ? (
+                  <button
+                    onClick={() => removeRestriction(user.email)}
+                    className="flex-1 min-w-[120px] px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Unrestrict
+                  </button>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                    <CheckCircle className="w-3 h-3" />
-                    Active
-                  </span>
+                  <button
+                    onClick={() => addRestriction(user.email)}
+                    className="flex-1 min-w-[120px] px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Ban className="w-4 h-4" />
+                    Restrict
+                  </button>
+                )}
+                
+                {user.noShowCount > 0 && (
+                  <button
+                    onClick={() => resetNoShowCount(user.email)}
+                    className="flex-1 min-w-[120px] px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Reset Count
+                  </button>
                 )}
               </div>
             </div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-gray-50 rounded p-2">
-                <p className="text-xs text-gray-600 mb-1">Active</p>
-                <p className="text-lg font-semibold text-gray-900">{user.activeAppointments}</p>
-              </div>
-              <div className="bg-gray-50 rounded p-2">
-                <p className="text-xs text-gray-600 mb-1">Total</p>
-                <p className="text-lg font-semibold text-gray-900">{user.totalBookings}</p>
-              </div>
-              <div className="bg-gray-50 rounded p-2">
-                <p className="text-xs text-gray-600 mb-1">No-Shows</p>
-                <p className={`text-lg font-semibold ${user.noShowCount >= 3 ? 'text-red-600' : 'text-gray-900'}`}>
-                  {user.noShowCount}
-                </p>
-              </div>
-              <div className="bg-gray-50 rounded p-2">
-                <p className="text-xs text-gray-600 mb-1">Cancelled</p>
-                <p className="text-lg font-semibold text-gray-900">{user.cancelledBookings}</p>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-wrap gap-2">
-              {user.isRestricted ? (
-                <button
-                  onClick={() => removeRestriction(user.email)}
-                  className="flex-1 min-w-[120px] px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium flex items-center justify-center gap-1"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  Unrestrict
-                </button>
-              ) : (
-                <button
-                  onClick={() => addRestriction(user.email)}
-                  className="flex-1 min-w-[120px] px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center justify-center gap-1"
-                >
-                  <Ban className="w-4 h-4" />
-                  Restrict
-                </button>
-              )}
-              
-              {user.noShowCount > 0 && (
-                <button
-                  onClick={() => resetNoShowCount(user.email)}
-                  className="flex-1 min-w-[120px] px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-1"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Reset Count
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
         
         {users.length === 0 && (
           <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
@@ -335,75 +383,95 @@ const UserManagement = () => {
               <th className="border p-3 text-center">Active</th>
               <th className="border p-3 text-center">Total</th>
               <th className="border p-3 text-center">No-Shows</th>
+              <th className="border p-3 text-center">Today</th>
               <th className="border p-3 text-center">Cancelled</th>
               <th className="border p-3 text-center">Status</th>
               <th className="border p-3 text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {users.map(user => (
-              <tr key={user.id} className={user.isRestricted ? 'bg-red-50' : ''}>
-                <td className="border p-3">{user.email}</td>
-                <td className="border p-3 text-center">{user.activeAppointments}</td>
-                <td className="border p-3 text-center">{user.totalBookings}</td>
-                <td className="border p-3 text-center">
-                  <span className={user.noShowCount >= 3 ? 'text-red-600 font-bold' : ''}>
-                    {user.noShowCount}
-                  </span>
-                </td>
-                <td className="border p-3 text-center">{user.cancelledBookings}</td>
-                <td className="border p-3 text-center">
-                  {user.isRestricted ? (
-                    <span className="flex items-center justify-center gap-1 text-red-600">
-                      <XCircle className="w-4 h-4" />
-                      Restricted
+            {users.map(user => {
+              const reachedDailyLimit = hasReachedDailyLimit(user);
+              const showUnrestrictButton = user.isRestricted || reachedDailyLimit;
+              
+              return (
+                <tr key={user.id} className={user.isRestricted || reachedDailyLimit ? 'bg-red-50' : ''}>
+                  <td className="border p-3">
+                    <div>
+                      <div>{user.email}</div>
+                      {(user.isRestricted || reachedDailyLimit) && (
+                        <div className="text-xs text-red-600 mt-1">
+                          {getRestrictionReason(user)}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="border p-3 text-center">{user.activeAppointments}</td>
+                  <td className="border p-3 text-center">{user.totalBookings}</td>
+                  <td className="border p-3 text-center">
+                    <span className={user.noShowCount >= 3 ? 'text-red-600 font-bold' : ''}>
+                      {user.noShowCount}
                     </span>
-                  ) : (
-                    <span className="flex items-center justify-center gap-1 text-green-600">
-                      <CheckCircle className="w-4 h-4" />
-                      Active
+                  </td>
+                  <td className="border p-3 text-center">
+                    <span className={reachedDailyLimit ? 'text-red-600 font-bold' : ''}>
+                      {user.dailyAppointmentsCount || 0}/2
                     </span>
-                  )}
-                </td>
-                <td className="border p-3 text-center">
-                  <div className="flex items-center justify-center gap-2 flex-wrap">
-                    {user.isRestricted ? (
-                      <button
-                        onClick={() => removeRestriction(user.email)}
-                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm flex items-center gap-1"
-                        title="Remove Restriction"
-                      >
-                        <CheckCircle className="w-3 h-3" />
-                        Unrestrict
-                      </button>
+                  </td>
+                  <td className="border p-3 text-center">{user.cancelledBookings}</td>
+                  <td className="border p-3 text-center">
+                    {user.isRestricted || reachedDailyLimit ? (
+                      <span className="flex items-center justify-center gap-1 text-red-600">
+                        <XCircle className="w-4 h-4" />
+                        Restricted
+                      </span>
                     ) : (
-                      <button
-                        onClick={() => addRestriction(user.email)}
-                        className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm flex items-center gap-1"
-                        title="Add Restriction"
-                      >
-                        <Ban className="w-3 h-3" />
-                        Restrict
-                      </button>
+                      <span className="flex items-center justify-center gap-1 text-green-600">
+                        <CheckCircle className="w-4 h-4" />
+                        Active
+                      </span>
                     )}
-                    
-                    {user.noShowCount > 0 && (
-                      <button
-                        onClick={() => resetNoShowCount(user.email)}
-                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm flex items-center gap-1"
-                        title="Reset No-Show Count"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        Reset
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="border p-3 text-center">
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      {showUnrestrictButton ? (
+                        <button
+                          onClick={() => removeRestriction(user.email)}
+                          className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm flex items-center gap-1"
+                          title="Remove Restriction"
+                        >
+                          <CheckCircle className="w-3 h-3" />
+                          Unrestrict
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => addRestriction(user.email)}
+                          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm flex items-center gap-1"
+                          title="Add Restriction"
+                        >
+                          <Ban className="w-3 h-3" />
+                          Restrict
+                        </button>
+                      )}
+                      
+                      {user.noShowCount > 0 && (
+                        <button
+                          onClick={() => resetNoShowCount(user.email)}
+                          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm flex items-center gap-1"
+                          title="Reset No-Show Count"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {users.length === 0 && (
               <tr>
-                <td colSpan={7} className="border p-8 text-center text-gray-500">
+                <td colSpan={8} className="border p-8 text-center text-gray-500">
                   No users found
                 </td>
               </tr>

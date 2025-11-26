@@ -9,13 +9,14 @@ interface Appointment {
   priorityLevel: string;
   timeSlot: string;
   queueNumber: number;
+  email: string;
 }
 
 interface RescheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
   appointment: Appointment;
-  onConfirm: (updatedData: { appointmentDate: string; timeSlot: string }) => void | Promise<void>;
+  onConfirm: (updatedData: { appointmentDate: string; timeSlot: string }) => Promise<void>;
   isSubmitting?: boolean;
 }
 
@@ -28,6 +29,7 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
   const [newDate, setNewDate] = useState(appointment.appointmentDate);
   const [newTimeSlot, setNewTimeSlot] = useState(appointment.timeSlot);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<TimeSlot[]>([]);
+  const [isSendingNotification, setIsSendingNotification] = useState(false);
 
   useEffect(() => {
     setNewDate(appointment.appointmentDate);
@@ -66,15 +68,70 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
     setAvailableTimeSlots(slots);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onConfirm({
-      appointmentDate: newDate,
-      timeSlot: newTimeSlot
-    });
+    
+    setIsSendingNotification(true);
+    try {
+      // Send email notification to staff first
+      await sendRescheduleNotification();
+      
+      // Then call the original onConfirm function
+      await onConfirm({
+        appointmentDate: newDate,
+        timeSlot: newTimeSlot
+      });
+    } catch (error) {
+      console.error('Error in reschedule process:', error);
+    } finally {
+      setIsSendingNotification(false);
+    }
+  };
+
+  const sendRescheduleNotification = async () => {
+    try {
+      const response = await fetch('/api/patient-reschedule', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          patientEmail: appointment.email,
+          patientName: appointment.fullName,
+          originalAppointmentDate: appointment.appointmentDate,
+          originalTimeSlot: appointment.timeSlot,
+          newAppointmentDate: newDate,
+          newTimeSlot: newTimeSlot,
+          doctor: appointment.doctor,
+          queueNumber: appointment.queueNumber
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        console.error('Failed to send reschedule notification:', data.error);
+        throw new Error(data.error || 'Failed to send reschedule notification');
+      }
+
+      console.log('✅ Reschedule email notification sent to staff');
+      return data;
+    } catch (error) {
+      console.error('Error sending reschedule notification:', error);
+      throw error;
+    }
+  };
+
+  const convertTo12Hour = (time24: string): string => {
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
 
   if (!isOpen) return null;
+
+  const isProcessing = isSubmitting || isSendingNotification;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="reschedule-modal-title">
@@ -95,6 +152,7 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
               onClick={onClose}
               className="text-white hover:text-gray-200 transition"
               aria-label="Close reschedule dialog"
+              disabled={isProcessing}
             >
               <X className="w-6 h-6" />
             </button>
@@ -121,7 +179,7 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
               </div>
               <div>
                 <p className="text-gray-500">Time:</p>
-                <p className="font-medium text-gray-900">{appointment.timeSlot}</p>
+                <p className="font-medium text-gray-900">{convertTo12Hour(appointment.timeSlot)}</p>
               </div>
             </div>
           </div>
@@ -144,6 +202,7 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
                   setNewTimeSlot('');
                 }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                disabled={isProcessing}
               />
             </div>
 
@@ -153,36 +212,32 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
                   <Clock className="w-4 h-4 text-indigo-600" aria-hidden="true" />
                   Select New Time Slot <span className="text-red-500">*</span>
                 </label>
-               <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Available time slots">
-              {availableTimeSlots.map((slot) => {
-                // Convert 24-hour format to 12-hour format with AM/PM
-                const [hours, minutes] = slot.time.split(':').map(Number);
-                const period = hours >= 12 ? 'PM' : 'AM';
-                const hours12 = hours % 12 || 12;
-                const displayTime = `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-                
-                return (
-                  <button
-                    key={slot.time}
-                    type="button"
-                    disabled={!slot.available}
-                    onClick={() => setNewTimeSlot(slot.time)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                      newTimeSlot === slot.time
-                        ? 'bg-yellow-600 text-white'
-                        : slot.available
-                        ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        : 'bg-gray-50 text-gray-400 cursor-not-allowed'
-                    }`}
-                    aria-label={`Time slot ${displayTime}${!slot.available ? ' (unavailable)' : ''}`}
-                    aria-pressed={newTimeSlot === slot.time ? "true" : "false"}
-                  >
-                    {displayTime}
-                  </button>
-                );
-              })}
-            </div>
-            </div>
+                <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg" role="group" aria-label="Available time slots">
+                  {availableTimeSlots.map((slot) => {
+                    const displayTime = convertTo12Hour(slot.time);
+                    
+                    return (
+                      <button
+                        key={slot.time}
+                        type="button"
+                        disabled={!slot.available || isProcessing}
+                        onClick={() => setNewTimeSlot(slot.time)}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                          newTimeSlot === slot.time
+                            ? 'bg-yellow-600 text-white'
+                            : slot.available
+                            ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                        } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        aria-label={`Time slot ${displayTime}${!slot.available ? ' (unavailable)' : ''}`}
+                        aria-pressed={newTimeSlot === slot.time ? "true" : "false"}
+                      >
+                        {displayTime}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
 
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg" role="alert">
@@ -195,7 +250,8 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
                 <div>
                   <h5 className="text-sm font-medium text-yellow-800 mb-1">Important</h5>
                   <p className="text-sm text-yellow-700">
-                  Rescheduling this appointment will update the patient’s appointment details. Please remind the patient to arrive 15 minutes before the new scheduled time.
+                    Rescheduling this appointment will update the patient's appointment details and automatically notify staff via email.
+                    Please remind the patient to arrive 15 minutes before the new scheduled time.
                   </p>
                 </div>
               </div>
@@ -205,17 +261,25 @@ const RescheduleModal = ({ isOpen, onClose, appointment, onConfirm, isSubmitting
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition"
+                disabled={isProcessing}
+                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={!newTimeSlot || isSubmitting}
-                className="flex-1 px-6 py-3 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
-                aria-busy={isSubmitting}
+                disabled={!newTimeSlot || isProcessing}
+                className="flex-1 px-6 py-3 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                aria-busy={isProcessing}
               >
-                {isSubmitting ? 'Updating...' : 'Confirm Reschedule'}
+                {isProcessing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Sending Notification...
+                  </>
+                ) : (
+                  'Confirm Reschedule'
+                )}
               </button>
             </div>
           </form>

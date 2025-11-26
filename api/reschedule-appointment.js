@@ -15,7 +15,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { appointmentDate, timeSlot, patientEmail, patientName, doctor, queueNumber, oldDate, oldTimeSlot } = req.body;
+  const { 
+    appointmentDate, 
+    timeSlot, 
+    patientEmail, 
+    patientName, 
+    doctor, 
+    queueNumber, 
+    oldDate, 
+    oldTimeSlot,
+    rescheduleReason 
+  } = req.body;
 
   if (!appointmentDate || !timeSlot) {
     return res.status(400).json({ error: 'New appointment date and time slot are required' });
@@ -75,6 +85,7 @@ export default async function handler(req, res) {
                 <h3 style="color: #991b1b; margin-top: 0;">Previous Appointment:</h3>
                 <p><strong>Date:</strong> ${formatDate(oldDate)}</p>
                 <p><strong>Time:</strong> ${formatTime(oldTimeSlot)}</p>
+                ${rescheduleReason ? `<p><strong>Reason:</strong> ${rescheduleReason}</p>` : ''}
               </div>
             ` : ''}
 
