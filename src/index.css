@@ -367,3 +367,51 @@ input[type="date"].input-transparent::-webkit-datetime-edit-text {
   }
 }
 
+/* Christmas Theme Animations */
+@keyframes float {
+  0% { 
+    transform: translateY(0) rotate(0deg); 
+    opacity: 0; 
+  }
+  10% { 
+    opacity: 0.3; 
+  }
+  90% { 
+    opacity: 0.3; 
+  }
+  100% { 
+    transform: translateY(-100vh) rotate(360deg); 
+    opacity: 0; 
+  }
+}
+
+@keyframes glow {
+  0%, 100% { 
+    box-shadow: 0 0 5px rgba(34, 197, 94, 0.3);
+  }
+  50% { 
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.6), 0 0 30px rgba(239, 68, 68, 0.4);
+  }
+}
+
+.animate-float {
+  animation: float linear infinite;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+.christmas-theme {
+  background: linear-gradient(135deg, #1a2f1a 0%, #2d1a1a 100%);
+}
+
+/* Christmas theme specific styles */
+.christmas-border {
+  border: 2px solid;
+  border-image: linear-gradient(45deg, #dc2626, #16a34a) 1;
+}
+
+.christmas-text-glow {
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}

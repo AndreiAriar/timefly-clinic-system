@@ -388,7 +388,7 @@ useEffect(() => {
               <h3 className="text-xl font-semibold text-gray-600 mb-2">No Patient Currently Being Served</h3>
               <p className="text-gray-500">
                 {appointments.length > 0 
-                  ? 'Select a patient to start serving' 
+                  ? 'Patients in queue' 
                   : 'No patients in queue for today'}
               </p>
             </div>

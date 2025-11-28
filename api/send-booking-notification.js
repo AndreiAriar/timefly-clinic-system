@@ -81,7 +81,7 @@ export default async function handler(req, res) {
             <p><strong>Doctor:</strong> ${doctor}</p>
             <p><strong>Date:</strong> ${formatDate(appointmentDate)}</p>
             <p><strong>Time:</strong> ${formatTime(timeSlot)}</p>
-            <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold;">Pending</span></p>
+            <p><strong>Status:</strong> <span style="color: #ebfc03ff; font-weight: bold;">Pending</span></p>
           </div>
 
           <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #ffeaa7;">

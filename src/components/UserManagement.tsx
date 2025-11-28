@@ -338,61 +338,62 @@ const UserManagement = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 sm:py-12 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading users...</p>
+          <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-indigo-600 mx-auto mb-3 sm:mb-4"></div>
+          <p className="text-sm sm:text-base text-gray-600">Loading users...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+    <div className="p-3 sm:p-4 md:p-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">User Management</h2>
-          <p className="text-gray-600">Manage user accounts and access permissions</p>
+        {/* Header - Mobile Responsive */}
+        <div className="mb-6 sm:mb-8">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">User Management</h2>
+          <p className="text-sm sm:text-base text-gray-600">Manage user accounts and access permissions</p>
         </div>
         
-        {/* Search and Filter Controls */}
-        <div className="mb-8 bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <div className="flex flex-col md:flex-row gap-4">
+        {/* Search and Filter Controls - Mobile Responsive */}
+        <div className="mb-6 sm:mb-8 bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             {/* Search Input */}
             <div className="flex-1 relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-gray-400" />
+                <Search className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
               </div>
               <input
                 type="text"
                 placeholder="Search users by email or type..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white shadow-sm transition-all duration-200"
+                className="block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white shadow-sm transition-all duration-200 text-sm sm:text-base"
               />
             </div>
             
-            {/* Filter Dropdown */}
+            {/* Filter Dropdown - Works on both mobile and desktop */}
             <div className="relative">
               <button
                 onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                className="flex items-center gap-2 px-4 py-3 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-all duration-200 shadow-sm"
+                className="flex items-center gap-2 px-4 py-2 sm:py-3 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-all duration-200 shadow-sm w-full sm:w-auto"
               >
-                <Filter className="h-5 w-5 text-gray-600" />
-                <span className="text-gray-700">
+                <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
+                <span className="text-sm sm:text-base text-gray-700">
                   {typeFilter === 'all' ? 'All Users' : typeFilter.charAt(0).toUpperCase() + typeFilter.slice(1)}
                 </span>
               </button>
               
               {showFilterDropdown && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                <div className="absolute right-0 mt-2 w-full sm:w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
                   <div className="py-1">
                     <button
                       onClick={() => {
                         setTypeFilter('all');
                         setShowFilterDropdown(false);
                       }}
-                      className={`block w-full text-left px-4 py-2 text-sm ${
+                      className={`block w-full text-left px-4 py-3 text-sm ${
                         typeFilter === 'all' 
                           ? 'bg-indigo-50 text-indigo-700' 
                           : 'text-gray-700 hover:bg-gray-50'
@@ -405,7 +406,7 @@ const UserManagement = () => {
                         setTypeFilter('patient');
                         setShowFilterDropdown(false);
                       }}
-                      className={`block w-full text-left px-4 py-2 text-sm ${
+                      className={`block w-full text-left px-4 py-3 text-sm ${
                         typeFilter === 'patient' 
                           ? 'bg-indigo-50 text-indigo-700' 
                           : 'text-gray-700 hover:bg-gray-50'
@@ -418,7 +419,7 @@ const UserManagement = () => {
                         setTypeFilter('staff');
                         setShowFilterDropdown(false);
                       }}
-                      className={`block w-full text-left px-4 py-2 text-sm ${
+                      className={`block w-full text-left px-4 py-3 text-sm ${
                         typeFilter === 'staff' 
                           ? 'bg-indigo-50 text-indigo-700' 
                           : 'text-gray-700 hover:bg-gray-50'
@@ -431,7 +432,7 @@ const UserManagement = () => {
                         setTypeFilter('doctor');
                         setShowFilterDropdown(false);
                       }}
-                      className={`block w-full text-left px-4 py-2 text-sm ${
+                      className={`block w-full text-left px-4 py-3 text-sm ${
                         typeFilter === 'doctor' 
                           ? 'bg-indigo-50 text-indigo-700' 
                           : 'text-gray-700 hover:bg-gray-50'
@@ -445,11 +446,11 @@ const UserManagement = () => {
             </div>
           </div>
           
-          {/* Active Filters Display */}
+          {/* Active Filters Display - Mobile Responsive */}
           {(searchQuery || typeFilter !== 'all') && (
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 sm:mt-4 flex flex-wrap gap-2">
               {searchQuery && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm">
                   Search: "{searchQuery}"
                   <button
                     onClick={() => setSearchQuery('')}
@@ -460,7 +461,7 @@ const UserManagement = () => {
                 </span>
               )}
               {typeFilter !== 'all' && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs sm:text-sm">
                   Type: {typeFilter}
                   <button
                     onClick={() => setTypeFilter('all')}
@@ -474,15 +475,15 @@ const UserManagement = () => {
           )}
         </div>
         
-        {/* Results Count */}
+        {/* Results Count - Mobile Responsive */}
         <div className="mb-4">
-          <p className="text-gray-600">
+          <p className="text-sm sm:text-base text-gray-600">
             Showing {filteredUsers.length} of {users.length} users
           </p>
         </div>
         
         {/* MOBILE CARD LAYOUT - Hidden on Desktop */}
-        <div className="block md:hidden space-y-4">
+        <div className="block md:hidden space-y-3 sm:space-y-4">
           {filteredUsers.map(user => {
             const reachedDailyLimit = hasReachedDailyLimit(user);
             const showUnrestrictButton = user.isRestricted || reachedDailyLimit;
@@ -491,7 +492,7 @@ const UserManagement = () => {
             return (
               <div 
                 key={user.id} 
-                className={`rounded-xl shadow-lg p-6 transition-all duration-200 ${
+                className={`rounded-xl shadow-lg p-4 sm:p-6 transition-all duration-200 ${
                   (user.isRestricted || reachedDailyLimit) && showActions 
                     ? 'bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-200' 
                     : 'bg-white border border-gray-200 hover:shadow-xl'
@@ -500,25 +501,25 @@ const UserManagement = () => {
                 {/* Email, Type & Status */}
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <p className="font-semibold text-gray-900 truncate text-lg">{user.email}</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                      <p className="font-semibold text-gray-900 truncate text-base sm:text-lg">{user.email}</p>
                       {getUserTypeBadge(user.type)}
                     </div>
                     {(user.isRestricted || reachedDailyLimit) && showActions && (
-                      <p className="text-sm text-red-600 bg-red-50 px-3 py-1 rounded-lg">
+                      <p className="text-xs sm:text-sm text-red-600 bg-red-50 px-2 sm:px-3 py-1 rounded-lg">
                         {getRestrictionReason(user)}
                       </p>
                     )}
                   </div>
                   <div className="ml-2 flex-shrink-0">
                     {(user.isRestricted || reachedDailyLimit) && showActions ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium">
-                        <XCircle className="w-4 h-4" />
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                        <XCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                         Restricted
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-                        <CheckCircle className="w-4 h-4" />
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                         Active
                       </span>
                     )}
@@ -527,24 +528,24 @@ const UserManagement = () => {
 
                 {/* Stats Grid - Only show for patients */}
                 {user.type === 'patient' && (
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                    <div className="bg-gray-50 rounded-lg sm:rounded-xl p-2 sm:p-3 text-center">
                       <p className="text-xs text-gray-600 mb-1 font-medium">Active</p>
-                      <p className="text-xl font-bold text-gray-900">{user.activeAppointments}</p>
+                      <p className="text-lg sm:text-xl font-bold text-gray-900">{user.activeAppointments}</p>
                     </div>
-                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                    <div className="bg-gray-50 rounded-lg sm:rounded-xl p-2 sm:p-3 text-center">
                       <p className="text-xs text-gray-600 mb-1 font-medium">Total</p>
-                      <p className="text-xl font-bold text-gray-900">{user.totalBookings}</p>
+                      <p className="text-lg sm:text-xl font-bold text-gray-900">{user.totalBookings}</p>
                     </div>
-                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                    <div className="bg-gray-50 rounded-lg sm:rounded-xl p-2 sm:p-3 text-center">
                       <p className="text-xs text-gray-600 mb-1 font-medium">No-Shows</p>
-                      <p className={`text-xl font-bold ${user.noShowCount >= 3 ? 'text-red-600' : 'text-gray-900'}`}>
+                      <p className={`text-lg sm:text-xl font-bold ${user.noShowCount >= 3 ? 'text-red-600' : 'text-gray-900'}`}>
                         {user.noShowCount}
                       </p>
                     </div>
-                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                    <div className="bg-gray-50 rounded-lg sm:rounded-xl p-2 sm:p-3 text-center">
                       <p className="text-xs text-gray-600 mb-1 font-medium">Today</p>
-                      <p className={`text-xl font-bold ${reachedDailyLimit ? 'text-red-600' : 'text-gray-900'}`}>
+                      <p className={`text-lg sm:text-xl font-bold ${reachedDailyLimit ? 'text-red-600' : 'text-gray-900'}`}>
                         {user.dailyAppointmentsCount || 0}/2
                       </p>
                     </div>
@@ -553,34 +554,43 @@ const UserManagement = () => {
 
                 {/* Actions - Only show for patients */}
                 {showActions && (
-                  <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                     {showUnrestrictButton ? (
                       <button
                         onClick={() => removeRestriction(user.email)}
-                        className="flex-1 min-w-[140px] px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
+                        className="w-full px-4 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg sm:rounded-xl hover:from-green-700 hover:to-green-800 text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
                       >
-                        <CheckCircle className="w-4 h-4" />
-                        Unrestrict
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                        Unrestrict User
                       </button>
                     ) : (
                       <button
                         onClick={() => addRestriction(user.email)}
-                        className="flex-1 min-w-[140px] px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
+                        className="w-full px-4 py-2 sm:py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg sm:rounded-xl hover:from-red-700 hover:to-red-800 text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
                       >
-                        <Ban className="w-4 h-4" />
-                        Restrict
+                        <Ban className="w-3 h-3 sm:w-4 sm:h-4" />
+                        Restrict User
                       </button>
                     )}
                     
                     {user.noShowCount > 0 && (
                       <button
                         onClick={() => resetNoShowCount(user.email)}
-                        className="flex-1 min-w-[140px] px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
+                        className="w-full px-4 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg sm:rounded-xl hover:from-blue-700 hover:to-blue-800 text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
                       >
-                        <RefreshCw className="w-4 h-4" />
-                        Reset Count
+                        <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4" />
+                        Reset No-Shows
                       </button>
                     )}
+                  </div>
+                )}
+
+                {/* No Actions Message for non-patients */}
+                {!showActions && (
+                  <div className="text-center py-2">
+                    <p className="text-xs sm:text-sm text-gray-500 font-medium">
+                      No actions available for {user.type}s
+                    </p>
                   </div>
                 )}
               </div>
@@ -588,162 +598,164 @@ const UserManagement = () => {
           })}
           
           {filteredUsers.length === 0 && (
-            <div className="bg-white rounded-xl shadow-lg p-8 text-center text-gray-500 border border-gray-200">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-lg font-medium">No users found</p>
-              <p className="text-sm">Try adjusting your search or filters</p>
+            <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 text-center text-gray-500 border border-gray-200">
+              <Users className="w-8 h-8 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <p className="text-base sm:text-lg font-medium">No users found</p>
+              <p className="text-xs sm:text-sm mt-1">Try adjusting your search or filters</p>
             </div>
           )}
         </div>
 
         {/* DESKTOP TABLE LAYOUT - Hidden on Mobile */}
         <div className="hidden md:block overflow-hidden rounded-2xl shadow-lg bg-white border border-gray-200">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                <th className="p-4 text-left font-semibold text-gray-700">Email</th>
-                <th className="p-4 text-center font-semibold text-gray-700">Type</th>
-                <th className="p-4 text-center font-semibold text-gray-700">Active</th>
-                <th className="p-4 text-center font-semibold text-gray-700">Total</th>
-                <th className="p-4 text-center font-semibold text-gray-700">No-Shows</th>
-                <th className="p-4 text-center font-semibold text-gray-700">Today</th>
-                <th className="p-4 text-center font-semibold text-gray-700">Cancelled</th>
-                <th className="p-4 text-center font-semibold text-gray-700">Status</th>
-                <th className="p-4 text-center font-semibold text-gray-700">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map(user => {
-                const reachedDailyLimit = hasReachedDailyLimit(user);
-                const showUnrestrictButton = user.isRestricted || reachedDailyLimit;
-                const showActions = shouldShowActions(user);
-                
-                return (
-                  <tr 
-                    key={user.id} 
-                    className={`transition-all duration-200 ${
-                      (user.isRestricted || reachedDailyLimit) && showActions 
-                        ? 'bg-gradient-to-r from-red-50 to-red-100' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <td className="p-4 border-b border-gray-100">
-                      <div>
-                        <div className="font-medium text-gray-900">{user.email}</div>
-                        {(user.isRestricted || reachedDailyLimit) && showActions && (
-                          <div className="text-xs text-red-600 mt-1 bg-red-50 px-2 py-1 rounded">
-                            {getRestrictionReason(user)}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4 border-b border-gray-100 text-center">
-                      {getUserTypeBadge(user.type)}
-                    </td>
-                    <td className="p-4 border-b border-gray-100 text-center">
-                      {user.type === 'patient' ? (
-                        <span className="font-semibold text-gray-900">{user.activeAppointments}</span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="p-4 border-b border-gray-100 text-center">
-                      {user.type === 'patient' ? (
-                        <span className="font-semibold text-gray-900">{user.totalBookings}</span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="p-4 border-b border-gray-100 text-center">
-                      {user.type === 'patient' ? (
-                        <span className={`font-semibold ${user.noShowCount >= 3 ? 'text-red-600' : 'text-gray-900'}`}>
-                          {user.noShowCount}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="p-4 border-b border-gray-100 text-center">
-                      {user.type === 'patient' ? (
-                        <span className={`font-semibold ${reachedDailyLimit ? 'text-red-600' : 'text-gray-900'}`}>
-                          {user.dailyAppointmentsCount || 0}/2
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="p-4 border-b border-gray-100 text-center">
-                      {user.type === 'patient' ? (
-                        <span className="font-semibold text-gray-900">{user.cancelledBookings}</span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="p-4 border-b border-gray-100 text-center">
-                      {(user.isRestricted || reachedDailyLimit) && showActions ? (
-                        <span className="flex items-center justify-center gap-2 text-red-600 font-medium">
-                          <XCircle className="w-4 h-4" />
-                          Restricted
-                        </span>
-                      ) : (
-                        <span className="flex items-center justify-center gap-2 text-green-600 font-medium">
-                          <CheckCircle className="w-4 h-4" />
-                          Active
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 border-b border-gray-100 text-center">
-                      {showActions ? (
-                        <div className="flex items-center justify-center gap-2 flex-wrap">
-                          {showUnrestrictButton ? (
-                            <button
-                              onClick={() => removeRestriction(user.email)}
-                              className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
-                              title="Remove Restriction"
-                            >
-                              <CheckCircle className="w-3 h-3" />
-                              Unrestrict
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => addRestriction(user.email)}
-                              className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg hover:from-red-700 hover:to-red-800 text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
-                              title="Add Restriction"
-                            >
-                              <Ban className="w-3 h-3" />
-                              Restrict
-                            </button>
-                          )}
-                          
-                          {user.noShowCount > 0 && (
-                            <button
-                              onClick={() => resetNoShowCount(user.email)}
-                              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
-                              title="Reset No-Show Count"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              Reset
-                            </button>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[800px]">
+              <thead>
+                <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <th className="p-4 text-left font-semibold text-gray-700 text-sm">Email</th>
+                  <th className="p-4 text-center font-semibold text-gray-700 text-sm">Type</th>
+                  <th className="p-4 text-center font-semibold text-gray-700 text-sm">Active</th>
+                  <th className="p-4 text-center font-semibold text-gray-700 text-sm">Total</th>
+                  <th className="p-4 text-center font-semibold text-gray-700 text-sm">No-Shows</th>
+                  <th className="p-4 text-center font-semibold text-gray-700 text-sm">Today</th>
+                  <th className="p-4 text-center font-semibold text-gray-700 text-sm">Cancelled</th>
+                  <th className="p-4 text-center font-semibold text-gray-700 text-sm">Status</th>
+                  <th className="p-4 text-center font-semibold text-gray-700 text-sm">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map(user => {
+                  const reachedDailyLimit = hasReachedDailyLimit(user);
+                  const showUnrestrictButton = user.isRestricted || reachedDailyLimit;
+                  const showActions = shouldShowActions(user);
+                  
+                  return (
+                    <tr 
+                      key={user.id} 
+                      className={`transition-all duration-200 ${
+                        (user.isRestricted || reachedDailyLimit) && showActions 
+                          ? 'bg-gradient-to-r from-red-50 to-red-100' 
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <td className="p-4 border-b border-gray-100">
+                        <div>
+                          <div className="font-medium text-gray-900 text-sm">{user.email}</div>
+                          {(user.isRestricted || reachedDailyLimit) && showActions && (
+                            <div className="text-xs text-red-600 mt-1 bg-red-50 px-2 py-1 rounded">
+                              {getRestrictionReason(user)}
+                            </div>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-gray-400 text-sm font-medium">No actions available</span>
-                      )}
+                      </td>
+                      <td className="p-4 border-b border-gray-100 text-center">
+                        {getUserTypeBadge(user.type)}
+                      </td>
+                      <td className="p-4 border-b border-gray-100 text-center">
+                        {user.type === 'patient' ? (
+                          <span className="font-semibold text-gray-900 text-sm">{user.activeAppointments}</span>
+                        ) : (
+                          <span className="text-gray-400 text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="p-4 border-b border-gray-100 text-center">
+                        {user.type === 'patient' ? (
+                          <span className="font-semibold text-gray-900 text-sm">{user.totalBookings}</span>
+                        ) : (
+                          <span className="text-gray-400 text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="p-4 border-b border-gray-100 text-center">
+                        {user.type === 'patient' ? (
+                          <span className={`font-semibold text-sm ${user.noShowCount >= 3 ? 'text-red-600' : 'text-gray-900'}`}>
+                            {user.noShowCount}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="p-4 border-b border-gray-100 text-center">
+                        {user.type === 'patient' ? (
+                          <span className={`font-semibold text-sm ${reachedDailyLimit ? 'text-red-600' : 'text-gray-900'}`}>
+                            {user.dailyAppointmentsCount || 0}/2
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="p-4 border-b border-gray-100 text-center">
+                        {user.type === 'patient' ? (
+                          <span className="font-semibold text-gray-900 text-sm">{user.cancelledBookings}</span>
+                        ) : (
+                          <span className="text-gray-400 text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="p-4 border-b border-gray-100 text-center">
+                        {(user.isRestricted || reachedDailyLimit) && showActions ? (
+                          <span className="flex items-center justify-center gap-2 text-red-600 font-medium text-sm">
+                            <XCircle className="w-4 h-4" />
+                            Restricted
+                          </span>
+                        ) : (
+                          <span className="flex items-center justify-center gap-2 text-green-600 font-medium text-sm">
+                            <CheckCircle className="w-4 h-4" />
+                            Active
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4 border-b border-gray-100 text-center">
+                        {showActions ? (
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                            {showUnrestrictButton ? (
+                              <button
+                                onClick={() => removeRestriction(user.email)}
+                                className="px-3 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 text-xs flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
+                                title="Remove Restriction"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Unrestrict
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => addRestriction(user.email)}
+                                className="px-3 py-2 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg hover:from-red-700 hover:to-red-800 text-xs flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
+                                title="Add Restriction"
+                              >
+                                <Ban className="w-3 h-3" />
+                                Restrict
+                              </button>
+                            )}
+                            
+                            {user.noShowCount > 0 && (
+                              <button
+                                onClick={() => resetNoShowCount(user.email)}
+                                className="px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 text-xs flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
+                                title="Reset No-Show Count"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                Reset
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs font-medium">No actions available</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredUsers.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="p-8 text-center text-gray-500">
+                      <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-lg font-medium">No users found</p>
+                      <p className="text-sm">Try adjusting your search or filters</p>
                     </td>
                   </tr>
-                );
-              })}
-              {filteredUsers.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-gray-500">
-                    <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-lg font-medium">No users found</p>
-                    <p className="text-sm">Try adjusting your search or filters</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

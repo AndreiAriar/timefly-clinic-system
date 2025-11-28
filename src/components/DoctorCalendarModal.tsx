@@ -1,4 +1,4 @@
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, TreePine, Snowflake, Gift, Star, Bell } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, getDocs, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -34,11 +34,30 @@ interface DoctorCalendarModalProps {
   onNavigateToAppointments: () => void;
 }
 
+// Christmas theme context/hook
+const useChristmasTheme = () => {
+  const [isChristmasMode, setIsChristmasMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('christmasTheme') === 'true';
+    }
+    return false;
+  });
+
+  const toggleChristmasMode = () => {
+    const newMode = !isChristmasMode;
+    setIsChristmasMode(newMode);
+    localStorage.setItem('christmasTheme', String(newMode));
+  };
+
+  return { isChristmasMode, toggleChristmasMode };
+};
+
 const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModalProps) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { isChristmasMode, toggleChristmasMode } = useChristmasTheme();
 
   // Load doctor data initially
   const loadDoctor = useCallback(async (): Promise<Doctor | null> => {
@@ -47,18 +66,15 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
       
       const doctorsRef = collection(db, 'doctors');
       
-      // First, try exact match
       let doctorQuery = query(doctorsRef, where('name', '==', doctorName));
       let doctorSnapshot = await getDocs(doctorQuery);
       
-      // If not found, try with "Dr." prefix
       if (doctorSnapshot.empty && !doctorName.startsWith('Dr.')) {
         console.log('🔍 Trying with "Dr." prefix...');
         doctorQuery = query(doctorsRef, where('name', '==', `Dr. ${doctorName}`));
         doctorSnapshot = await getDocs(doctorQuery);
       }
       
-      // If still not found, try without "Dr." prefix
       if (doctorSnapshot.empty && doctorName.startsWith('Dr.')) {
         console.log('🔍 Trying without "Dr." prefix...');
         const nameWithoutPrefix = doctorName.replace(/^Dr\.\s*/i, '');
@@ -74,15 +90,9 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
         } as Doctor;
         
         console.log('✅ Doctor loaded:', doctorData);
-        console.log('📊 maxSlots (global):', doctorData.maxSlots);
-        console.log('📊 maxSlotsPerDate:', doctorData.maxSlotsPerDate);
-        console.log('📊 unavailableDates:', doctorData.unavailableDates);
-        console.log('📊 availableSlots (unavailable time slots):', doctorData.availableSlots);
-        
         return doctorData;
       } else {
         console.log('❌ No doctor found with name:', doctorName);
-        console.log('💡 Tried variations: exact match, with "Dr.", without "Dr."');
         return null;
       }
     } catch (error) {
@@ -96,14 +106,11 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
     const uniqueMap = new Map<string, Appointment>();
     
     appointmentsList.forEach(apt => {
-      // Create a unique key based on doctor, date, and timeSlot
       const key = `${apt.doctor}_${apt.appointmentDate}_${apt.timeSlot}`;
       
-      // Only add if not already in map (first one wins, or prefer patient_appointments)
       if (!uniqueMap.has(key)) {
         uniqueMap.set(key, apt);
       } else {
-        // If duplicate exists, prefer the one from patient_appointments
         const existing = uniqueMap.get(key);
         if (existing?.source === 'staff' && apt.source === 'patient') {
           uniqueMap.set(key, apt);
@@ -127,12 +134,10 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
     let unsubscribeStaffAppointments: Unsubscribe | null = null;
     let currentDoctorName: string | null = null;
     
-    // Store appointments from each source separately for merging
     let patientAppointmentsCache: Appointment[] = [];
     let staffAppointmentsCache: Appointment[] = [];
 
     const setupListeners = async () => {
-      // First, load the doctor data
       const doctorData = await loadDoctor();
       
       if (!doctorData) {
@@ -145,7 +150,6 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
       setDoctor(doctorData);
       currentDoctorName = doctorData.name;
 
-      // Set up real-time listener for doctor data changes
       const doctorsRef = collection(db, 'doctors');
       const doctorQuery = query(doctorsRef, where('name', '==', currentDoctorName));
       
@@ -162,7 +166,6 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
         console.error('❌ Error listening to doctor changes:', error);
       });
 
-      // Set up real-time listener for patient_appointments
       const patientAppointmentsRef = collection(db, 'patient_appointments');
       const patientQuery = query(
         patientAppointmentsRef,
@@ -178,7 +181,6 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
         
         console.log('🔄 Patient appointments updated:', patientAppointmentsCache.length);
         
-        // Merge and deduplicate
         const combined = [...patientAppointmentsCache, ...staffAppointmentsCache];
         const deduplicated = deduplicateAppointments(combined);
         setAppointments(deduplicated);
@@ -186,7 +188,6 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
         console.error('❌ Error listening to patient appointments:', error);
       });
 
-      // Set up real-time listener for staff_appointments
       const staffAppointmentsRef = collection(db, 'staff_appointments');
       const staffQuery = query(
         staffAppointmentsRef,
@@ -202,7 +203,6 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
         
         console.log('🔄 Staff appointments updated:', staffAppointmentsCache.length);
         
-        // Merge and deduplicate
         const combined = [...patientAppointmentsCache, ...staffAppointmentsCache];
         const deduplicated = deduplicateAppointments(combined);
         setAppointments(deduplicated);
@@ -215,7 +215,6 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
 
     setupListeners();
 
-    // Cleanup function to unsubscribe from all listeners
     return () => {
       console.log('🧹 Cleaning up Firebase listeners...');
       if (unsubscribeDoctor) {
@@ -272,34 +271,20 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
       return 0;
     }
 
-    console.log(`\n🔍 Calculating max slots for ${date}:`);
-
-    // Check if doctor is completely unavailable for this date
     const unavailableDates = doctor.unavailableDates || {};
     if (unavailableDates[date]) {
       console.log(`   ⛔ Date is marked as unavailable`);
       return 0;
     }
 
-    // Get max slots for this date (per-date override or global)
     const maxSlotsPerDate = doctor.maxSlotsPerDate || {};
     const dateSpecificSlots = maxSlotsPerDate[date];
     const globalSlots = doctor.maxSlots || 0;
     
-    console.log(`   📊 maxSlotsPerDate['${date}']:`, dateSpecificSlots);
-    console.log(`   📊 globalMaxSlots:`, globalSlots);
-
-    // Use date-specific slots if set, otherwise use global
     const maxSlots = dateSpecificSlots !== undefined ? dateSpecificSlots : globalSlots;
-    console.log(`   ✅ Using maxSlots: ${maxSlots} (${dateSpecificSlots !== undefined ? 'date-specific' : 'global'})`);
 
-    // Get unavailable time slots marked by staff (these are specific time slots blocked)
     const unavailableTimeSlots = doctor.availableSlots?.[date] || [];
-    console.log(`   ⛔ Unavailable time slots: ${unavailableTimeSlots.length}`);
-
-    // Calculate available slots (max slots minus unavailable time slots)
     const availableSlots = Math.max(0, maxSlots - unavailableTimeSlots.length);
-    console.log(`   ✨ Available slots: ${availableSlots} (${maxSlots} - ${unavailableTimeSlots.length})`);
 
     return availableSlots;
   };
@@ -324,95 +309,263 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 backdrop-blur-md flex items-center justify-center p-4 z-50">
-      <div className="bg-white/95 backdrop-blur-lg rounded-xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-y-auto border border-white/20">
+    <div className={`fixed inset-0 backdrop-blur-md flex items-center justify-center p-4 z-50 ${
+      isChristmasMode ? 'christmas-theme' : ''
+    }`}>
+      {/* Christmas Background Decorations */}
+      {isChristmasMode && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[...Array(25)].map((_, i) => (
+            <Snowflake
+              key={i}
+              className="absolute text-white/40 animate-float"
+              style={{
+                left: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 5}s`,
+                animationDuration: `${5 + Math.random() * 10}s`,
+              }}
+              size={16 + Math.random() * 24}
+            />
+          ))}
+          <Gift className="absolute top-8 left-8 text-green-500/25" size={32} />
+          <Star className="absolute top-8 right-8 text-yellow-400/25" size={28} />
+          <Bell className="absolute bottom-8 left-16 text-red-500/25" size={30} />
+          <Gift className="absolute bottom-12 right-20 text-red-500/25" size={36} />
+          <Star className="absolute top-20 left-20 text-yellow-400/25" size={24} />
+        </div>
+      )}
+
+      <div className={`relative rounded-xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-y-auto ${
+        isChristmasMode 
+          ? 'bg-gradient-to-br from-red-50/98 to-green-50/98 backdrop-blur-xl border-2 border-green-300/60 shadow-green-200/30 animate-glow' 
+          : 'bg-white/95 backdrop-blur-lg border border-white/20'
+      }`}>
+        
+        {/* Modal Interior Snowflakes */}
+        {isChristmasMode && (
+          <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-xl">
+            {[...Array(15)].map((_, i) => (
+              <Snowflake
+                key={i}
+                className="absolute text-green-300/20 animate-float-slow"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 3}s`,
+                  animationDuration: `${8 + Math.random() * 12}s`,
+                }}
+                size={12 + Math.random() * 16}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-gray-200 bg-white/80 backdrop-blur-sm rounded-t-xl">
+        <div className={`flex items-start justify-between p-6 rounded-t-xl relative z-10 ${
+          isChristmasMode
+            ? 'bg-gradient-to-r from-green-600/90 to-red-600/90 backdrop-blur-sm border-b border-green-400/60'
+            : 'bg-white/80 backdrop-blur-sm border-b border-gray-200'
+        }`}>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">Doctor Availability Calendar</h1>
-            <p className="text-gray-600 mt-2">View your scheduled appointments and available slots</p>
+            <div className="flex items-center gap-3">
+              {isChristmasMode && <Star className="text-yellow-300 flex-shrink-0" size={24} />}
+              <h1 className={`text-3xl font-bold ${
+                isChristmasMode ? 'text-white christmas-text-glow' : 'text-gray-900'
+              }`}>
+                Doctor Availability Calendar
+              </h1>
+              {isChristmasMode && <Star className="text-yellow-300 flex-shrink-0" size={24} />}
+            </div>
+            <p className={`mt-2 ${isChristmasMode ? 'text-green-100' : 'text-gray-600'}`}>
+              View your scheduled appointments and available slots
+            </p>
             {doctor && (
-              <p className="text-sm text-blue-600 mt-1">
+              <p className={`text-sm mt-1 ${
+                isChristmasMode ? 'text-yellow-200' : 'text-blue-600'
+              }`}>
                 📡 Real-time updates enabled for {doctor.name}
               </p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-600 ml-4 flex-shrink-0 md:relative absolute top-4 right-4 md:top-auto md:right-auto"
-            aria-label="Close modal"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          
+          {/* Christmas Theme Toggle Button */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleChristmasMode}
+              className={`p-2 rounded-lg transition-all duration-300 ${
+                isChristmasMode
+                  ? 'bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg transform hover:scale-110 animate-glow'
+                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+              }`}
+              aria-label="Toggle Christmas theme"
+            >
+              <TreePine className="w-6 h-6" />
+            </button>
+            
+            <button
+              onClick={onClose}
+              className={`p-2 rounded-lg transition ${
+                isChristmasMode
+                  ? 'hover:bg-red-500/20 text-white'
+                  : 'hover:bg-gray-100 text-gray-600'
+              } ml-4 flex-shrink-0 md:relative absolute top-4 right-4 md:top-auto md:right-auto`}
+              aria-label="Close modal"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 bg-transparent">
+        <div className="p-6 bg-transparent relative z-10">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading calendar...</p>
+                <div className={`animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4 ${
+                  isChristmasMode ? 'border-green-500' : 'border-blue-600'
+                }`}></div>
+                <p className={isChristmasMode ? 'text-green-800' : 'text-gray-600'}>
+                  Loading calendar...
+                </p>
               </div>
             </div>
           ) : !doctor ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
-                <p className="text-gray-600 text-xl">Doctor not found</p>
+                <p className={isChristmasMode ? 'text-red-700 text-xl' : 'text-gray-600 text-xl'}>
+                  Doctor not found
+                </p>
               </div>
             </div>
           ) : (
             <>
               {/* Summary Stats - TOP */}
               <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
-                  <p className="text-2xl font-bold text-blue-700">{doctor.maxSlots || 0}</p>
-                  <p className="text-sm text-blue-600">Default Daily Slots</p>
+                <div className={`rounded-lg p-4 text-center border relative overflow-hidden ${
+                  isChristmasMode
+                    ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300/80 shadow-lg shadow-red-200/30 animate-glow'
+                    : 'bg-blue-50 border-blue-200'
+                }`}>
+                  {isChristmasMode && (
+                    <Snowflake className="absolute top-2 right-2 text-red-400/30" size={16} />
+                  )}
+                  <p className={`text-2xl font-bold relative z-10 ${
+                    isChristmasMode ? 'text-red-700' : 'text-blue-700'
+                  }`}>
+                    {doctor.maxSlots || 0}
+                  </p>
+                  <p className={`text-sm relative z-10 ${
+                    isChristmasMode ? 'text-red-600' : 'text-blue-600'
+                  }`}>
+                    Default Daily Slots
+                  </p>
                 </div>
-                <div className="bg-orange-50 rounded-lg p-4 text-center border border-orange-200">
-                  <p className="text-2xl font-bold text-orange-700">
+                <div className={`rounded-lg p-4 text-center border relative overflow-hidden ${
+                  isChristmasMode
+                    ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300/80 shadow-lg shadow-green-200/30 animate-glow'
+                    : 'bg-orange-50 border-orange-200'
+                }`}>
+                  {isChristmasMode && (
+                    <Snowflake className="absolute top-2 right-2 text-green-400/30" size={16} />
+                  )}
+                  <p className={`text-2xl font-bold relative z-10 ${
+                    isChristmasMode ? 'text-green-700' : 'text-orange-700'
+                  }`}>
                     {appointments.filter(apt => 
                       apt.status === 'pending' || apt.status === 'confirmed' || apt.status === 'scheduled'
                     ).length}
                   </p>
-                  <p className="text-sm text-orange-600">Active Appointments</p>
+                  <p className={`text-sm relative z-10 ${
+                    isChristmasMode ? 'text-green-600' : 'text-orange-600'
+                  }`}>
+                    Active Appointments
+                  </p>
                 </div>
-                <div className="bg-gray-100 rounded-lg p-4 text-center border border-gray-300">
-                  <p className="text-2xl font-bold text-gray-700">
+                <div className={`rounded-lg p-4 text-center border relative overflow-hidden ${
+                  isChristmasMode
+                    ? 'bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-300/80 shadow-lg shadow-yellow-200/30 animate-glow'
+                    : 'bg-gray-100 border-gray-300'
+                }`}>
+                  {isChristmasMode && (
+                    <Snowflake className="absolute top-2 right-2 text-yellow-400/30" size={16} />
+                  )}
+                  <p className={`text-2xl font-bold relative z-10 ${
+                    isChristmasMode ? 'text-yellow-700' : 'text-gray-700'
+                  }`}>
                     {Object.keys(doctor.unavailableDates || {}).filter(date => doctor.unavailableDates?.[date]).length}
                   </p>
-                  <p className="text-sm text-gray-600">Blocked Dates</p>
+                  <p className={`text-sm relative z-10 ${
+                    isChristmasMode ? 'text-yellow-600' : 'text-gray-600'
+                  }`}>
+                    Blocked Dates
+                  </p>
                 </div>
-                <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
-                  <p className="text-2xl font-bold text-green-700">
+                <div className={`rounded-lg p-4 text-center border relative overflow-hidden ${
+                  isChristmasMode
+                    ? 'bg-gradient-to-br from-blue-50 to-blue-100 border-blue-300/80 shadow-lg shadow-blue-200/30 animate-glow'
+                    : 'bg-green-50 border-green-200'
+                }`}>
+                  {isChristmasMode && (
+                    <Snowflake className="absolute top-2 right-2 text-blue-400/30" size={16} />
+                  )}
+                  <p className={`text-2xl font-bold relative z-10 ${
+                    isChristmasMode ? 'text-blue-700' : 'text-green-700'
+                  }`}>
                     {appointments.filter(apt => apt.status === 'completed').length}
                   </p>
-                  <p className="text-sm text-green-600">Completed</p>
+                  <p className={`text-sm relative z-10 ${
+                    isChristmasMode ? 'text-blue-600' : 'text-green-600'
+                  }`}>
+                    Completed
+                  </p>
                 </div>
               </div>
 
               {/* Calendar View */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 border border-gray-200">
+              <div className={`rounded-lg p-6 border backdrop-blur-sm relative overflow-hidden ${
+                isChristmasMode
+                  ? 'bg-white/95 border-green-300/80 shadow-2xl shadow-green-200/20 christmas-border'
+                  : 'bg-white/80 border-gray-200'
+              }`}>
+                
+                {/* Calendar Header with Navigation */}
                 <div className="flex items-center justify-center mb-6">
                   <div className="flex items-center gap-4">
                     <button
                       onClick={() => navigateMonth('prev')}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-700 border border-gray-300"
+                      className={`p-3 rounded-lg transition-all duration-300 border ${
+                        isChristmasMode
+                          ? 'hover:bg-green-100 text-green-700 border-green-400 hover:shadow-lg hover:scale-105'
+                          : 'hover:bg-gray-100 text-gray-700 border-gray-300'
+                      }`}
                       aria-label="Previous month"
                     >
-                      <ChevronLeft className="w-5 h-5" />
+                      {isChristmasMode ? (
+                        <Gift className="w-5 h-5" />
+                      ) : (
+                        <ChevronLeft className="w-5 h-5" />
+                      )}
                     </button>
                     
-                    <h2 className="text-xl font-semibold text-gray-900 text-center min-w-[200px]">
+                    <h2 className={`text-xl font-semibold text-center min-w-[200px] ${
+                      isChristmasMode ? 'text-green-800 christmas-text-glow' : 'text-gray-900'
+                    }`}>
                       {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
                     </h2>
                     
                     <button
                       onClick={() => navigateMonth('next')}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-700 border border-gray-300"
+                      className={`p-3 rounded-lg transition-all duration-300 border ${
+                        isChristmasMode
+                          ? 'hover:bg-green-100 text-green-700 border-green-400 hover:shadow-lg hover:scale-105'
+                          : 'hover:bg-gray-100 text-gray-700 border-gray-300'
+                      }`}
                       aria-label="Next month"
                     >
-                      <ChevronRight className="w-5 h-5" />
+                      {isChristmasMode ? (
+                        <Gift className="w-5 h-5" /> 
+                      ) : (
+                        <ChevronRight className="w-5 h-5" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -420,19 +573,21 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                 {/* Calendar Grid */}
                 <div className="grid grid-cols-7 gap-2 mb-4">
                   {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
-                    <div key={day} className="p-2 text-center text-sm font-medium text-gray-700 bg-gray-100/80 backdrop-blur-sm rounded-lg">
+                    <div key={day} className={`p-3 text-center text-sm font-medium rounded-lg backdrop-blur-sm ${
+                      isChristmasMode
+                        ? 'bg-gradient-to-b from-green-200 to-green-100 text-green-900 border border-green-300/50'
+                        : 'bg-gray-100/80 text-gray-700'
+                    }`}>
                       {day}
                     </div>
                   ))}
                 </div>
                 
                 <div className="grid grid-cols-7 gap-2">
-                  {/* Empty cells for proper day alignment */}
                   {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, index) => (
                     <div key={`empty-${index}`} className="min-h-[80px]" />
                   ))}
                   
-                  {/* Current month days only */}
                   {generateCalendarDays().map((date) => {
                     const bookedSlots = getBookedSlotsForDate(date);
                     const totalSlots = getMaxSlotsForDate(date);
@@ -443,33 +598,58 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                     return (
                       <div
                         key={date}
-                        className={`p-2 rounded-lg border min-h-[80px] flex flex-col backdrop-blur-sm ${
+                        className={`p-2 rounded-lg border min-h-[80px] flex flex-col backdrop-blur-sm relative overflow-hidden ${
                           isToday
-                            ? 'border-2 border-blue-500 bg-blue-100/80'
+                            ? isChristmasMode
+                              ? 'border-2 border-red-500 bg-gradient-to-br from-red-100 to-red-50 shadow-lg shadow-red-200/50'
+                              : 'border-2 border-blue-500 bg-blue-100/80'
+                            : isChristmasMode
+                            ? 'border-green-200/80 bg-white/95 hover:bg-green-50/80 transition-colors duration-200'
                             : 'border-gray-200 bg-white/90'
                         } ${isPast ? 'opacity-60' : ''}`}
                       >
+                        {/* Snowflake decoration for Christmas mode dates */}
+                        {isChristmasMode && !isPast && totalSlots > 0 && remainingSlots > 0 && (
+                          <Snowflake className="absolute bottom-1 left-1 text-green-300/20" size={12} />
+                        )}
+                        
                         <div className="flex flex-col items-center justify-between flex-1">
                           <span className={`text-sm font-medium ${
-                            isToday ? 'text-blue-700 font-bold' : 'text-gray-700'
+                            isToday 
+                              ? isChristmasMode 
+                                ? 'text-red-700 font-bold' 
+                                : 'text-blue-700 font-bold'
+                              : isChristmasMode
+                              ? 'text-green-900'
+                              : 'text-gray-700'
                           }`}>
                             {new Date(date + 'T00:00:00').getDate()}
                           </span>
                           {!isPast && (
                             <>
-                              <span className={`text-xs px-2 py-1 rounded-full font-medium backdrop-blur-sm ${
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium backdrop-blur-sm border ${
                                 totalSlots === 0
-                                  ? 'bg-gray-200/80 text-gray-600'
+                                  ? isChristmasMode
+                                    ? 'bg-gray-300/80 text-gray-600 border-gray-400'
+                                    : 'bg-gray-200/80 text-gray-600'
                                   : bookedSlots >= totalSlots
-                                  ? 'bg-red-100/80 text-red-700'
+                                  ? isChristmasMode
+                                    ? 'bg-red-200/80 text-red-900 border-red-300'
+                                    : 'bg-red-100/80 text-red-700'
                                   : bookedSlots > 0
-                                  ? 'bg-green-100/80 text-green-700'
+                                  ? isChristmasMode
+                                    ? 'bg-green-200/80 text-green-900 border-green-300'
+                                    : 'bg-green-100/80 text-green-700'
+                                  : isChristmasMode
+                                  ? 'bg-blue-200/80 text-blue-900 border-blue-300'
                                   : 'bg-blue-100/80 text-blue-700'
                               }`}>
                                 {totalSlots === 0 ? 'No slots' : `${bookedSlots}/${totalSlots}`}
                               </span>
                               {totalSlots > 0 && remainingSlots > 0 && (
-                                <span className="text-xs text-gray-500 mt-1">
+                                <span className={`text-xs mt-1 ${
+                                  isChristmasMode ? 'text-green-700 font-medium' : 'text-gray-500'
+                                }`}>
                                   {remainingSlots} left
                                 </span>
                               )}
@@ -483,28 +663,107 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
               </div>
 
               {/* Legend - BOTTOM */}
-              <div className="mt-6 flex flex-wrap gap-4 justify-center text-sm p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className={`mt-6 flex flex-wrap gap-4 justify-center text-sm p-4 rounded-lg border ${
+                isChristmasMode
+                  ? 'bg-gradient-to-r from-green-50 to-red-50 border-green-300/60 shadow-lg shadow-green-200/20'
+                  : 'bg-gray-50 border-gray-200'
+              }`}>
                 <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-blue-100 border border-blue-300"></span>
-                  <span className="text-gray-600">Available</span>
+                  <span className={`w-4 h-4 rounded-full border ${
+                    isChristmasMode
+                      ? 'bg-blue-200 border-blue-400'
+                      : 'bg-blue-100 border-blue-300'
+                  }`}></span>
+                  <span className={isChristmasMode ? 'text-green-900 font-medium' : 'text-gray-600'}>
+                    Available
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-green-100 border border-green-300"></span>
-                  <span className="text-gray-600">Partially Booked</span>
+                  <span className={`w-4 h-4 rounded-full border ${
+                    isChristmasMode
+                      ? 'bg-green-200 border-green-400'
+                      : 'bg-green-100 border-green-300'
+                  }`}></span>
+                  <span className={isChristmasMode ? 'text-green-900 font-medium' : 'text-gray-600'}>
+                    Partially Booked
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-red-100 border border-red-300"></span>
-                  <span className="text-gray-600">Fully Booked</span>
+                  <span className={`w-4 h-4 rounded-full border ${
+                    isChristmasMode
+                      ? 'bg-red-200 border-red-400'
+                      : 'bg-red-100 border-red-300'
+                  }`}></span>
+                  <span className={isChristmasMode ? 'text-green-900 font-medium' : 'text-gray-600'}>
+                    Fully Booked
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-gray-200 border border-gray-300"></span>
-                  <span className="text-gray-600">Unavailable</span>
+                  <span className={`w-4 h-4 rounded-full border ${
+                    isChristmasMode
+                      ? 'bg-gray-300 border-gray-400'
+                      : 'bg-gray-200 border-gray-300'
+                  }`}></span>
+                  <span className={isChristmasMode ? 'text-green-900 font-medium' : 'text-gray-600'}>
+                    Unavailable
+                  </span>
                 </div>
               </div>
             </>
           )}
         </div>
       </div>
+
+      {/* CSS animations */}
+      <style>{`
+        @keyframes float {
+          0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+          10% { opacity: 0.4; }
+          90% { opacity: 0.4; }
+          100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+        }
+        
+        @keyframes float-slow {
+          0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+          10% { opacity: 0.2; }
+          90% { opacity: 0.2; }
+          100% { transform: translateY(-50vh) rotate(180deg); opacity: 0; }
+        }
+        
+        @keyframes glow {
+          0%, 100% { 
+            box-shadow: 0 0 5px rgba(34, 197, 94, 0.3);
+          }
+          50% { 
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.4), 0 0 30px rgba(239, 68, 68, 0.3);
+          }
+        }
+        
+        .animate-float {
+          animation: float linear infinite;
+        }
+        
+        .animate-float-slow {
+          animation: float-slow linear infinite;
+        }
+        
+        .animate-glow {
+          animation: glow 3s ease-in-out infinite;
+        }
+        
+        .christmas-theme {
+          background: transparent !important;
+        }
+        
+        .christmas-border {
+          border: 2px solid;
+          border-image: linear-gradient(45deg, #dc2626, #16a34a, #dc2626) 1;
+        }
+        
+        .christmas-text-glow {
+          text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+        }
+      `}</style>
     </div>
   );
 };
