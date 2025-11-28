@@ -358,20 +358,48 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
         )}
 
         {/* Header */}
-        <div className={`flex items-start justify-between p-6 rounded-t-xl relative z-[20] ${
+        <div className={`relative p-6 rounded-t-xl z-[20] ${
           isChristmasMode
             ? 'bg-gradient-to-r from-green-600/90 to-red-600/90 backdrop-blur-sm border-b border-green-400/60'
             : 'bg-white/80 backdrop-blur-sm border-b border-gray-200'
         }`}>
-          <div className="flex-1">
+          {/* Close Button - Positioned at top-right corner */}
+          <button
+            onClick={onClose}
+            className={`absolute top-4 right-4 p-2 rounded-lg transition ${
+              isChristmasMode
+                ? 'hover:bg-red-500/20 text-white'
+                : 'hover:bg-gray-100 text-gray-600'
+            }`}
+            aria-label="Close modal"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* Christmas Theme Toggle Button - Positioned below Close button */}
+          <button
+            onClick={toggleChristmasMode}
+            className={`absolute top-16 right-4 p-2 rounded-lg transition-all duration-300 ${
+              isChristmasMode
+                ? 'bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg transform hover:scale-110 animate-glow'
+                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+            }`}
+            aria-label="Toggle Christmas theme"
+          >
+            <TreePine className="w-6 h-6" />
+          </button>
+
+          <div className="pr-16"> {/* Add padding to prevent content overlap with buttons */}
             <div className="flex items-center gap-3">
-              {isChristmasMode && <Star className="text-yellow-300 flex-shrink-0" size={24} />}
-              <h1 className={`text-3xl font-bold ${
+              {/* Hide stars in mobile view */}
+              {isChristmasMode && <Star className="text-yellow-300 flex-shrink-0 hidden sm:block" size={24} />}
+              <h1 className={`text-2xl sm:text-3xl font-bold ${
                 isChristmasMode ? 'text-white christmas-text-glow' : 'text-gray-900'
               }`}>
                 Doctor Availability Calendar
               </h1>
-              {isChristmasMode && <Star className="text-yellow-300 flex-shrink-0" size={24} />}
+              {/* Hide stars in mobile view */}
+              {isChristmasMode && <Star className="text-yellow-300 flex-shrink-0 hidden sm:block" size={24} />}
             </div>
             <p className={`mt-2 ${isChristmasMode ? 'text-green-100' : 'text-gray-600'}`}>
               View your scheduled appointments and available slots
@@ -384,37 +412,10 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
               </p>
             )}
           </div>
-          
-          {/* Christmas Theme Toggle Button */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleChristmasMode}
-              className={`p-2 rounded-lg transition-all duration-300 ${
-                isChristmasMode
-                  ? 'bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg transform hover:scale-110 animate-glow'
-                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-              }`}
-              aria-label="Toggle Christmas theme"
-            >
-              <TreePine className="w-6 h-6" />
-            </button>
-            
-            <button
-              onClick={onClose}
-              className={`p-2 rounded-lg transition ${
-                isChristmasMode
-                  ? 'hover:bg-red-500/20 text-white'
-                  : 'hover:bg-gray-100 text-gray-600'
-              } ml-4 flex-shrink-0 md:relative absolute top-4 right-4 md:top-auto md:right-auto`}
-              aria-label="Close modal"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 bg-transparent relative z-[20]">
+        <div className="p-4 sm:p-6 bg-transparent relative z-[20]">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
@@ -437,8 +438,8 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
           ) : (
             <>
               {/* Summary Stats - TOP */}
-              <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className={`rounded-lg p-4 text-center border relative overflow-hidden ${
+              <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                <div className={`rounded-lg p-3 sm:p-4 text-center border relative overflow-hidden ${
                   isChristmasMode
                     ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300/80 shadow-lg shadow-red-200/30 animate-glow'
                     : 'bg-blue-50 border-blue-200'
@@ -446,18 +447,18 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                   {isChristmasMode && (
                     <span className="absolute top-2 right-2 text-red-400/30 text-lg">🎁</span>
                   )}
-                  <p className={`text-2xl font-bold relative z-10 ${
+                  <p className={`text-xl sm:text-2xl font-bold relative z-10 ${
                     isChristmasMode ? 'text-red-700' : 'text-blue-700'
                   }`}>
                     {doctor.maxSlots || 0}
                   </p>
-                  <p className={`text-sm relative z-10 ${
+                  <p className={`text-xs sm:text-sm relative z-10 ${
                     isChristmasMode ? 'text-red-600' : 'text-blue-600'
                   }`}>
                     Default Daily Slots
                   </p>
                 </div>
-                <div className={`rounded-lg p-4 text-center border relative overflow-hidden ${
+                <div className={`rounded-lg p-3 sm:p-4 text-center border relative overflow-hidden ${
                   isChristmasMode
                     ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300/80 shadow-lg shadow-green-200/30 animate-glow'
                     : 'bg-orange-50 border-orange-200'
@@ -465,20 +466,20 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                   {isChristmasMode && (
                     <span className="absolute top-2 right-2 text-green-400/30 text-lg">⛄</span>
                   )}
-                  <p className={`text-2xl font-bold relative z-10 ${
+                  <p className={`text-xl sm:text-2xl font-bold relative z-10 ${
                     isChristmasMode ? 'text-green-700' : 'text-orange-700'
                   }`}>
                     {appointments.filter(apt => 
                       apt.status === 'pending' || apt.status === 'confirmed' || apt.status === 'scheduled'
                     ).length}
                   </p>
-                  <p className={`text-sm relative z-10 ${
+                  <p className={`text-xs sm:text-sm relative z-10 ${
                     isChristmasMode ? 'text-green-600' : 'text-orange-600'
                   }`}>
                     Active Appointments
                   </p>
                 </div>
-                <div className={`rounded-lg p-4 text-center border relative overflow-hidden ${
+                <div className={`rounded-lg p-3 sm:p-4 text-center border relative overflow-hidden ${
                   isChristmasMode
                     ? 'bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-300/80 shadow-lg shadow-yellow-200/30 animate-glow'
                     : 'bg-gray-100 border-gray-300'
@@ -486,18 +487,18 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                   {isChristmasMode && (
                     <span className="absolute top-2 right-2 text-yellow-400/30 text-lg">🎄</span>
                   )}
-                  <p className={`text-2xl font-bold relative z-10 ${
+                  <p className={`text-xl sm:text-2xl font-bold relative z-10 ${
                     isChristmasMode ? 'text-yellow-700' : 'text-gray-700'
                   }`}>
                     {Object.keys(doctor.unavailableDates || {}).filter(date => doctor.unavailableDates?.[date]).length}
                   </p>
-                  <p className={`text-sm relative z-10 ${
+                  <p className={`text-xs sm:text-sm relative z-10 ${
                     isChristmasMode ? 'text-yellow-600' : 'text-gray-600'
                   }`}>
                     Blocked Dates
                   </p>
                 </div>
-                <div className={`rounded-lg p-4 text-center border relative overflow-hidden ${
+                <div className={`rounded-lg p-3 sm:p-4 text-center border relative overflow-hidden ${
                   isChristmasMode
                     ? 'bg-gradient-to-br from-blue-50 to-blue-100 border-blue-300/80 shadow-lg shadow-blue-200/30 animate-glow'
                     : 'bg-green-50 border-green-200'
@@ -505,12 +506,12 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                   {isChristmasMode && (
                     <span className="absolute top-2 right-2 text-blue-400/30 text-lg">🌟</span>
                   )}
-                  <p className={`text-2xl font-bold relative z-10 ${
+                  <p className={`text-xl sm:text-2xl font-bold relative z-10 ${
                     isChristmasMode ? 'text-blue-700' : 'text-green-700'
                   }`}>
                     {appointments.filter(apt => apt.status === 'completed').length}
                   </p>
-                  <p className={`text-sm relative z-10 ${
+                  <p className={`text-xs sm:text-sm relative z-10 ${
                     isChristmasMode ? 'text-blue-600' : 'text-green-600'
                   }`}>
                     Completed
@@ -519,7 +520,7 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
               </div>
 
               {/* Calendar View */}
-              <div className={`rounded-lg p-6 border backdrop-blur-sm relative overflow-hidden ${
+              <div className={`rounded-lg p-4 sm:p-6 border backdrop-blur-sm relative overflow-hidden ${
                 isChristmasMode
                   ? 'bg-white/95 border-green-300/80 shadow-2xl shadow-green-200/20 christmas-border'
                   : 'bg-white/80 border-gray-200'
@@ -527,10 +528,10 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                 
                 {/* Calendar Header with Navigation */}
                 <div className="flex items-center justify-center mb-6">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4">
                     <button
                       onClick={() => navigateMonth('prev')}
-                      className={`p-3 rounded-lg transition-all duration-300 border ${
+                      className={`p-2 sm:p-3 rounded-lg transition-all duration-300 border ${
                         isChristmasMode
                           ? 'hover:bg-green-100 text-green-700 border-green-400 hover:shadow-lg hover:scale-105'
                           : 'hover:bg-gray-100 text-gray-700 border-gray-300'
@@ -538,13 +539,13 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                       aria-label="Previous month"
                     >
                       {isChristmasMode ? (
-                        <span className="text-xl">🎅</span>
+                        <span className="text-lg sm:text-xl">🎅</span>
                       ) : (
-                        <ChevronLeft className="w-5 h-5" />
+                        <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                       )}
                     </button>
                     
-                    <h2 className={`text-xl font-semibold text-center min-w-[200px] ${
+                    <h2 className={`text-lg sm:text-xl font-semibold text-center min-w-[160px] sm:min-w-[200px] ${
                       isChristmasMode ? 'text-green-800 christmas-text-glow' : 'text-gray-900'
                     }`}>
                       {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
@@ -552,7 +553,7 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                     
                     <button
                       onClick={() => navigateMonth('next')}
-                      className={`p-3 rounded-lg transition-all duration-300 border ${
+                      className={`p-2 sm:p-3 rounded-lg transition-all duration-300 border ${
                         isChristmasMode
                           ? 'hover:bg-green-100 text-green-700 border-green-400 hover:shadow-lg hover:scale-105'
                           : 'hover:bg-gray-100 text-gray-700 border-gray-300'
@@ -560,18 +561,18 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                       aria-label="Next month"
                     >
                       {isChristmasMode ? (
-                        <span className="text-xl">🦌</span>
+                        <span className="text-lg sm:text-xl">🦌</span>
                       ) : (
-                        <ChevronRight className="w-5 h-5" />
+                        <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                       )}
                     </button>
                   </div>
                 </div>
 
                 {/* Calendar Grid */}
-                <div className="grid grid-cols-7 gap-2 mb-4">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-4">
                   {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
-                    <div key={day} className={`p-3 text-center text-sm font-medium rounded-lg backdrop-blur-sm ${
+                    <div key={day} className={`p-2 sm:p-3 text-center text-xs sm:text-sm font-medium rounded-lg backdrop-blur-sm ${
                       isChristmasMode
                         ? 'bg-gradient-to-b from-green-200 to-green-100 text-green-900 border border-green-300/50'
                         : 'bg-gray-100/80 text-gray-700'
@@ -584,9 +585,9 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                   ))}
                 </div>
                 
-                <div className="grid grid-cols-7 gap-2">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2">
                   {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, index) => (
-                    <div key={`empty-${index}`} className="min-h-[80px]" />
+                    <div key={`empty-${index}`} className="min-h-[60px] sm:min-h-[80px]" />
                   ))}
                   
                   {generateCalendarDays().map((date) => {
@@ -596,20 +597,10 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                     const isToday = date === new Date().toISOString().split('T')[0];
                     const isPast = new Date(date) < new Date(new Date().toISOString().split('T')[0]);
 
-                    // Christmas emojis for different date statuses
-                    const getChristmasEmoji = () => {
-                      if (isPast) return '❄️';
-                      if (isToday) return '🎅';
-                      if (totalSlots === 0) return '🎄';
-                      if (remainingSlots === 0) return '🎁';
-                      if (remainingSlots > 0 && bookedSlots > 0) return '🌟';
-                      return '🦌';
-                    };
-
                     return (
                       <div
                         key={date}
-                        className={`p-2 rounded-lg border min-h-[80px] flex flex-col backdrop-blur-sm relative overflow-hidden ${
+                        className={`p-1 sm:p-2 rounded-lg border min-h-[60px] sm:min-h-[80px] flex flex-col backdrop-blur-sm relative overflow-hidden ${
                           isToday
                             ? isChristmasMode
                               ? 'border-2 border-red-500 bg-gradient-to-br from-red-100 to-red-50 shadow-lg shadow-red-200/50'
@@ -619,18 +610,25 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                             : 'border-gray-200 bg-white/90'
                         } ${isPast ? 'opacity-60' : ''}`}
                       >
-                        {/* Christmas emoji decoration for dates */}
+                        {/* Hide Christmas emoji decoration on mobile to prevent date visibility issues */}
                         {isChristmasMode && (
-                          <span className="absolute top-1 right-1 text-xs opacity-60">
-                            {getChristmasEmoji()}
+                          <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-xs opacity-60 hidden sm:block">
+                            {(() => {
+                              if (isPast) return '❄️';
+                              if (isToday) return '🎅';
+                              if (totalSlots === 0) return '🎄';
+                              if (remainingSlots === 0) return '🎁';
+                              if (remainingSlots > 0 && bookedSlots > 0) return '🌟';
+                              return '🦌';
+                            })()}
                           </span>
                         )}
                         
                         <div className="flex flex-col items-center justify-between flex-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1 sm:gap-1.5">
                             {isChristmasMode && (
                               <Gift 
-                                className={`${
+                                className={`hidden sm:block ${
                                   isPast
                                     ? 'text-green-600'
                                     : isToday 
@@ -643,10 +641,10 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                                     ? 'text-yellow-500'
                                     : 'text-green-600'
                                 }`} 
-                                size={12} 
+                                size={10} 
                               />
                             )}
-                            <span className={`text-sm font-medium ${
+                            <span className={`text-xs sm:text-sm font-medium ${
                               isToday 
                                 ? isChristmasMode 
                                   ? 'text-red-700 font-bold' 
@@ -660,7 +658,7 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                           </div>
                           {!isPast && (
                             <>
-                              <span className={`text-xs px-2 py-1 rounded-full font-medium backdrop-blur-sm border ${
+                              <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium backdrop-blur-sm border ${
                                 totalSlots === 0
                                   ? isChristmasMode
                                     ? 'bg-gray-300/80 text-gray-600 border-gray-400'
@@ -680,7 +678,7 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
                                 {totalSlots === 0 ? 'No slots' : `${bookedSlots}/${totalSlots}`}
                               </span>
                               {totalSlots > 0 && remainingSlots > 0 && (
-                                <span className={`text-xs mt-1 ${
+                                <span className={`text-[10px] sm:text-xs mt-0.5 sm:mt-1 ${
                                   isChristmasMode ? 'text-green-700 font-medium' : 'text-gray-500'
                                 }`}>
                                   {remainingSlots} left
