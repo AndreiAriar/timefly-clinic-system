@@ -23,9 +23,10 @@ interface Appointment {
 
 interface DoctorAppointmentsProps {
   doctorName: string;
+  isChristmasTheme?: boolean; 
 }
 
-const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
+const DoctorAppointments = ({ doctorName, isChristmasTheme = false }: DoctorAppointmentsProps) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -232,8 +233,8 @@ const DoctorAppointments = ({ doctorName }: DoctorAppointmentsProps) => {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 py-8">
+ return (
+  <div className={`min-h-screen ${isChristmasTheme ? 'bg-gradient-to-br from-red-50 to-green-50' : 'bg-gray-50'} py-8`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">

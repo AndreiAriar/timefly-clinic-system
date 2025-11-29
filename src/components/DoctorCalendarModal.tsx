@@ -312,7 +312,7 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
     <div className={`fixed inset-0 backdrop-blur-md flex items-center justify-center p-4 z-50 ${
       isChristmasMode ? 'christmas-theme' : ''
     }`}>
-      {/* Background Snowflakes Overlay */}
+      {/* Background Snowflakes Overlay - Behind modal content */}
       {isChristmasMode && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
           {[...Array(80)].map((_, i) => (
@@ -332,7 +332,7 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
         </div>
       )}
 
-      <div className={`relative rounded-xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden ${
+      <div className={`relative rounded-xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden z-50 ${
         isChristmasMode 
           ? 'bg-gradient-to-br from-red-50/98 to-green-50/98 backdrop-blur-xl border-2 border-green-300/60 shadow-green-200/30 animate-glow' 
           : 'bg-white/95 backdrop-blur-lg border border-white/20'
@@ -408,7 +408,7 @@ const DoctorCalendarModal = ({ doctorName, isOpen, onClose }: DoctorCalendarModa
               <p className={`text-sm mt-1 ${
                 isChristmasMode ? 'text-yellow-200' : 'text-blue-600'
               }`}>
-                📡 Real-time updates enabled for {doctor.name}
+                 Real-time updates enabled for {doctor.name}
               </p>
             )}
           </div>

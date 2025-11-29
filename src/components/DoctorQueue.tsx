@@ -25,9 +25,10 @@ interface Appointment {
 
 interface DoctorQueueProps {
   doctorName: string;
+  isChristmasTheme?: boolean;
 }
 
-const DoctorQueue = ({ doctorName }: DoctorQueueProps) => {
+const DoctorQueue = ({ doctorName, isChristmasTheme = false }: DoctorQueueProps) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [nowServing, setNowServing] = useState<Appointment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -331,8 +332,8 @@ useEffect(() => {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 py-8">
+return (
+  <div className={`min-h-screen ${isChristmasTheme ? 'bg-gradient-to-br from-red-50 to-green-50' : 'bg-gray-50'} py-8`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">

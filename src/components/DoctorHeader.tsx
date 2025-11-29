@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Camera, LogOut, User, Calendar, Users, Home } from 'lucide-react';
+import { ChevronDown, Camera, LogOut, User, Calendar, Users, Home, Snowflake } from 'lucide-react';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { updateProfile } from 'firebase/auth';
@@ -16,6 +16,8 @@ interface DoctorHeaderProps {
   onViewChange: (view: 'home' | 'appointments' | 'queue') => void;
   onLogout: () => void;
   onPhotoChange: (photo: string) => void;
+  onToggleChristmasTheme: () => void; // Add this prop
+  isChristmasTheme: boolean; // Add this prop
 }
 
 const DoctorHeader = ({ 
@@ -25,7 +27,9 @@ const DoctorHeader = ({
   currentView, 
   onViewChange, 
   onLogout, 
-  onPhotoChange 
+  onPhotoChange,
+  onToggleChristmasTheme, // Add this prop
+  isChristmasTheme // Add this prop
 }: DoctorHeaderProps) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -345,6 +349,18 @@ const DoctorHeader = ({
 
                 {/* Dropdown Actions */}
                 <div className="py-1">
+                  {/* Christmas Theme Toggle Button */}
+                  <button
+                    onClick={() => {
+                      onToggleChristmasTheme();
+                      setIsDropdownOpen(false);
+                    }}
+                    className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    <Snowflake className={`h-4 w-4 mr-3 ${isChristmasTheme ? 'text-red-500' : 'text-gray-700'}`} />
+                    {isChristmasTheme ? 'Merry Christmas' : 'Feliz Navidad'} 
+                  </button>
+
                   <input
                     ref={fileInputRef}
                     type="file"
