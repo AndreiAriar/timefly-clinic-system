@@ -117,10 +117,16 @@ const Reports = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
+  // Convert to Philippine Time (UTC+8) - MUST BE DEFINED BEFORE calculateStats
+  const toPHTime = (date: Date): Date => {
+    return new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  };
+
   const calculateStats = useCallback((appointmentsData: Appointment[]) => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    // Use Philippine Time for current date
+    const nowPH = toPHTime(new Date());
+    const currentMonth = nowPH.getMonth();
+    const currentYear = nowPH.getFullYear();
     const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
     const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
 
@@ -128,15 +134,17 @@ const Reports = () => {
       totalPatients: appointmentsData.length,
       appointmentsCompleted: appointmentsData.filter(apt => apt.status === 'completed').length,
       finishedThisMonth: appointmentsData.filter(apt => {
-        const aptDate = new Date(apt.appointmentDate);
-        return apt.status === 'completed' && 
-               aptDate.getMonth() === currentMonth && 
+        // Convert appointment date to Philippine Time
+        const aptDate = toPHTime(new Date(apt.appointmentDate));
+        // Count ALL appointments this month (not just completed)
+        return aptDate.getMonth() === currentMonth && 
                aptDate.getFullYear() === currentYear;
       }).length,
       finishedLastMonth: appointmentsData.filter(apt => {
-        const aptDate = new Date(apt.appointmentDate);
-        return apt.status === 'completed' && 
-               aptDate.getMonth() === lastMonth && 
+        // Convert appointment date to Philippine Time
+        const aptDate = toPHTime(new Date(apt.appointmentDate));
+        // Count ALL appointments last month (not just completed)
+        return aptDate.getMonth() === lastMonth && 
                aptDate.getFullYear() === lastMonthYear;
       }).length,
       cancelledAppointments: appointmentsData.filter(apt => apt.status === 'cancelled').length,
@@ -259,70 +267,60 @@ const Reports = () => {
       unsubscribeDoctors();
     };
   }, [calculateStats]);
+// Weekly Patient Volume Data - Current Month Calendar Weeks (Includes all days 1-31)
+const getWeeklyVolumeData = (): BarChartData[] => {
+  const weeks: BarChartData[] = [];
+  
+  // Get current date in Philippine Time
+  const nowPH = toPHTime(new Date());
+  const currentYear = nowPH.getFullYear();
+  const currentMonth = nowPH.getMonth();
+  
 
-  // Convert to Philippine Time (UTC+8)
-  const toPHTime = (date: Date): Date => {
-    return new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-  };
+  // Get last day of the month
+  const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  
+  // Determine number of weeks needed (4 or 5)
+  const numberOfWeeks = lastDayOfMonth > 28 ? 5 : 4;
+  
+  // Calculate weeks based on standardized 7-day blocks
+  for (let weekNumber = 1; weekNumber <= numberOfWeeks; weekNumber++) {
+    // Week 1: Days 1-7, Week 2: Days 8-14, Week 3: Days 15-21, Week 4: Days 22-28, Week 5: Days 29-31
+    const weekStartDay = (weekNumber - 1) * 7 + 1;
+    const weekEndDay = Math.min(weekNumber * 7, lastDayOfMonth); // Don't exceed last day of month
+    
+    // Count appointments for this week
+    const weekAppointments = appointments.filter(apt => {
+      const aptDate = toPHTime(new Date(apt.appointmentDate));
+      const aptDay = aptDate.getDate();
+      
+      // Include all appointments within the week range
+      return aptDay >= weekStartDay && 
+             aptDay <= weekEndDay &&
+             aptDate.getMonth() === currentMonth &&
+             aptDate.getFullYear() === currentYear;
+    }).length;
 
-  // Weekly Patient Volume Data - Current Month Calendar Weeks (Weeks 1-4 only)
-  const getWeeklyVolumeData = (): BarChartData[] => {
-    const weeks: BarChartData[] = [];
-    
-    // Get current date in Philippine Time
-    const nowPH = toPHTime(new Date());
-    const currentYear = nowPH.getFullYear();
-    const currentMonth = nowPH.getMonth();
-    
-    // Get first day of the month in PH time
-    const firstDayOfMonth = toPHTime(new Date(currentYear, currentMonth, 1));
-    
-    // Calculate weeks 1-4 based on standardized 7-day blocks starting Monday
-    for (let weekNumber = 1; weekNumber <= 4; weekNumber++) {
-      // Week 1: Days 1-7, Week 2: Days 8-14, Week 3: Days 15-21, Week 4: Days 22-28
-      const weekStartDay = (weekNumber - 1) * 7 + 1;
-      const weekEndDay = weekNumber * 7;
-      
-      // Calculate week start date (day 1, 8, 15, or 22)
-      const weekStart = new Date(firstDayOfMonth);
-      weekStart.setDate(weekStartDay);
-      
-      // Calculate week end date (day 7, 14, 21, or 28)
-      const weekEnd = new Date(firstDayOfMonth);
-      weekEnd.setDate(weekEndDay);
-      
-      // Count appointments for this week
-      const weekAppointments = appointments.filter(apt => {
-        const aptDate = toPHTime(new Date(apt.appointmentDate));
-        const aptDay = aptDate.getDate();
-        
-        // Only include appointments from days 1-28 (ignore days 29-31)
-        return aptDay >= weekStartDay && 
-               aptDay <= weekEndDay &&
-               aptDate.getMonth() === currentMonth &&
-               aptDate.getFullYear() === currentYear;
-      }).length;
-
-      weeks.push({
-        name: `Week ${weekNumber}`,
-        Appointments: weekAppointments
-      });
-    }
-    
-    return weeks;
-  };
+    weeks.push({
+      name: `Week ${weekNumber}`,
+      Appointments: weekAppointments
+    });
+  }
+  
+  return weeks;
+};
 
   // 6-Month Patient Trend Data - Line Chart compatible
   const getSixMonthTrendData = (): LineChartData[] => {
     const months: LineChartData[] = [];
-    const now = new Date();
+    const nowPH = toPHTime(new Date());
     
     for (let i = 5; i >= 0; i--) {
-      const month = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const month = new Date(nowPH.getFullYear(), nowPH.getMonth() - i, 1);
       const monthName = month.toLocaleDateString('en-US', { month: 'short' });
       
       const monthAppointments = appointments.filter(apt => {
-        const aptDate = new Date(apt.appointmentDate);
+        const aptDate = toPHTime(new Date(apt.appointmentDate));
         return aptDate.getMonth() === month.getMonth() && 
                aptDate.getFullYear() === month.getFullYear();
       }).length;
@@ -566,7 +564,6 @@ const Reports = () => {
                 <p className="text-xs sm:text-sm font-medium text-gray-600">This Month</p>
                 <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{stats.finishedThisMonth}</p>
                 <p className={`text-xs ${getMonthChange() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {getMonthChange() >= 0 ? '↑' : '↓'} {Math.abs(getMonthChange())}% from last month
                 </p>
               </div>
               <Calendar className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-purple-500" />
@@ -714,7 +711,7 @@ const Reports = () => {
                       Completion Rate: {doctor.completionRate}%
                     </span>
                   </div>
-                  
+
                   {/* Status Counts with Colored Text - Mobile Responsive */}
                   <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-between text-xs sm:text-sm mb-3">
                     <span className="text-green-600 font-medium">Completed: {doctor.completed}</span>
