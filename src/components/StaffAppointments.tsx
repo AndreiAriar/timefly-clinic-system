@@ -802,16 +802,10 @@ const StaffAppointments = () => {
                       <div className="text-sm text-gray-900">{appointment.doctor}</div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1 text-sm text-gray-900">
-                        <Phone className="w-4 h-4 text-gray-400" />
-                        {appointment.phone}
-                      </div>
+                      <div className="text-sm text-gray-900">{appointment.phone}</div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1 text-sm text-gray-900">
-                        <Mail className="w-4 h-4 text-gray-400" />
-                        {appointment.email}
-                      </div>
+                      <div className="text-sm text-gray-900">{appointment.email}</div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
