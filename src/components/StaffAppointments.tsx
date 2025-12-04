@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown, Mail } from 'lucide-react';
+import { Calendar, Clock, User, Phone, AlertCircle, Search, Filter, Eye, RefreshCw, Trash2, X, ChevronUp, ChevronDown, Mail, MoreVertical } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, orderBy, where, onSnapshot, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import StaffViewAppointments from './StaffViewAppointments';
@@ -55,6 +55,7 @@ const StaffAppointments = () => {
     isVisible: false
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showMobileActions, setShowMobileActions] = useState<string | null>(null);
 
   // Show toast notification
   const showToast = (message: string, type: ToastType) => {
@@ -95,8 +96,6 @@ const StaffAppointments = () => {
         unsubscribeAppointments = onSnapshot(
           appointmentsQuery,
           (snapshot) => {
-            // UPDATED: Show all appointments but allow filtering in the UI
-            // Staff can see all statuses including cancelled, completed, missed
             const appointmentsData = snapshot.docs
               .map(doc => ({
                 id: doc.id,
@@ -179,17 +178,14 @@ const StaffAppointments = () => {
 
     // Sorting
     filtered.sort((a, b) => {
-      // Use type-safe approach with proper type checking
       let aValue: string | number = a[sortField];
       let bValue: string | number = b[sortField];
 
       if (sortField === 'appointmentDate') {
-        // Convert date strings to timestamps for proper comparison
         aValue = new Date(aValue as string).getTime();
         bValue = new Date(bValue as string).getTime();
       }
 
-      // Handle comparison based on sort direction
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
@@ -227,11 +223,25 @@ const StaffAppointments = () => {
   const handleView = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setShowViewModal(true);
+    setShowMobileActions(null);
   };
 
   const handleReschedule = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setShowRescheduleModal(true);
+    setShowMobileActions(null);
+  };
+
+  const handleCancel = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setShowStaffCancelModal(true);
+    setShowMobileActions(null);
+  };
+
+  const handleDelete = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setShowDeleteModal(true);
+    setShowMobileActions(null);
   };
 
   const confirmReschedule = async (updatedData: { appointmentDate: string; timeSlot: string; rescheduleReason: string }) => {
@@ -390,16 +400,10 @@ const StaffAppointments = () => {
     }
   };
 
-  const handleCancel = (appointment: Appointment) => {
-    setSelectedAppointment(appointment);
-    setShowStaffCancelModal(true);
-  };
-
   const confirmCancel = async (reason: string) => {
     if (!selectedAppointment) return;
 
     try {
-      // UPDATED: Update both staff and patient collections
       const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
       const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
       
@@ -438,45 +442,6 @@ const StaffAppointments = () => {
         throw new Error(data.error || 'Failed to send cancellation email');
       }
 
-      // Reload appointments to reflect real-time updates
-      const loadAppointments = async () => {
-        try {
-          // UPDATED: Changed to staff_appointments collection
-          const appointmentsRef = collection(db, 'staff_appointments');
-          const userEmail = auth.currentUser?.email;
-          
-          if (!userEmail) return;
-
-          const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-          const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-          let q;
-          
-          if (userRole === 'staff' || userRole === 'doctor') {
-            q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-          } else {
-            q = query(
-              appointmentsRef, 
-              where('email', '==', userEmail),
-              orderBy('createdAt', 'desc')
-            );
-          }
-          
-          const querySnapshot = await getDocs(q);
-          const appointmentsData = querySnapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            } as Appointment))
-            .filter(apt => !apt.deletedByStaff);
-          
-          setAppointments(appointmentsData);
-        } catch {
-          console.error('Error loading appointments:');
-        }
-      };
-
-      await loadAppointments();
       setShowStaffCancelModal(false);
       setSelectedAppointment(null);
       showToast('Appointment cancelled successfully! Email notification sent.', 'success');
@@ -486,18 +451,12 @@ const StaffAppointments = () => {
     }
   };
 
-  const handleDelete = (appointment: Appointment) => {
-    setSelectedAppointment(appointment);
-    setShowDeleteModal(true);
-  };
-
   const confirmDelete = async () => {
     if (!selectedAppointment) return;
 
     try {
       const staffAppointmentRef = doc(db, 'staff_appointments', selectedAppointment.id);
       
-      // FIXED: Check if this was booked by staff or patient
       const appointmentDoc = await getDoc(staffAppointmentRef);
       
       if (!appointmentDoc.exists()) {
@@ -509,11 +468,9 @@ const StaffAppointments = () => {
       const appointmentData = appointmentDoc.data();
       const isStaffBooked = appointmentData?.bookedByStaff === true;
 
-      // Delete from staff collection
       await deleteDoc(staffAppointmentRef);
       console.log('✅ Deleted from staff_appointments');
       
-      // CRITICAL: Only delete from patient collection if it was staff-booked
       if (isStaffBooked) {
         try {
           const patientAppointmentRef = doc(db, 'patient_appointments', selectedAppointment.id);
@@ -523,12 +480,9 @@ const StaffAppointments = () => {
           console.log('ℹ️ Patient appointment not found or already deleted');
         }
       } else {
-        // If patient-booked, only delete from staff collection (already done above)
-        // Patient's record in patient_appointments remains untouched
         console.log('ℹ️ Patient-booked appointment: Left patient_appointments intact');
       }
 
-      // FREE THE TIME SLOT: Delete the slot lock so others can book
       const slotLockRef = doc(db, 'slot_locks', `${selectedAppointment.doctor}_${selectedAppointment.appointmentDate}_${selectedAppointment.timeSlot}`);
       try {
         await deleteDoc(slotLockRef);
@@ -537,7 +491,6 @@ const StaffAppointments = () => {
         console.log('ℹ️ No slot lock found or already deleted');
       }
 
-      // Real-time listener will auto-update, no need to manually reload
       setShowDeleteModal(false);
       setSelectedAppointment(null);
       showToast('Appointment permanently deleted!', 'success');
@@ -549,32 +502,32 @@ const StaffAppointments = () => {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'emergency': return 'bg-red-100 text-red-800';
-      case 'urgent': return 'bg-orange-100 text-orange-800';
-      default: return 'bg-blue-100 text-blue-800';
+      case 'emergency': return 'bg-red-100 text-red-800 border border-red-200';
+      case 'urgent': return 'bg-orange-100 text-orange-800 border border-orange-200';
+      default: return 'bg-blue-100 text-blue-800 border border-blue-200';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'confirmed': return 'bg-green-100 text-green-800';
-      case 'scheduled': return 'bg-blue-100 text-blue-800';
-      case 'rescheduled': return 'bg-purple-100 text-purple-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      case 'completed': return 'bg-green-100 text-green-700';
-      case 'missed': return 'bg-red-100 text-red-800'; 
-      default: return 'bg-gray-100 text-gray-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+      case 'confirmed': return 'bg-green-100 text-green-800 border border-green-200';
+      case 'scheduled': return 'bg-blue-100 text-blue-800 border border-blue-200';
+      case 'rescheduled': return 'bg-purple-100 text-purple-800 border border-purple-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 border border-red-200';
+      case 'completed': return 'bg-green-100 text-green-700 border border-green-200';
+      case 'missed': return 'bg-red-100 text-red-800 border border-red-200'; 
+      default: return 'bg-gray-100 text-gray-800 border border-gray-200';
     }
   };
 
   const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <th 
-      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-50 transition"
+      className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-50 transition"
       onClick={() => handleSort(field)}
     >
       <div className="flex items-center gap-1">
-        {children}
+        <span className="whitespace-nowrap">{children}</span>
         {sortField === field && (
           sortDirection === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
         )}
@@ -584,7 +537,7 @@ const StaffAppointments = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center px-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading appointments...</p>
@@ -594,7 +547,7 @@ const StaffAppointments = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-6 lg:py-8">
       {/* Toast Notification System */}
       <ToastNotification
         message={toast.message}
@@ -603,30 +556,30 @@ const StaffAppointments = () => {
         onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">All Appointments</h1>
-          <p className="text-gray-600 mt-2">Manage and monitor all patient appointments</p>
+        <div className="mb-6 sm:mb-8 px-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">All Appointments</h1>
+          <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">Manage and monitor all patient appointments</p>
         </div>
 
         {/* Search and Filter Section */}
-        <div className="mb-8 bg-white rounded-lg shadow-md p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="mb-6 sm:mb-8 bg-white rounded-lg shadow-sm sm:shadow-md p-4 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* Search */}
-            <div className="md:col-span-2">
+            <div className="sm:col-span-2 lg:col-span-2">
               <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
                 Search Appointments
               </label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                 <input
                   type="text"
                   id="search"
-                  placeholder="Search by name, doctor, queue number, phone, email, or condition..."
+                  placeholder="Search by name, doctor, queue..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full pl-9 sm:pl-10 pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -641,7 +594,7 @@ const StaffAppointments = () => {
                 id="statusFilter"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
@@ -662,7 +615,7 @@ const StaffAppointments = () => {
                 id="priorityFilter"
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="all">All Priorities</option>
                 <option value="normal">Normal</option>
@@ -673,8 +626,8 @@ const StaffAppointments = () => {
           </div>
 
           {/* Doctor Filter */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="sm:col-span-2 lg:col-span-2">
               <label htmlFor="doctorFilter" className="block text-sm font-medium text-gray-700 mb-2">
                 <Filter className="inline w-4 h-4 mr-1" />
                 Doctor
@@ -683,7 +636,7 @@ const StaffAppointments = () => {
                 id="doctorFilter"
                 value={doctorFilter}
                 onChange={(e) => setDoctorFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="all">All Doctors</option>
                 {doctors.map((doctor) => (
@@ -698,22 +651,22 @@ const StaffAppointments = () => {
             <div className="mt-4 flex flex-wrap gap-2">
               <span className="text-sm text-gray-600">Active filters:</span>
               {searchQuery && (
-                <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">
+                <span className="px-2 sm:px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs sm:text-sm">
                   Search: "{searchQuery}"
                 </span>
               )}
               {statusFilter !== 'all' && (
-                <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">
+                <span className="px-2 sm:px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs sm:text-sm">
                   Status: {statusFilter}
                 </span>
               )}
               {priorityFilter !== 'all' && (
-                <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">
+                <span className="px-2 sm:px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs sm:text-sm">
                   Priority: {priorityFilter}
                 </span>
               )}
               {doctorFilter !== 'all' && (
-                <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">
+                <span className="px-2 sm:px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs sm:text-sm">
                   Doctor: {doctorFilter}
                 </span>
               )}
@@ -724,156 +677,162 @@ const StaffAppointments = () => {
                   setPriorityFilter('all');
                   setDoctorFilter('all');
                 }}
-                className="px-3 py-1 text-sm text-indigo-600 hover:text-indigo-800 underline"
+                className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-indigo-600 hover:text-indigo-800 underline"
               >
                 Clear all
               </button>
             </div>
           )}
         </div>
-
-        {/* Desktop Table View */}
-        <div className="hidden lg:block bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <SortableHeader field="queueNumber">
-                    Queue
-                  </SortableHeader>
-                  <SortableHeader field="appointmentDate">
-                    Date
-                  </SortableHeader>
-                  <SortableHeader field="timeSlot">
-                    Time
-                  </SortableHeader>
-                  <SortableHeader field="fullName">
-                    Patient
-                  </SortableHeader>
-                  <SortableHeader field="doctor">
-                    Doctor
-                  </SortableHeader>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Contact
-                  </th>
-                  <SortableHeader field="email">
-                    Email
-                  </SortableHeader>
-                  <SortableHeader field="status">
-                    Status
-                  </SortableHeader>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredAppointments.map((appointment) => (
-                  <tr key={appointment.id} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">#{appointment.queueNumber}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatDate(appointment.appointmentDate)}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{convertTo12Hour(appointment.timeSlot)}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        {appointment.photo ? (
-                          <img
-                            src={appointment.photo}
-                            alt="Patient"
-                            className="w-8 h-8 rounded-full object-cover mr-3"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center mr-3">
-                            <User className="w-4 h-4 text-indigo-600" />
-                          </div>
-                        )}
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{appointment.fullName}</div>
-                          <div className="text-sm text-gray-500">{appointment.age} yrs, {appointment.gender}</div>
+     {/* Desktop Table View (for md screens and up) */}
+    <div className="hidden md:block bg-white rounded-lg shadow-sm sm:shadow-md overflow-hidden">
+      <div>
+        <div className="min-w-full">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <SortableHeader field="queueNumber">
+                  Queue
+                </SortableHeader>
+                <SortableHeader field="appointmentDate">
+                  Date
+                </SortableHeader>
+                <SortableHeader field="timeSlot">
+                  Time
+                </SortableHeader>
+                <SortableHeader field="fullName">
+                  Patient
+                </SortableHeader>
+                <SortableHeader field="doctor">
+                  Doctor
+                </SortableHeader>
+                <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Contact
+                </th>
+                {/* ✅ ADDED: Email column header */}
+                <SortableHeader field="email">
+                  Email
+                </SortableHeader>
+                <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredAppointments.map((appointment) => (
+                <tr key={appointment.id} className="hover:bg-gray-50 transition">
+                  <td className="px-3 sm:px-4 py-3 sm:py-4">
+                    <div className="text-sm font-semibold text-gray-900">#{appointment.queueNumber}</div>
+                  </td>
+                  <td className="px-3 sm:px-4 py-3 sm:py-4">
+                    <div className="text-sm text-gray-900 whitespace-nowrap">{formatDate(appointment.appointmentDate)}</div>
+                  </td>
+                  <td className="px-3 sm:px-4 py-3 sm:py-4">
+                    <div className="text-sm text-gray-900 whitespace-nowrap">{convertTo12Hour(appointment.timeSlot)}</div>
+                  </td>
+                  <td className="px-3 sm:px-4 py-3 sm:py-4">
+                    <div className="flex items-center min-w-0">
+                      {appointment.photo ? (
+                        <img
+                          src={appointment.photo}
+                          alt="Patient"
+                          className="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center mr-3 flex-shrink-0">
+                          <User className="w-4 h-4 text-indigo-600" />
                         </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{appointment.fullName}</div>
+                        <div className="text-xs text-gray-500 truncate">{appointment.age} yrs, {appointment.gender}</div>
                       </div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{appointment.doctor}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{appointment.phone}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{appointment.email}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
+                    </div>
+                  </td>
+                  <td className="px-3 sm:px-4 py-3 sm:py-4">
+                    <div className="text-sm text-gray-900 truncate max-w-[120px]">{appointment.doctor}</div>
+                  </td>
+                  {/* ✅ UPDATED: Contact column - phone only */}
+                  <td className="px-3 sm:px-4 py-3 sm:py-4">
+                    <div className="text-sm text-gray-900 truncate max-w-[100px]">{appointment.phone}</div>
+                  </td>
+                  {/* ✅ FIXED: Email column - shows full email */}
+                  <td className="px-3 sm:px-4 py-3 sm:py-4">
+                    <div className="text-sm text-gray-900 break-words min-w-[180px] max-w-[250px]">
+                      {appointment.email}
+                    </div>
+                  </td>
+                    <td className="px-3 sm:px-4 py-3 sm:py-4">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
                         {appointment.status}
                       </span>
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-2">
+                  <td className="px-3 sm:px-4 py-3 sm:py-4">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleView(appointment)}
+                      className="p-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded transition"
+                      title="View details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
+                      <>
                         <button
-                          onClick={() => handleView(appointment)}
-                          className="text-indigo-600 hover:text-indigo-900 transition"
-                          title="View details"
+                          onClick={() => handleReschedule(appointment)}
+                          className="p-1.5 text-yellow-600 hover:text-yellow-900 hover:bg-yellow-50 rounded transition"
+                          title="Reschedule"
                         >
-                          <Eye className="w-4 h-4" />
+                          <RefreshCw className="w-4 h-4" />
                         </button>
-                        {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
-                          <>
-                            <button
-                              onClick={() => handleReschedule(appointment)}
-                              className="text-yellow-600 hover:text-yellow-900 transition"
-                              title="Reschedule"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleCancel(appointment)}
-                              className="text-red-600 hover:text-red-900 transition"
-                              title="Cancel"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
                         <button
-                          onClick={() => handleDelete(appointment)}
-                          className="text-red-600 hover:text-red-900 transition"
-                          title="Delete"
+                          onClick={() => handleCancel(appointment)}
+                          className="p-1.5 text-red-600 hover:text-red-900 hover:bg-red-50 rounded transition"
+                          title="Cancel"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <X className="w-4 h-4" />
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredAppointments.length === 0 && (
-            <div className="text-center py-12">
-              <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
-              <p className="text-gray-500">
-                {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || doctorFilter !== 'all'
-                  ? 'No appointments match your current filters.'
-                  : 'No appointments have been booked yet.'}
-              </p>
-            </div>
-          )}
+                      </>
+                    )}
+                    <button
+                      onClick={() => handleDelete(appointment)}
+                      className="p-1.5 text-red-600 hover:text-red-900 hover:bg-red-50 rounded transition"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+      </div>
 
-        {/* Mobile Card View */}
-        <div className="lg:hidden space-y-4">
+      {filteredAppointments.length === 0 && (
+        <div className="text-center py-12 px-4">
+          <Calendar className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
+          <p className="text-gray-500 text-sm sm:text-base">
+            {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || doctorFilter !== 'all'
+              ? 'No appointments match your current filters.'
+              : 'No appointments have been booked yet.'}
+          </p>
+        </div>
+      )}
+    </div>
+
+        {/* Tablet and Mobile Card View */}
+        <div className="md:hidden space-y-4">
           {filteredAppointments.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-md p-8 text-center">
-              <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
-              <p className="text-gray-500">
+            <div className="bg-white rounded-lg shadow-sm sm:shadow-md p-6 sm:p-8 text-center">
+              <Calendar className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-2">No Appointments Found</h3>
+              <p className="text-gray-500 text-sm sm:text-base">
                 {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || doctorFilter !== 'all'
                   ? 'No appointments match your current filters.'
                   : 'No appointments have been booked yet.'}
@@ -881,17 +840,63 @@ const StaffAppointments = () => {
             </div>
           ) : (
             filteredAppointments.map((appointment) => (
-              <div key={appointment.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+              <div key={appointment.id} className="bg-white rounded-lg shadow-sm sm:shadow-md overflow-hidden border border-gray-100">
                 {/* Header with Queue and Status */}
-                <div className="bg-blue-600 px-4 py-3 flex justify-between items-center">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 flex justify-between items-center">
                   <div className="text-white">
-                    <p className="text-sm font-medium">Queue Number</p>
+                    <p className="text-xs font-medium">Queue #</p>
                     <p className="text-xl font-bold">#{appointment.queueNumber}</p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
-                    {appointment.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}>
+                      {appointment.status}
+                    </span>
+                    <button
+                      onClick={() => setShowMobileActions(showMobileActions === appointment.id ? null : appointment.id)}
+                      className="p-1 text-white hover:bg-white/10 rounded"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
+
+                {/* Action Menu (Mobile) */}
+                {showMobileActions === appointment.id && (
+                  <div className="bg-gray-50 px-4 py-2 border-b flex gap-2 overflow-x-auto">
+                    <button
+                      onClick={() => handleView(appointment)}
+                      className="px-3 py-1.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded flex items-center gap-1 whitespace-nowrap"
+                    >
+                      <Eye className="w-3 h-3" />
+                      View
+                    </button>
+                    {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
+                      <>
+                        <button
+                          onClick={() => handleReschedule(appointment)}
+                          className="px-3 py-1.5 bg-yellow-100 text-yellow-700 text-xs font-medium rounded flex items-center gap-1 whitespace-nowrap"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Reschedule
+                        </button>
+                        <button
+                          onClick={() => handleCancel(appointment)}
+                          className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded flex items-center gap-1 whitespace-nowrap"
+                        >
+                          <X className="w-3 h-3" />
+                          Cancel
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => handleDelete(appointment)}
+                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded flex items-center gap-1 whitespace-nowrap"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Delete
+                    </button>
+                  </div>
+                )}
 
                 <div className="p-4 space-y-3">
                   {/* Patient Info */}
@@ -900,103 +905,121 @@ const StaffAppointments = () => {
                       <img
                         src={appointment.photo}
                         alt="Patient"
-                        className="w-12 h-12 rounded-full object-cover"
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover flex-shrink-0"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
-                        <User className="w-6 h-6 text-indigo-600" />
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                        <User className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
                       </div>
                     )}
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 text-lg">{appointment.fullName}</h3>
-                      <p className="text-sm text-gray-500">{appointment.age} years, {appointment.gender}</p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 text-base sm:text-lg truncate">{appointment.fullName}</h3>
+                      <p className="text-xs sm:text-sm text-gray-500">{appointment.age} years, {appointment.gender}</p>
+                      <div className="flex items-center gap-1 mt-1">
+                        <Mail className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+                        <span className="text-xs sm:text-sm text-gray-600 truncate">{appointment.email}</span>
+                      </div>
                     </div>
                   </div>
 
                   {/* Appointment Details */}
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                  <div className="grid grid-cols-2 gap-3 pt-3 border-t">
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Calendar className="w-4 h-4" />
-                        <span>{formatDate(appointment.appointmentDate)}</span>
+                        <Calendar className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{formatDate(appointment.appointmentDate)}</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Clock className="w-4 h-4" />
-                        <span>{convertTo12Hour(appointment.timeSlot)}</span>
+                        <Clock className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{convertTo12Hour(appointment.timeSlot)}</span>
                       </div>
                     </div>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <User className="w-4 h-4" />
-                        <span>{appointment.doctor}</span>
+                        <User className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{appointment.doctor}</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Phone className="w-4 h-4" />
-                        <span>{appointment.phone}</span>
+                        <Phone className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{appointment.phone}</span>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Email */}
-                  <div className="pt-2 border-t">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      <span className="truncate">{appointment.email}</span>
                     </div>
                   </div>
 
                   {/* Priority and Condition */}
-                  <div className="pt-2 space-y-2">
-                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(appointment.priorityLevel)}`}>
-                      <AlertCircle className="w-3 h-3" />
-                      {appointment.priorityLevel}
-                    </span>
-                    <p className="text-sm text-gray-600">
-                      <strong>Condition:</strong> {appointment.medicalCondition}
-                    </p>
+                  <div className="pt-3 space-y-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(appointment.priorityLevel)}`}>
+                        <AlertCircle className="w-3 h-3" />
+                        {appointment.priorityLevel}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-700 mb-1">Medical Condition:</p>
+                      <p className="text-sm text-gray-600 line-clamp-2">{appointment.medicalCondition}</p>
+                    </div>
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 pt-3 border-t">
+                  {/* Action Buttons (Alternative for Mobile) */}
+                  <div className="pt-3 border-t grid grid-cols-2 gap-2">
                     <button
                       onClick={() => handleView(appointment)}
-                      className="flex-1 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"
+                      className="px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"
                     >
                       <Eye className="w-4 h-4" />
-                      View
+                      <span>View Details</span>
                     </button>
                     
-                    {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
-                      <>
-                        <button
-                          onClick={() => handleReschedule(appointment)}
-                          className="flex-1 px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700 transition flex items-center justify-center gap-2"
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                          Reschedule
-                        </button>
-                        <button
-                          onClick={() => handleCancel(appointment)}
-                          className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-2"
-                        >
-                          <X className="w-4 h-4" />
-                          Cancel
-                        </button>
-                      </>
-                    )}
-
-                    <button
-                      onClick={() => handleDelete(appointment)}
-                      className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition flex items-center justify-center"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(appointment.status === 'pending' || appointment.status === 'scheduled') && (
+                        <>
+                          <button
+                            onClick={() => handleReschedule(appointment)}
+                            className="p-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition flex items-center justify-center"
+                            title="Reschedule"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleCancel(appointment)}
+                            className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center justify-center"
+                            title="Cancel"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => handleDelete(appointment)}
+                        className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center justify-center"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             ))
           )}
         </div>
+
+        {/* Pagination/Info Footer */}
+        {filteredAppointments.length > 0 && (
+          <div className="mt-6 bg-white rounded-lg shadow-sm sm:shadow-md p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <p className="text-sm text-gray-600">
+                Showing <span className="font-semibold">{filteredAppointments.length}</span> appointment{filteredAppointments.length !== 1 ? 's' : ''}
+                {searchQuery && ` for "${searchQuery}"`}
+              </p>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span>Sorted by:</span>
+                <span className="font-semibold capitalize">{sortField.replace(/([A-Z])/g, ' $1')}</span>
+                <span className="text-gray-400">({sortDirection})</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* View Modal */}
@@ -1010,42 +1033,6 @@ const StaffAppointments = () => {
           appointment={selectedAppointment}
           onAppointmentUpdate={() => {
             // Reload appointments when modal updates
-            const loadAppointments = async () => {
-              try {
-                const appointmentsRef = collection(db, 'appointments');
-                const userEmail = auth.currentUser?.email;
-                
-                if (!userEmail) return;
-
-                const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', userEmail)));
-                const userRole = userDoc.docs[0]?.data()?.role || 'patient';
-
-                let q;
-                
-                if (userRole === 'staff' || userRole === 'doctor') {
-                  q = query(appointmentsRef, orderBy('createdAt', 'desc'));
-                } else {
-                  q = query(
-                    appointmentsRef, 
-                    where('email', '==', userEmail),
-                    orderBy('createdAt', 'desc')
-                  );
-                }
-                
-                const querySnapshot = await getDocs(q);
-                const appointmentsData = querySnapshot.docs
-                  .map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                  } as Appointment))
-                  .filter(apt => !apt.deletedByStaff);
-                
-                setAppointments(appointmentsData);
-              } catch {
-                console.error('Error loading appointments:');
-              }
-            };
-            loadAppointments();
           }}
         />
       )}
@@ -1080,8 +1067,8 @@ const StaffAppointments = () => {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selectedAppointment && (
         <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b">
               <h3 className="text-lg font-semibold text-gray-900">Confirm Deletion</h3>
               <button
                 onClick={() => setShowDeleteModal(false)}
@@ -1091,23 +1078,23 @@ const StaffAppointments = () => {
               </button>
             </div>
             
-            <div className="p-6">
-              <p className="text-gray-700 mb-6">
+            <div className="p-4 sm:p-6">
+              <p className="text-gray-700 mb-4 sm:mb-6">
                 Are you sure you want to delete this appointment? This action cannot be undone.
               </p>
               
-              <div className="flex gap-3 justify-end">
+              <div className="flex flex-col sm:flex-row gap-3 justify-end">
                 <button
                   onClick={() => setShowDeleteModal(false)}
-                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition order-2 sm:order-1"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDelete}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition order-1 sm:order-2"
                 >
-                  Delete
+                  Delete Appointment
                 </button>
               </div>
             </div>
