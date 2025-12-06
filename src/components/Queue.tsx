@@ -174,7 +174,6 @@ const Queue = () => {
             {nowServing ? (
               <div>
                 <div className="text-6xl font-bold mb-2">#{nowServing.queueNumber}</div>
-                <p className="text-xl mt-1">Patient #{nowServing.queueNumber}</p>
                 <p className="text-sm opacity-75 mt-1">{convertTo12Hour(nowServing.timeSlot)}</p>
                 <div className="mt-3">
                   <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${getPriorityColor(nowServing.priorityLevel)} bg-white/90`}>
@@ -195,7 +194,6 @@ const Queue = () => {
             {upNext ? (
               <div>
                 <div className="text-6xl font-bold mb-2">#{upNext.queueNumber}</div>
-                <p className="text-xl mt-1">Patient #{upNext.queueNumber}</p>
                 <p className="text-sm opacity-75 mt-1">{convertTo12Hour(upNext.timeSlot)}</p>
                 <div className="mt-3">
                   <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${getPriorityColor(upNext.priorityLevel)} bg-white/90`}>
@@ -243,7 +241,6 @@ const Queue = () => {
                           <User className="w-5 h-5 text-indigo-600" />
                         </div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">Patient #{appointment.queueNumber}</h3>
                           <p className="text-sm text-gray-600">Appointment</p>
                         </div>
                       </div>
