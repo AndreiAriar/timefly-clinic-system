@@ -780,7 +780,9 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
     if (file) {
       handlePhotoUpload(file);
     }
-  };const handleSubmit = async () => {
+  };
+  
+const handleSubmit = async () => {
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.doctor || !formData.appointmentDate || !formData.timeSlot || !formData.medicalCondition) {
     showToast('Please fill in all required fields', 'warning');
@@ -902,7 +904,7 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
         
         transactionMaxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
         
-        console.log('🔐 TRANSACTION: Using FRESH max slots:', {
+        console.log('🔍 TRANSACTION: Using FRESH max slots:', {
           doctor: formData.doctor,
           date: formData.appointmentDate,
           dateSpecificMaxSlots: dateSpecificMaxSlots,

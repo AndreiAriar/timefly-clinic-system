@@ -507,8 +507,7 @@ const isDoctorFullyBooked = useCallback(async (doctor: string, appointmentDate: 
     if (file) {
       handlePhotoUpload(file);
     }
-  };
-const handleSubmit = async () => {
+  };const handleSubmit = async () => {
   // Basic validation only
   if (!formData.fullName || !formData.age || !formData.gender || !formData.phone || 
       !formData.email || !formData.doctor || !formData.appointmentDate || 
@@ -546,8 +545,10 @@ const handleSubmit = async () => {
     const doctorSnapshot = await getDocs(doctorQuery);
 
     let maxSlots = 10; // Default fallback
+    let doctorDocId = '';
 
     if (!doctorSnapshot.empty) {
+      doctorDocId = doctorSnapshot.docs[0].id;
       const latestDoctorData = doctorSnapshot.docs[0].data();
       const maxSlotsPerDate = latestDoctorData.maxSlotsPerDate || {};
       const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
@@ -576,6 +577,19 @@ const handleSubmit = async () => {
       throw new Error('DOCTOR_FULLY_BOOKED');
     }
 
+    // ✅ Pre-fetch appointment IDs BEFORE transaction
+    const patientRef = collection(db, 'patient_appointments');
+    const patientQuery = query(
+      patientRef,
+      where('doctor', '==', formData.doctor),
+      where('appointmentDate', '==', formData.appointmentDate),
+      where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+    );
+    
+    const preFetchSnapshot = await getDocs(patientQuery);
+    const appointmentIds = preFetchSnapshot.docs.map(d => d.id);
+
+    // ✅ CRITICAL FIX: Use transaction.get() for ALL reads inside transaction
     const appointmentData = await runTransaction(db, async (transaction) => {
       const slotLockRef = doc(db, 'slot_locks', `${formData.doctor}_${formData.appointmentDate}_${formData.timeSlot}`);
       const slotLockDoc = await transaction.get(slotLockRef);
@@ -584,24 +598,25 @@ const handleSubmit = async () => {
         throw new Error('SLOT_TAKEN');
       }
 
-      // ✅ CRITICAL FIX: Fetch LATEST maxSlots INSIDE transaction to avoid stale data
-      const doctorQueryInTransaction = query(
-        collection(db, 'doctors'),
-        where('name', '==', formData.doctor)
-      );
-      const doctorSnapshotInTransaction = await getDocs(doctorQueryInTransaction);
+      // ✅ FIXED: Use transaction.get() to read doctor document
+      if (!doctorDocId) {
+        throw new Error('DOCTOR_NOT_FOUND');
+      }
+
+      const doctorDocRef = doc(db, 'doctors', doctorDocId);
+      const transactionDoctorDoc = await transaction.get(doctorDocRef);
 
       let transactionMaxSlots = 10; // Default fallback
 
-      if (!doctorSnapshotInTransaction.empty) {
-        const transactionDoctorData = doctorSnapshotInTransaction.docs[0].data();
-        const maxSlotsPerDate = transactionDoctorData.maxSlotsPerDate || {};
+      if (transactionDoctorDoc.exists()) {
+        const transactionDoctorData = transactionDoctorDoc.data();
+        const maxSlotsPerDate = transactionDoctorData?.maxSlotsPerDate || {};
         const dateSpecificMaxSlots = maxSlotsPerDate[formData.appointmentDate];
-        const globalMaxSlots = transactionDoctorData.maxSlots || 10;
+        const globalMaxSlots = transactionDoctorData?.maxSlots || 10;
         
         transactionMaxSlots = dateSpecificMaxSlots !== undefined ? dateSpecificMaxSlots : globalMaxSlots;
         
-        console.log('🔐 STAFF TRANSACTION: Using FRESH max slots:', {
+        console.log('🔍 STAFF TRANSACTION: Using FRESH max slots:', {
           doctor: formData.doctor,
           date: formData.appointmentDate,
           dateSpecificMaxSlots: dateSpecificMaxSlots,
@@ -614,34 +629,40 @@ const handleSubmit = async () => {
         throw new Error('DOCTOR_NOT_FOUND');
       }
 
-      // ✅ FIXED: Query ONLY patient_appointments (primary collection) to avoid double-counting
-      const patientRef = collection(db, 'patient_appointments');
-
-      const patientQuery = query(
-        patientRef,
-        where('doctor', '==', formData.doctor),
-        where('appointmentDate', '==', formData.appointmentDate),
-        where('status', 'in', ['pending', 'confirmed', 'scheduled', 'serving'])
+      // ✅ FIXED: Read all appointments inside transaction using pre-fetched IDs
+      const appointmentRefs = appointmentIds.map(id => doc(db, 'patient_appointments', id));
+      
+      // ✅ Read all appointments inside transaction
+      const appointmentDocs = await Promise.all(
+        appointmentRefs.map(ref => transaction.get(ref))
       );
+      
+      // Filter out cancelled appointments and count active ones
+      const activeAppointments = appointmentDocs.filter(docSnapshot => {
+        if (!docSnapshot.exists()) return false;
+        const data = docSnapshot.data();
+        const status = data?.status;
+        return status === 'pending' || status === 'confirmed' || status === 'scheduled' || status === 'serving';
+      });
 
-      const patientSnapshot = await getDocs(patientQuery);
-
-      // ✅ Check if adding this appointment would exceed max slots
-      const currentBookedCount = patientSnapshot.size;
-      console.log('📊 STAFF TRANSACTION: Current booked count (from patient_appointments only):', currentBookedCount, 'Max slots:', transactionMaxSlots);
+      const currentBookedCount = activeAppointments.length;
+      console.log('📊 STAFF TRANSACTION: Current booked count (verified in transaction):', currentBookedCount, 'Max slots:', transactionMaxSlots);
       
       if (currentBookedCount >= transactionMaxSlots) {
         console.log('🚫 Staff Transaction: Doctor fully booked - cannot add new appointment');
         throw new Error('DOCTOR_FULLY_BOOKED');
       }
      
-      // Get all existing appointments (no need to query both collections or deduplicate)
-      const allExistingAppointments = patientSnapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        timeSlot: doc.data().timeSlot, 
-        queueNumber: doc.data().queueNumber,
-        collection: 'patient_appointments'
-      }));
+      // Get all existing appointments with their time slots
+      const allExistingAppointments = activeAppointments.map(docSnapshot => {
+        const data = docSnapshot.data();
+        return {
+          id: docSnapshot.id, 
+          timeSlot: data?.timeSlot as string, 
+          queueNumber: data?.queueNumber as number,
+          collection: 'patient_appointments' as const
+        };
+      });
 
       // Add the NEW appointment
       const allAppointments = [
@@ -650,7 +671,7 @@ const handleSubmit = async () => {
           id: 'NEW_APPOINTMENT',
           timeSlot: formData.timeSlot,
           queueNumber: 0, // Will be calculated
-          collection: 'staff_appointments'
+          collection: 'staff_appointments' as const
         }
       ];
 
@@ -669,7 +690,14 @@ const handleSubmit = async () => {
 
       // Reassign ALL queue numbers sequentially 1, 2, 3, 4... based ONLY on time order
       let queueNumber = 0;
-      const appointmentsToUpdate: Array<{ id: string; collection: string; newQueueNumber: number }> = [];
+      
+      interface AppointmentUpdate {
+        docRef: ReturnType<typeof doc>;
+        appointmentId: string;
+        newQueueNumber: number;
+      }
+      
+      const appointmentsToUpdate: AppointmentUpdate[] = [];
 
       for (let i = 0; i < allAppointments.length; i++) {
         const appointment = allAppointments[i];
@@ -679,9 +707,10 @@ const handleSubmit = async () => {
           queueNumber = correctQueueNum;
           console.log(`✅ STAFF: NEW appointment gets queue #${queueNumber} at ${appointment.timeSlot}`);
         } else if (appointment.queueNumber !== correctQueueNum) {
+          const patientDocRef = doc(db, 'patient_appointments', appointment.id);
           appointmentsToUpdate.push({
-            id: appointment.id,
-            collection: appointment.collection,
+            docRef: patientDocRef,
+            appointmentId: appointment.id,
             newQueueNumber: correctQueueNum
           });
           console.log(`🔄 STAFF: Updating ${appointment.id}: #${appointment.queueNumber} → #${correctQueueNum} (${appointment.timeSlot})`);
@@ -690,28 +719,25 @@ const handleSubmit = async () => {
 
       console.log(`\n📊 STAFF: Final ${allAppointments.length} appointments with queue numbers 1-${allAppointments.length}\n`);
 
-      // ✅ CRITICAL FIX: Update existing appointments in BOTH collections with proper error handling
+      // ✅ Update existing appointments in BOTH collections using transaction
       for (const update of appointmentsToUpdate) {
         try {
-          const patientDocRef = doc(db, 'patient_appointments', update.id);
-          const staffDocRef = doc(db, 'staff_appointments', update.id);
-          
-          // Get current data from patient collection
-          const patientDoc = await transaction.get(patientDocRef);
+          const patientDoc = await transaction.get(update.docRef);
           if (patientDoc.exists()) {
             const currentData = patientDoc.data();
+            const staffDocRef = doc(db, 'staff_appointments', update.appointmentId);
             
             // Update both collections
-            transaction.update(patientDocRef, { queueNumber: update.newQueueNumber });
+            transaction.update(update.docRef, { queueNumber: update.newQueueNumber });
             transaction.set(staffDocRef, { 
-              ...currentData, 
+              ...(currentData || {}), 
               queueNumber: update.newQueueNumber 
             }, { merge: true });
             
-            console.log(`✅ STAFF: Updated queue #${update.newQueueNumber} for appointment ${update.id}`);
+            console.log(`✅ STAFF: Updated queue #${update.newQueueNumber} for appointment ${update.appointmentId}`);
           }
         } catch (error) {
-          console.error(`❌ STAFF: Failed to update queue for appointment ${update.id}:`, error);
+          console.error(`❌ STAFF: Failed to update queue for appointment ${update.appointmentId}:`, error);
           // Continue with other updates even if one fails
         }
       }
