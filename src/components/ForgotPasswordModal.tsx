@@ -8,6 +8,12 @@ interface ForgotPasswordModalProps {
   onClose: () => void;
 }
 
+// Define the structure of Firebase errors
+interface FirebaseError {
+  code: string;
+  message: string;
+}
+
 const ForgotPasswordModal = ({ isOpen, onClose }: ForgotPasswordModalProps) => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,11 +41,13 @@ const ForgotPasswordModal = ({ isOpen, onClose }: ForgotPasswordModalProps) => {
       await sendPasswordResetEmail(auth, email);
       setSuccess(true);
       setLoading(false);
-    } catch (error: any) {
-      console.error('Password reset error:', error);
+    } catch (err: unknown) {
+      console.error('Password reset error:', err);
       
       // Handle specific Firebase auth errors
-      switch (error.code) {
+      const firebaseError = err as FirebaseError;
+      
+      switch (firebaseError.code) {
         case 'auth/user-not-found':
           setError('No account found with this email address');
           break;
