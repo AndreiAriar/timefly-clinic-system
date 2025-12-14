@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle, X, Mail, Stethoscope } from 'lucide-react';
+import { Play, CheckCircle, Bell, Clock, User, Phone, AlertCircle, X, Mail, Stethoscope, GripVertical } from 'lucide-react';
 import { collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
@@ -44,6 +44,8 @@ const StaffQueue = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [sendingMissedNotification, setSendingMissedNotification] = useState<string | null>(null);
+  const [draggedItem, setDraggedItem] = useState<string | null>(null);
+  const [dragOverItem, setDragOverItem] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({
     isOpen: false,
     title: '',
@@ -466,6 +468,112 @@ const calculateWaitingTime = (timeSlot: string): string => {
   }
 };
 
+// Drag and Drop Handlers
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, appointmentId: string) => {
+    setDraggedItem(appointmentId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+    
+    // Add visual feedback
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '0.4';
+    }
+  };
+
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '1';
+    }
+    setDraggedItem(null);
+    setDragOverItem(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>, appointmentId: string) => {
+    e.preventDefault();
+    if (draggedItem !== appointmentId) {
+      setDragOverItem(appointmentId);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOverItem(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetAppointmentId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!draggedItem || draggedItem === targetAppointmentId) {
+      setDragOverItem(null);
+      return;
+    }
+
+    // Find the dragged and target appointments
+    const draggedAppointment = appointments.find(apt => apt.id === draggedItem);
+    const targetAppointment = appointments.find(apt => apt.id === targetAppointmentId);
+
+    if (!draggedAppointment || !targetAppointment) {
+      setDragOverItem(null);
+      return;
+    }
+
+    // Show confirmation dialog
+    showConfirmDialog(
+      'Reorder Queue',
+      `Move ${draggedAppointment.fullName} (Queue #${draggedAppointment.queueNumber}) to position of ${targetAppointment.fullName} (Queue #${targetAppointment.queueNumber})?`,
+      async () => {
+        try {
+          // Create a new ordered list
+          const reorderedAppointments = [...appointments];
+          const draggedIndex = reorderedAppointments.findIndex(apt => apt.id === draggedItem);
+          const targetIndex = reorderedAppointments.findIndex(apt => apt.id === targetAppointmentId);
+
+          // Remove dragged item and insert at target position
+          const [removed] = reorderedAppointments.splice(draggedIndex, 1);
+          reorderedAppointments.splice(targetIndex, 0, removed);
+
+          // Update queue numbers for all affected appointments
+          const updates = reorderedAppointments.map((apt, index) => ({
+            ...apt,
+            queueNumber: index + 1
+          }));
+
+          // Update in Firebase for both collections
+          const updatePromises = updates.map(async (apt) => {
+            const staffRef = doc(db, 'staff_appointments', apt.id);
+            const patientRef = doc(db, 'patient_appointments', apt.id);
+            
+            return Promise.all([
+              updateDoc(staffRef, { queueNumber: apt.queueNumber }),
+              updateDoc(patientRef, { queueNumber: apt.queueNumber })
+            ]);
+          });
+
+          await Promise.all(updatePromises);
+
+          // Update local state immediately for smooth UX
+          setAppointments(updates);
+
+          addNotification('success', 'Queue order updated successfully!');
+        } catch (error) {
+          console.error('Error reordering queue:', error);
+          addNotification('error', 'Failed to reorder queue. Please try again.');
+        } finally {
+          setDragOverItem(null);
+          setDraggedItem(null);
+        }
+      }
+    );
+
+    setDragOverItem(null);
+  };
+
   const getNotificationColor = (type: string) => {
     switch (type) {
       case 'success': return 'bg-green-500';
@@ -727,10 +835,14 @@ const calculateWaitingTime = (timeSlot: string): string => {
             )}
           </div>
         </div>
-
         {/* Queue List Section */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Queue List ({appointments.length} patients)</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-gray-900">Queue List ({appointments.length} patients)</h2>
+            <div className="text-sm text-gray-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
+              <span className="font-medium">💡 Tip:</span> Drag cards to reorder queue
+            </div>
+          </div>
           <div className="bg-white rounded-xl shadow-md overflow-hidden">
             {getQueueList().length === 0 ? (
               <div className="text-center py-12">
@@ -740,11 +852,40 @@ const calculateWaitingTime = (timeSlot: string): string => {
               </div>
             ) : (
               <div className="divide-y divide-gray-200">
-                {getQueueList().map((appointment) => (
-                  <div key={appointment.id} className="p-4 hover:bg-gray-50 transition">
+            {getQueueList().map((appointment) => (
+                  <div 
+                    key={appointment.id} 
+                    draggable={nowServing?.id !== appointment.id}
+                    onDragStart={(e) => handleDragStart(e, appointment.id)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleDragOver}
+                    onDragEnter={(e) => handleDragEnter(e, appointment.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, appointment.id)}
+                    className={`p-4 transition-all duration-200 ${
+                      dragOverItem === appointment.id 
+                        ? 'border-t-4 border-indigo-500 bg-indigo-50' 
+                        : 'hover:bg-gray-50'
+                    } ${
+                      draggedItem === appointment.id 
+                        ? 'opacity-40' 
+                        : 'opacity-100'
+                    } ${
+                      nowServing?.id !== appointment.id 
+                        ? 'cursor-move' 
+                        : 'cursor-default'
+                    }`}
+                  >
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       {/* Left Section - Patient Info */}
                       <div className="flex items-start space-x-4 flex-1">
+                        {/* Drag Handle */}
+                        {nowServing?.id !== appointment.id && (
+                          <div className="flex items-center justify-center w-8 pt-1">
+                            <GripVertical className="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" />
+                          </div>
+                        )}
+                        
                         <div className="flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-full">
                           <span className="text-lg font-bold text-indigo-600">#{appointment.queueNumber}</span>
                         </div>
@@ -863,7 +1004,7 @@ const calculateWaitingTime = (timeSlot: string): string => {
         </div>
       </div>
 
-      <style>{`
+     <style>{`
         @keyframes slide-in {
           from {
             transform: translateX(100%);
@@ -918,6 +1059,76 @@ const calculateWaitingTime = (timeSlot: string): string => {
         }
         .animate-pulse {
           animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        /* Drag and Drop Styles */
+        [draggable="true"] {
+          user-select: none;
+          -webkit-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+        }
+        
+        [draggable="true"]:active {
+          cursor: grabbing !important;
+        }
+        
+        .drag-over-indicator {
+          position: relative;
+        }
+        
+        .drag-over-indicator::before {
+          content: '';
+          position: absolute;
+          top: -2px;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: linear-gradient(90deg, #4F46E5, #818CF8);
+          border-radius: 2px;
+          animation: pulse-border 1s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-border {
+          0%, 100% {
+            opacity: 1;
+            transform: scaleX(1);
+          }
+          50% {
+            opacity: 0.7;
+            transform: scaleX(0.98);
+          }
+        }
+        
+        .dragging-item {
+          opacity: 0.4;
+          transform: scale(0.98);
+          transition: all 0.2s ease;
+        }
+        
+        .drag-handle {
+          transition: color 0.2s ease;
+        }
+        
+        .drag-handle:hover {
+          color: #4F46E5;
+        }
+        
+        @keyframes drag-hint {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-2px);
+          }
+        }
+        
+        .cursor-grab {
+          cursor: grab;
+        }
+        
+        .cursor-grab:active {
+          cursor: grabbing;
         }
       `}</style>
     </div>

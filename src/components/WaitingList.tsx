@@ -286,14 +286,13 @@ const WaitingList = () => {
     return timeSlots;
   }, []);
 
-  // NEW: Calculate queue number based on time slot position
+ // FIXED: Calculate queue number - waiting list patients go to LAST position
   const calculateNewQueueNumber = useCallback(async (
     doctorName: string, 
-    appointmentDate: string, 
-    timeSlot: string
+    appointmentDate: string
   ): Promise<number> => {
     try {
-      console.log(`🧮 Calculating queue number for new time slot: ${timeSlot}`);
+      console.log(`🧮 Calculating LAST queue position for waiting list patient`);
       
       const patientAppointmentsRef = collection(db, 'patient_appointments');
       const staffAppointmentsRef = collection(db, 'staff_appointments');
@@ -317,176 +316,42 @@ const WaitingList = () => {
         getDocs(staffQuery)
       ]);
       
-      // Combine all appointments and remove duplicates
-      const allAppointments: Appointment[] = [];
+      // Count unique active appointments
       const appointmentIds = new Set();
+      patientSnapshot.docs.forEach(doc => appointmentIds.add(doc.id));
+      staffSnapshot.docs.forEach(doc => appointmentIds.add(doc.id));
       
-      patientSnapshot.docs.forEach(doc => {
-        if (!appointmentIds.has(doc.id)) {
-          appointmentIds.add(doc.id);
-          const data = doc.data();
-          allAppointments.push({
-            id: doc.id,
-            queueNumber: data.queueNumber || 0,
-            timeSlot: data.timeSlot,
-            status: data.status || 'pending',
-            fullName: data.fullName || '',
-            doctor: data.doctor || '',
-            priorityLevel: data.priorityLevel || '',
-            appointmentDate: data.appointmentDate || '',
-            email: data.email || ''
-          } as Appointment);
-        }
-      });
+      const totalActiveAppointments = appointmentIds.size;
       
-      staffSnapshot.docs.forEach(doc => {
-        if (!appointmentIds.has(doc.id)) {
-          appointmentIds.add(doc.id);
-          const data = doc.data();
-          allAppointments.push({
-            id: doc.id,
-            queueNumber: data.queueNumber || 0,
-            timeSlot: data.timeSlot,
-            status: data.status || 'pending',
-            fullName: data.fullName || '',
-            doctor: data.doctor || '',
-            appointmentDate: data.appointmentDate || '',
-            email: data.email || ''
-          } as Appointment);
-        }
-      });
+      // Waiting list patient gets LAST position (total + 1)
+      const queueNumber = totalActiveAppointments + 1;
       
-     allAppointments.push({
-      id: 'NEW_APPOINTMENT',
-      queueNumber: 0,
-      timeSlot: timeSlot,
-      status: 'pending',
-      fullName: '',
-      doctor: doctorName,
-      appointmentDate: appointmentDate,
-      priorityLevel: '',
-      email: ''          
-    });
-      
-      // Sort by time slot chronologically
-      allAppointments.sort((a, b) => {
-        const [hoursA, minutesA] = a.timeSlot.split(':').map(Number);
-        const [hoursB, minutesB] = b.timeSlot.split(':').map(Number);
-        return (hoursA * 60 + minutesA) - (hoursB * 60 + minutesB);
-      });
-      
-      // Find position of new appointment and assign queue number
-      const newAppointmentIndex = allAppointments.findIndex(apt => apt.id === 'NEW_APPOINTMENT');
-      const queueNumber = newAppointmentIndex + 1;
-      
-      console.log(`✅ Calculated queue number ${queueNumber} for time slot ${timeSlot}`);
+      console.log(`✅ Waiting list patient assigned to LAST position: Queue #${queueNumber}`);
       return queueNumber;
       
     } catch (error) {
       console.error('❌ Error calculating queue number:', error);
-      return 0; // Fallback
+      return 1; // Fallback to position 1
     }
   }, []);
 
-  // NEW: Get the queue number from the cancelled appointment's time slot
-  const getQueueNumberForTimeSlot = useCallback(async (
-    doctorName: string, 
-    appointmentDate: string, 
-    timeSlot: string
-  ): Promise<number> => {
-    try {
-      console.log(`🔍 Finding queue number for ${timeSlot} with ${doctorName} on ${appointmentDate}`);
-      
-      // Check both collections for the appointment with this time slot
-      const patientAppointmentsRef = collection(db, 'patient_appointments');
-      const staffAppointmentsRef = collection(db, 'staff_appointments');
-      
-      const patientQuery = query(
-        patientAppointmentsRef,
-        where('doctor', '==', doctorName),
-        where('appointmentDate', '==', appointmentDate),
-        where('timeSlot', '==', timeSlot)
-      );
-      
-      const staffQuery = query(
-        staffAppointmentsRef,
-        where('doctor', '==', doctorName),
-        where('appointmentDate', '==', appointmentDate),
-        where('timeSlot', '==', timeSlot)
-      );
-      
-      const [patientSnapshot, staffSnapshot] = await Promise.all([
-        getDocs(patientQuery),
-        getDocs(staffQuery)
-      ]);
-      
-      // Check patient appointments first
-      if (!patientSnapshot.empty) {
-        const appointmentData = patientSnapshot.docs[0].data() as Appointment;
-        console.log(`✅ Found queue number ${appointmentData.queueNumber} for time slot ${timeSlot}`);
-        return appointmentData.queueNumber;
-      }
-      
-      // Check staff appointments if not found in patient appointments
-      if (!staffSnapshot.empty) {
-        const appointmentData = staffSnapshot.docs[0].data() as Appointment;
-        console.log(`✅ Found queue number ${appointmentData.queueNumber} for time slot ${timeSlot}`);
-        return appointmentData.queueNumber;
-      }
-      
-      // If no existing appointment found for this time slot, we need to calculate it
-      console.log('ℹ️ No existing appointment found for time slot, calculating queue number...');
-      return await calculateNewQueueNumber(doctorName, appointmentDate, timeSlot);
-      
-    } catch (error) {
-      console.error('❌ Error getting queue number for time slot:', error);
-      // Fallback to calculation
-      return await calculateNewQueueNumber(doctorName, appointmentDate, timeSlot);
-    }
-  }, [calculateNewQueueNumber]);
-
+// FIXED: Find any available time slot (waiting list patient goes to last position regardless)
   const getAvailableTimeSlot = useCallback(async (
     doctorName: string, 
     appointmentDate: string, 
     priorityLevel: string
-  ): Promise<{ timeSlot: string | null, replacedAppointmentId?: string }> => {
+  ): Promise<{ timeSlot: string | null }> => {
     try {
-      console.log(`🕒 Finding available time slot for ${doctorName} on ${appointmentDate}, priority: ${priorityLevel}`);
+      console.log(`🕐 Finding available time slot for ${doctorName} on ${appointmentDate}, priority: ${priorityLevel}`);
       
-      // Get recently cancelled appointments (last 5 minutes) to find available slots
-      const cancelledRecentlyQuery = query(
-        collection(db, 'patient_appointments'),
-        where('doctor', '==', doctorName),
-        where('appointmentDate', '==', appointmentDate),
-        where('status', '==', 'cancelled')
-      );
-      
-      const [cancelledSnapshot, bookedSlots] = await Promise.all([
-        getDocs(cancelledRecentlyQuery),
-        getBookedSlots(doctorName, appointmentDate)
+      const [bookedSlots, unavailableTimeSlots] = await Promise.all([
+        getBookedSlots(doctorName, appointmentDate),
+        getUnavailableTimeSlots(doctorName, appointmentDate)
       ]);
       
-      // Check for recently cancelled appointments first (these should be reassigned)
-      if (!cancelledSnapshot.empty) {
-        const recentlyCancelled = cancelledSnapshot.docs[0];
-        const cancelledData = recentlyCancelled.data();
-        const cancelledTimeSlot = cancelledData.timeSlot;
-        
-        console.log(`🔄 Found recently cancelled appointment at ${cancelledTimeSlot}, reassigning this slot`);
-        
-        // Verify this time slot is still available (not rebooked yet)
-        if (!bookedSlots.has(cancelledTimeSlot)) {
-          return { 
-            timeSlot: cancelledTimeSlot, 
-            replacedAppointmentId: recentlyCancelled.id 
-          };
-        }
-      }
-      
-      // If no recently cancelled appointments, find first available slot
-      const unavailableTimeSlots = await getUnavailableTimeSlots(doctorName, appointmentDate);
       const timeSlots = generateTimeSlots(priorityLevel);
       
+      // Find first available slot (waiting list patient will be assigned to LAST queue position)
       for (const slot of timeSlots) {
         if (!bookedSlots.has(slot) && !unavailableTimeSlots.includes(slot)) {
           console.log('✅ Found available time slot:', slot);
@@ -620,14 +485,13 @@ const WaitingList = () => {
       console.error('❌ Error sending waiting list reschedule email:', error);
     }
   }, []);
-  
-  // FIXED: Enhanced autoAssignToAppointment with proper queue number assignment and dependencies
+ // FIXED: Auto-assign waiting list patient to LAST queue position
   const autoAssignToAppointment = useCallback(async (entry: WaitingListEntry) => {
     try {
       console.log('🔄 Auto-assigning', entry.fullName, 'to appointment...');
       
-      // Get available time slot (now returns both timeSlot and replacedAppointmentId)
-      const { timeSlot, replacedAppointmentId } = await getAvailableTimeSlot(
+      // Get available time slot
+      const { timeSlot } = await getAvailableTimeSlot(
         entry.doctor, 
         entry.appointmentDate, 
         entry.priorityLevel
@@ -638,14 +502,13 @@ const WaitingList = () => {
         return;
       }
       
-      // ✅ FIXED: Get proper queue number for the time slot
-      const queueNumber = await getQueueNumberForTimeSlot(
+      // ✅ FIXED: Waiting list patient gets LAST queue position
+      const queueNumber = await calculateNewQueueNumber(
         entry.doctor, 
-        entry.appointmentDate, 
-        timeSlot
+        entry.appointmentDate
       );
       
-      console.log(`🎯 Assigning queue number ${queueNumber} to ${entry.fullName} for time slot ${timeSlot}`);
+      console.log(`🎯 Assigning waiting list patient to LAST position: Queue #${queueNumber} at ${timeSlot}`);
       
       // Create appointment in BOTH collections
       const patientAppointmentsRef = collection(db, 'patient_appointments');
@@ -663,13 +526,12 @@ const WaitingList = () => {
         email: entry.email || '',
         priorityLevel: entry.priorityLevel,
         timeSlot: timeSlot,
-        queueNumber: queueNumber, // ✅ Now using proper queue number
-        status: 'pending', // CHANGED: Keep as pending instead of confirmed
+        queueNumber: queueNumber, // ✅ LAST position in queue
+        status: 'pending',
         createdAt: new Date().toISOString(),
         assignedFromWaitingList: true,
         autoAssigned: true,
-        originalWaitingListId: entry.id,
-        replacedAppointmentId: replacedAppointmentId || null // Track which appointment this replaced
+        originalWaitingListId: entry.id
       };
       
       // Use the same ID for both collections to maintain consistency
@@ -697,17 +559,17 @@ const WaitingList = () => {
       const waitingListRef = doc(db, 'waitingList', entry.id);
       await deleteDoc(waitingListRef);
       
-      toast.success(`✅ ${entry.fullName} has been automatically assigned to ${timeSlot} (Queue #${queueNumber})`, {
+      toast.success(`✅ ${entry.fullName} has been assigned to ${timeSlot} (Last in Queue: #${queueNumber})`, {
         autoClose: 5000,
         position: 'top-right'
       });
       
-      console.log('✅ Successfully auto-assigned patient to appointment with proper queue number');
+      console.log('✅ Successfully auto-assigned patient to last queue position');
     } catch (error) {
       console.error('❌ Error auto-assigning to appointment:', error);
       toast.error(`Failed to auto-assign ${entry.fullName}`);
     }
-  }, [getAvailableTimeSlot, getQueueNumberForTimeSlot, sendAssignmentEmail]);
+  }, [getAvailableTimeSlot, calculateNewQueueNumber, sendAssignmentEmail]);
 
   // Enhanced auto-assignment with better error handling and logging
   useEffect(() => {
@@ -748,8 +610,7 @@ const WaitingList = () => {
       clearTimeout(immediateCheck);
     };
   }, [waitingList, checkSlotAvailability, autoAssignToAppointment, lastUpdate]);
-
-  // UPDATED: Enhanced manual assignment with proper queue number assignment
+// FIXED: Manual assign waiting list patient to LAST queue position
   const handleManualAssign = async () => {
     if (!selectedEntry) return;
     
@@ -757,8 +618,8 @@ const WaitingList = () => {
     try {
       console.log('🔄 Manually assigning', selectedEntry.fullName, 'to appointment...');
       
-      // Get available time slot (now returns both timeSlot and replacedAppointmentId)
-      const { timeSlot, replacedAppointmentId } = await getAvailableTimeSlot(
+      // Get available time slot
+      const { timeSlot } = await getAvailableTimeSlot(
         selectedEntry.doctor, 
         selectedEntry.appointmentDate, 
         selectedEntry.priorityLevel
@@ -770,14 +631,13 @@ const WaitingList = () => {
         return;
       }
       
-      // ✅ FIXED: Get proper queue number for the time slot
-      const queueNumber = await getQueueNumberForTimeSlot(
+      // ✅ FIXED: Waiting list patient gets LAST queue position
+      const queueNumber = await calculateNewQueueNumber(
         selectedEntry.doctor, 
-        selectedEntry.appointmentDate, 
-        timeSlot
+        selectedEntry.appointmentDate
       );
       
-      console.log(`🎯 Assigning queue number ${queueNumber} to ${selectedEntry.fullName} for time slot ${timeSlot}`);
+      console.log(`🎯 Assigning waiting list patient to LAST position: Queue #${queueNumber} at ${timeSlot}`);
       
       // Create appointment in BOTH collections
       const patientAppointmentsRef = collection(db, 'patient_appointments');
@@ -795,14 +655,13 @@ const WaitingList = () => {
         email: selectedEntry.email || '',
         priorityLevel: selectedEntry.priorityLevel,
         timeSlot: timeSlot,
-        queueNumber: queueNumber, // ✅ Now using proper queue number
-        status: 'pending', // CHANGED: Keep as pending instead of confirmed
+        queueNumber: queueNumber, // ✅ LAST position in queue
+        status: 'pending',
         createdAt: new Date().toISOString(),
         assignedFromWaitingList: true,
         manuallyAssigned: true,
         assignedBy: 'Staff',
-        originalWaitingListId: selectedEntry.id,
-        replacedAppointmentId: replacedAppointmentId || null // Track which appointment this replaced
+        originalWaitingListId: selectedEntry.id
       };
       
       // Use the same ID for both collections
@@ -830,12 +689,12 @@ const WaitingList = () => {
       const waitingListRef = doc(db, 'waitingList', selectedEntry.id);
       await deleteDoc(waitingListRef);
       
-      toast.success(`✅ ${selectedEntry.fullName} has been assigned to ${timeSlot} (Queue #${queueNumber})`, {
+      toast.success(`✅ ${selectedEntry.fullName} has been assigned to ${timeSlot} (Last in Queue: #${queueNumber})`, {
         autoClose: 5000,
         position: 'top-right'
       });
       
-      console.log('✅ Successfully manually assigned patient to appointment with proper queue number');
+      console.log('✅ Successfully manually assigned patient to last queue position');
       
       setIsModalOpen(false);
       setSelectedEntry(null);
@@ -846,7 +705,6 @@ const WaitingList = () => {
       setIsProcessing(false);
     }
   };
-
   // NEW: Handle reschedule appointment
   const handleRescheduleAppointment = async (appointmentId: string, updatedData: { appointmentDate: string; timeSlot: string }) => {
     setIsProcessing(true);
@@ -1066,10 +924,10 @@ const WaitingList = () => {
           </div>
         </div>
 
-        {/* Debug Info - Mobile Responsive */}
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-xs sm:text-sm text-yellow-800">
-            <strong>Queue Assignment:</strong> Patients now inherit the queue number of cancelled appointments they replace.
+        {/* Info Banner - Mobile Responsive */}
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-xs sm:text-sm text-blue-800">
+            <strong>✅ Queue Assignment Logic:</strong> When an appointment is cancelled, subsequent appointments shift up automatically. Waiting list patients are assigned to the LAST position in the queue.
           </p>
         </div>
 
@@ -1238,9 +1096,9 @@ const WaitingList = () => {
                 </p>
               </div>
 
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4">
+             <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4">
                 <p className="text-xs sm:text-sm text-green-800">
-                  <strong>🎯 Queue Assignment:</strong> Patient will inherit the queue number of the cancelled appointment they replace.
+                  <strong>🎯 Queue Assignment:</strong> Patient will be assigned to the LAST position in the queue. Existing appointments will shift up if a slot was cancelled.
                 </p>
               </div>
 

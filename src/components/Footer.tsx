@@ -28,7 +28,7 @@ const Footer = () => {
           
           {/* Copyright Text - Reverted to original boldness */}
           <p className="text-white/90 text-sm">
-            TimeFly - Clinic Scheduling and Queue Management<br />
+            TimeFly - Cliniqueue Scheduling and Queue Management<br />
             © 2025 TimeFly. All rights reserved.
           </p>
         </div>

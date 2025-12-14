@@ -686,8 +686,8 @@ const StaffAppointments = () => {
         </div>
      {/* Desktop Table View (for md screens and up) */}
     <div className="hidden md:block bg-white rounded-lg shadow-sm sm:shadow-md overflow-hidden">
-      <div>
-        <div className="min-w-full">
+      <div className="overflow-x-auto">
+        <div className="min-w-full inline-block align-middle">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
