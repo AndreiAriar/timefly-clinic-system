@@ -740,29 +740,30 @@ const CalendarTab = () => {
           </div>
         )}
       </div>
-
-      {/* Doctor Selector Modal */}
+{/* Doctor Selector Modal - MOBILE RESPONSIVE */}
       {showDoctorSelector && selectedDate && (
-        <div className="fixed inset-0 bg-white bg-opacity-60 backdrop-blur-sm flex items-center justify-center p-4 z-40">
-          <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full border border-gray-200">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-500 to-purple-600">
-              <div>
-                <h2 className="text-xl font-bold text-white">Select Doctor</h2>
-                <p className="text-sm text-indigo-100 mt-1">
+        <div className="fixed inset-0 bg-white bg-opacity-60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-40 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl border border-gray-200 my-4 mx-2 sm:mx-4 max-h-[95vh] flex flex-col">
+            {/* Header - Fixed */}
+            <div className="flex items-start sm:items-center justify-between p-3 sm:p-4 md:p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-t-lg flex-shrink-0">
+              <div className="flex-1 min-w-0 pr-2">
+                <h2 className="text-base sm:text-lg md:text-xl font-bold text-white">Select Doctor</h2>
+                <p className="text-xs sm:text-sm text-indigo-100 mt-1 line-clamp-2">
                   Choose a doctor to manage availability for {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </p>
               </div>
               <button
                 onClick={handleCloseDoctorSelector}
-                className="p-1 sm:p-2 rounded-lg text-white flex-shrink-0 ml-2"
+                className="p-1.5 sm:p-2 rounded-lg text-white hover:bg-white/20 transition flex-shrink-0"
                 aria-label="Close modal"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
             
-            <div className="p-6 max-h-[60vh] overflow-y-auto">
-              <div className="grid gap-4">
+            {/* Content - Scrollable */}
+            <div className="p-3 sm:p-4 md:p-6 overflow-y-auto flex-1">
+              <div className="grid gap-3 sm:gap-4">
                 {doctors.filter(d => d.isActive).map((doctor) => {
                   // Show doctor-specific info for selected date
                   const unavailableDates = doctor.unavailableDates || {};
@@ -776,50 +777,60 @@ const CalendarTab = () => {
                     <button
                       key={doctor.id}
                       onClick={() => handleDoctorSelect(doctor)}
-                      className={`flex items-center gap-4 p-4 border-2 rounded-lg text-left w-full ${
+                      className={`flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 border-2 rounded-lg text-left w-full transition-all active:scale-[0.98] ${
                         isUnavailable 
                           ? 'border-red-200 bg-red-50 hover:border-red-300' 
                           : 'border-gray-200 hover:border-indigo-500 hover:bg-indigo-50'
                       }`}
                     >
-                      {doctor.photo ? (
-                        <img
-                          src={doctor.photo}
-                          alt={`Dr. ${doctor.name}`}
-                          className="w-16 h-16 rounded-full object-cover border-2 border-indigo-200"
-                        />
-                      ) : (
-                        <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center border-2 border-indigo-200">
-                          <User className="w-8 h-8 text-indigo-600" />
+                      {/* Doctor Photo - Centered on mobile */}
+                      <div className="flex-shrink-0 mx-auto sm:mx-0">
+                        {doctor.photo ? (
+                          <img
+                            src={doctor.photo}
+                            alt={`Dr. ${doctor.name}`}
+                            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-indigo-200"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-indigo-100 flex items-center justify-center border-2 border-indigo-200">
+                            <User className="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600" />
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Doctor Info - Full width with proper overflow handling */}
+                      <div className="flex-1 min-w-0 w-full text-center sm:text-left">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-900 break-words">Dr. {doctor.name}</h3>
+                        <p className="text-sm text-gray-600 break-words">{doctor.specialty}</p>
+                        
+                        {/* Contact Info - Stack vertically for better readability */}
+                        <div className="flex flex-col gap-1 mt-2 w-full">
+                          <span className="text-xs text-gray-500 break-all leading-tight">{doctor.email}</span>
+                          <span className="text-xs text-gray-500 break-words">{doctor.phone}</span>
                         </div>
-                      )}
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-gray-900">Dr. {doctor.name}</h3>
-                        <p className="text-sm text-gray-600">{doctor.specialty}</p>
-                        <div className="flex items-center gap-4 mt-1">
-                          <span className="text-xs text-gray-500">{doctor.email}</span>
-                          <span className="text-xs text-gray-500">{doctor.phone}</span>
-                        </div>
-                        {/* Status for selected date */}
-                        <div className="mt-2">
+                        
+                        {/* Status Badge */}
+                        <div className="mt-2 flex justify-center sm:justify-start">
                           {isUnavailable ? (
-                            <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">
+                            <span className="inline-block text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium whitespace-nowrap">
                               Unavailable on this date
                             </span>
                           ) : (
-                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                            <span className="inline-block text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium whitespace-nowrap">
                               {availableSlots} slots available
                             </span>
                           )}
                         </div>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                      
+                      {/* Arrow - Hidden on mobile, shown on desktop */}
+                      <ChevronRight className="hidden sm:block w-5 h-5 text-gray-400 flex-shrink-0" />
                     </button>
                   );
                 })}
                 
                 {doctors.filter(d => d.isActive).length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-gray-500 text-sm">
                     No active doctors found. Please activate doctors first.
                   </div>
                 )}

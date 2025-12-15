@@ -381,54 +381,51 @@ const ManageDoctorAvailability = ({ date, doctor, onClose, onUpdate, onBackToDoc
             </div>
           </div>
         </div>
-
-        {/* Footer - UPDATED WITH VERTICAL STACKING */}
-        <div className="p-3 sm:p-4 md:p-6 border-t border-gray-200 bg-gray-50 sticky bottom-0 rounded-b-lg">
-          {/* Mobile: Stack all vertically, Desktop: 2 rows */}
-          <div className="space-y-2 sm:space-y-3">
-            {/* Row 1: Save and Cancel - side by side on desktop, stacked on mobile */}
-            <div className="flex flex-col min-[480px]:flex-row gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={isLoading}
-                className="w-full px-4 py-3 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition-all font-medium flex items-center justify-center gap-2 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm hover:shadow-md"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white flex-shrink-0"></div>
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                    <span>Save Changes</span>
-                  </>
-                )}
-              </button>
-              
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full px-4 py-3 text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-lg transition-all font-medium text-sm sm:text-base active:scale-[0.98]"
-                disabled={isLoading}
-              >
-                Cancel
-              </button>
-            </div>
-            
-            {/* Row 2: Back to Doctors - always full width */}
-            <button
-              type="button"
-              onClick={onBackToDoctors}
-              className="w-full px-4 py-3 text-indigo-600 bg-indigo-50 border-2 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 rounded-lg transition-all font-medium flex items-center justify-center gap-2 text-sm sm:text-base active:scale-[0.98]"
-              disabled={isLoading}
-            >
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span>Back to Doctors</span>
-            </button>
-          </div>
+      {/* Footer - Responsive Button Layout */}
+      <div className="p-3 sm:p-4 md:p-6 border-t border-gray-200 bg-gray-50 sticky bottom-0 rounded-b-lg">
+        <div className="flex flex-col gap-2 sm:gap-3">
+          {/* Save Changes Button - Always full width on mobile */}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isLoading}
+            className="w-full px-3 sm:px-4 py-3 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition-all font-medium flex items-center justify-center gap-2 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm hover:shadow-md"
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white flex-shrink-0"></div>
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                <span>Save Changes</span>
+              </>
+            )}
+          </button>
+          
+          {/* Cancel Button - Always full width on mobile */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full px-3 sm:px-4 py-3 text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-lg transition-all font-medium text-sm sm:text-base active:scale-[0.98]"
+            disabled={isLoading}
+          >
+            Cancel
+          </button>
+          
+          {/* Back to Doctors button - Always full width */}
+          <button
+            type="button"
+            onClick={onBackToDoctors}
+            className="w-full px-3 sm:px-4 py-3 text-indigo-600 bg-indigo-50 border-2 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 rounded-lg transition-all font-medium flex items-center justify-center gap-2 text-sm sm:text-base active:scale-[0.98]"
+            disabled={isLoading}
+          >
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+            <span>Back to Doctors</span>
+          </button>
         </div>
+      </div>
       </div>
     </div>
   );

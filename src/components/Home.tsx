@@ -112,7 +112,7 @@ const Home = () => {
             Welcome to <span className="text-white drop-shadow-none">TimeFly</span>
           </h1>
           <p className="text-xl sm:text-3xl text-white mb-12 max-w-3xl mx-auto leading-relaxed drop-shadow-md">
-            Manage your eye care appointments and checkups with real-time queue updates.
+           Cliniqueue Scheduling and Queueing Management
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 

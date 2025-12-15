@@ -334,38 +334,77 @@ const WaitingList = () => {
       return 1; // Fallback to position 1
     }
   }, []);
-
-// FIXED: Find any available time slot (waiting list patient goes to last position regardless)
-  const getAvailableTimeSlot = useCallback(async (
-    doctorName: string, 
-    appointmentDate: string, 
-    priorityLevel: string
-  ): Promise<{ timeSlot: string | null }> => {
-    try {
-      console.log(`🕐 Finding available time slot for ${doctorName} on ${appointmentDate}, priority: ${priorityLevel}`);
+// FIXED: Find time slot AFTER the last scheduled appointment
+const getAvailableTimeSlot = useCallback(async (
+  doctorName: string, 
+  appointmentDate: string, 
+  priorityLevel: string
+): Promise<{ timeSlot: string | null }> => {
+  try {
+    console.log(`🕒 Finding time slot AFTER last appointment for ${doctorName} on ${appointmentDate}, priority: ${priorityLevel}`);
+    
+    const [bookedSlots, unavailableTimeSlots] = await Promise.all([
+      getBookedSlots(doctorName, appointmentDate),
+      getUnavailableTimeSlots(doctorName, appointmentDate)
+    ]);
+    
+    const timeSlots = generateTimeSlots(priorityLevel);
+    
+    // Convert booked slots from Set to Array and sort them
+    const bookedSlotsArray = Array.from(bookedSlots).sort((a, b) => {
+      const [aHour, aMin] = a.split(':').map(Number);
+      const [bHour, bMin] = b.split(':').map(Number);
+      return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+    });
+    
+    // Get the last booked time slot
+    const lastBookedSlot = bookedSlotsArray.length > 0 ? bookedSlotsArray[bookedSlotsArray.length - 1] : null;
+    
+    console.log('📋 Booked slots (sorted):', bookedSlotsArray);
+    console.log('🎯 Last booked slot:', lastBookedSlot);
+    
+    // Find the first available slot AFTER the last booked slot
+    let foundSlotAfterLast = false;
+    
+    for (const slot of timeSlots) {
+      // Skip until we find a slot after the last booked slot
+      if (lastBookedSlot && !foundSlotAfterLast) {
+        const [slotHour, slotMin] = slot.split(':').map(Number);
+        const [lastHour, lastMin] = lastBookedSlot.split(':').map(Number);
+        const slotMinutes = slotHour * 60 + slotMin;
+        const lastMinutes = lastHour * 60 + lastMin;
+        
+        if (slotMinutes <= lastMinutes) {
+          continue; // Skip slots before or equal to the last booked slot
+        }
+        foundSlotAfterLast = true;
+      }
       
-      const [bookedSlots, unavailableTimeSlots] = await Promise.all([
-        getBookedSlots(doctorName, appointmentDate),
-        getUnavailableTimeSlots(doctorName, appointmentDate)
-      ]);
-      
-      const timeSlots = generateTimeSlots(priorityLevel);
-      
-      // Find first available slot (waiting list patient will be assigned to LAST queue position)
+      // Check if slot is available
+      if (!bookedSlots.has(slot) && !unavailableTimeSlots.includes(slot)) {
+        console.log('✅ Found available time slot AFTER last appointment:', slot);
+        return { timeSlot: slot };
+      }
+    }
+    
+    // If no slots after the last booked slot, fall back to first available
+    if (!foundSlotAfterLast) {
+      console.log('⚠️ No slots after last booking, finding first available slot');
       for (const slot of timeSlots) {
         if (!bookedSlots.has(slot) && !unavailableTimeSlots.includes(slot)) {
-          console.log('✅ Found available time slot:', slot);
+          console.log('✅ Found first available time slot:', slot);
           return { timeSlot: slot };
         }
       }
-      
-      console.log('❌ No available time slots found');
-      return { timeSlot: null };
-    } catch (error) {
-      console.error('❌ Error getting available time slot:', error);
-      return { timeSlot: null };
     }
-  }, [getBookedSlots, getUnavailableTimeSlots, generateTimeSlots]);
+    
+    console.log('❌ No available time slots found');
+    return { timeSlot: null };
+  } catch (error) {
+    console.error('❌ Error getting available time slot:', error);
+    return { timeSlot: null };
+  }
+}, [getBookedSlots, getUnavailableTimeSlots, generateTimeSlots]);
 
   const sendAssignmentEmail = useCallback(async (patientEmail: string, patientName: string, doctor: string, 
                                    appointmentDate: string, timeSlot: string, queueNumber: number) => {
@@ -485,91 +524,97 @@ const WaitingList = () => {
       console.error('❌ Error sending waiting list reschedule email:', error);
     }
   }, []);
- // FIXED: Auto-assign waiting list patient to LAST queue position
-  const autoAssignToAppointment = useCallback(async (entry: WaitingListEntry) => {
-    try {
-      console.log('🔄 Auto-assigning', entry.fullName, 'to appointment...');
-      
-      // Get available time slot
-      const { timeSlot } = await getAvailableTimeSlot(
-        entry.doctor, 
-        entry.appointmentDate, 
-        entry.priorityLevel
-      );
-      
-      if (!timeSlot) {
-        console.log('❌ No available time slot found for auto-assignment');
-        return;
-      }
-      
-      // ✅ FIXED: Waiting list patient gets LAST queue position
-      const queueNumber = await calculateNewQueueNumber(
-        entry.doctor, 
-        entry.appointmentDate
-      );
-      
-      console.log(`🎯 Assigning waiting list patient to LAST position: Queue #${queueNumber} at ${timeSlot}`);
-      
-      // Create appointment in BOTH collections
-      const patientAppointmentsRef = collection(db, 'patient_appointments');
-      const staffAppointmentsRef = collection(db, 'staff_appointments');
-      
-      const appointmentData = {
-        fullName: entry.fullName,
-        age: entry.age,
-        photo: entry.photo,
-        doctor: entry.doctor,
-        appointmentDate: entry.appointmentDate,
-        gender: entry.gender,
-        medicalCondition: entry.medicalCondition,
-        phone: entry.phone,
-        email: entry.email || '',
-        priorityLevel: entry.priorityLevel,
-        timeSlot: timeSlot,
-        queueNumber: queueNumber, // ✅ LAST position in queue
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        assignedFromWaitingList: true,
-        autoAssigned: true,
-        originalWaitingListId: entry.id
-      };
-      
-      // Use the same ID for both collections to maintain consistency
-      const appointmentId = doc(patientAppointmentsRef).id;
-      
-      const batch = writeBatch(db);
-      batch.set(doc(patientAppointmentsRef, appointmentId), appointmentData);
-      batch.set(doc(staffAppointmentsRef, appointmentId), appointmentData);
-      
-      await batch.commit();
-      
-      // Send email notification if email is available
-      if (entry.email) {
-        await sendAssignmentEmail(
-          entry.email,
-          entry.fullName,
-          entry.doctor,
-          entry.appointmentDate,
-          timeSlot,
-          queueNumber
-        );
-      }
-      
-      // Remove from waiting list
-      const waitingListRef = doc(db, 'waitingList', entry.id);
-      await deleteDoc(waitingListRef);
-      
-      toast.success(`✅ ${entry.fullName} has been assigned to ${timeSlot} (Last in Queue: #${queueNumber})`, {
-        autoClose: 5000,
-        position: 'top-right'
-      });
-      
-      console.log('✅ Successfully auto-assigned patient to last queue position');
-    } catch (error) {
-      console.error('❌ Error auto-assigning to appointment:', error);
-      toast.error(`Failed to auto-assign ${entry.fullName}`);
+  
+// FIXED: Auto-assign waiting list patient to LAST queue position with time AFTER last patient
+const autoAssignToAppointment = useCallback(async (entry: WaitingListEntry) => {
+  try {
+    console.log('🔄 Auto-assigning', entry.fullName, 'to appointment...');
+    
+    // ✅ FIXED: Get time slot AFTER the last scheduled appointment
+    const { timeSlot } = await getAvailableTimeSlot(
+      entry.doctor, 
+      entry.appointmentDate, 
+      entry.priorityLevel
+    );
+    
+    if (!timeSlot) {
+      console.log('❌ No available time slot found for auto-assignment');
+      return;
     }
-  }, [getAvailableTimeSlot, calculateNewQueueNumber, sendAssignmentEmail]);
+    
+    // ✅ FIXED: Waiting list patient gets LAST queue position
+    const queueNumber = await calculateNewQueueNumber(
+      entry.doctor, 
+      entry.appointmentDate
+    );
+    
+    console.log(`🎯 Assigning waiting list patient to:
+      - Queue Position: #${queueNumber} (LAST in queue)
+      - Time Slot: ${timeSlot} (AFTER last scheduled patient)
+      - Doctor: ${entry.doctor}
+      - Date: ${entry.appointmentDate}
+    `);
+    
+    // Create appointment in BOTH collections
+    const patientAppointmentsRef = collection(db, 'patient_appointments');
+    const staffAppointmentsRef = collection(db, 'staff_appointments');
+    
+    const appointmentData = {
+      fullName: entry.fullName,
+      age: entry.age,
+      photo: entry.photo,
+      doctor: entry.doctor,
+      appointmentDate: entry.appointmentDate,
+      gender: entry.gender,
+      medicalCondition: entry.medicalCondition,
+      phone: entry.phone,
+      email: entry.email || '',
+      priorityLevel: entry.priorityLevel,
+      timeSlot: timeSlot,
+      queueNumber: queueNumber, // ✅ LAST position in queue
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      assignedFromWaitingList: true,
+      autoAssigned: true,
+      originalWaitingListId: entry.id
+    };
+    
+    // Use the same ID for both collections to maintain consistency
+    const appointmentId = doc(patientAppointmentsRef).id;
+    
+    const batch = writeBatch(db);
+    batch.set(doc(patientAppointmentsRef, appointmentId), appointmentData);
+    batch.set(doc(staffAppointmentsRef, appointmentId), appointmentData);
+    
+    await batch.commit();
+    
+    // Send email notification if email is available
+    if (entry.email) {
+      await sendAssignmentEmail(
+        entry.email,
+        entry.fullName,
+        entry.doctor,
+        entry.appointmentDate,
+        timeSlot,
+        queueNumber
+      );
+    }
+    
+    // Remove from waiting list
+    const waitingListRef = doc(db, 'waitingList', entry.id);
+    await deleteDoc(waitingListRef);
+    
+    toast.success(`✅ ${entry.fullName} has been assigned to ${timeSlot} (Last in Queue: #${queueNumber})`, {
+      autoClose: 5000,
+      position: 'top-right'
+    });
+    
+    console.log('✅ Successfully auto-assigned patient to last queue position');
+  } catch (error) {
+    console.error('❌ Error auto-assigning to appointment:', error);
+    toast.error(`Failed to auto-assign ${entry.fullName}`);
+  }
+}, [getAvailableTimeSlot, calculateNewQueueNumber, sendAssignmentEmail]);
 
   // Enhanced auto-assignment with better error handling and logging
   useEffect(() => {
@@ -610,101 +655,107 @@ const WaitingList = () => {
       clearTimeout(immediateCheck);
     };
   }, [waitingList, checkSlotAvailability, autoAssignToAppointment, lastUpdate]);
-// FIXED: Manual assign waiting list patient to LAST queue position
-  const handleManualAssign = async () => {
-    if (!selectedEntry) return;
-    
-    setIsProcessing(true);
-    try {
-      console.log('🔄 Manually assigning', selectedEntry.fullName, 'to appointment...');
-      
-      // Get available time slot
-      const { timeSlot } = await getAvailableTimeSlot(
-        selectedEntry.doctor, 
-        selectedEntry.appointmentDate, 
-        selectedEntry.priorityLevel
-      );
-      
-      if (!timeSlot) {
-        toast.error('❌ No available time slots found for this doctor and date');
-        setIsProcessing(false);
-        return;
-      }
-      
-      // ✅ FIXED: Waiting list patient gets LAST queue position
-      const queueNumber = await calculateNewQueueNumber(
-        selectedEntry.doctor, 
-        selectedEntry.appointmentDate
-      );
-      
-      console.log(`🎯 Assigning waiting list patient to LAST position: Queue #${queueNumber} at ${timeSlot}`);
-      
-      // Create appointment in BOTH collections
-      const patientAppointmentsRef = collection(db, 'patient_appointments');
-      const staffAppointmentsRef = collection(db, 'staff_appointments');
-      
-      const appointmentData = {
-        fullName: selectedEntry.fullName,
-        age: selectedEntry.age,
-        photo: selectedEntry.photo,
-        doctor: selectedEntry.doctor,
-        appointmentDate: selectedEntry.appointmentDate,
-        gender: selectedEntry.gender,
-        medicalCondition: selectedEntry.medicalCondition,
-        phone: selectedEntry.phone,
-        email: selectedEntry.email || '',
-        priorityLevel: selectedEntry.priorityLevel,
-        timeSlot: timeSlot,
-        queueNumber: queueNumber, // ✅ LAST position in queue
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        assignedFromWaitingList: true,
-        manuallyAssigned: true,
-        assignedBy: 'Staff',
-        originalWaitingListId: selectedEntry.id
+ 
+  // FIXED: Manual assign waiting list patient to LAST queue position with time AFTER last patient
+      const handleManualAssign = async () => {
+        if (!selectedEntry) return;
+        
+        setIsProcessing(true);
+        try {
+          console.log('🔄 Manually assigning', selectedEntry.fullName, 'to appointment...');
+          
+          // ✅ FIXED: Get time slot AFTER the last scheduled appointment
+          const { timeSlot } = await getAvailableTimeSlot(
+            selectedEntry.doctor, 
+            selectedEntry.appointmentDate, 
+            selectedEntry.priorityLevel
+          );
+          
+          if (!timeSlot) {
+            toast.error('❌ No available time slots found for this doctor and date');
+            setIsProcessing(false);
+            return;
+          }
+          
+          // ✅ FIXED: Waiting list patient gets LAST queue position
+          const queueNumber = await calculateNewQueueNumber(
+            selectedEntry.doctor, 
+            selectedEntry.appointmentDate
+          );
+          
+          console.log(`🎯 Manually assigning waiting list patient to:
+            - Queue Position: #${queueNumber} (LAST in queue)
+            - Time Slot: ${timeSlot} (AFTER last scheduled patient)
+            - Doctor: ${selectedEntry.doctor}
+            - Date: ${selectedEntry.appointmentDate}
+          `);
+          
+          // Create appointment in BOTH collections
+          const patientAppointmentsRef = collection(db, 'patient_appointments');
+          const staffAppointmentsRef = collection(db, 'staff_appointments');
+          
+          const appointmentData = {
+            fullName: selectedEntry.fullName,
+            age: selectedEntry.age,
+            photo: selectedEntry.photo,
+            doctor: selectedEntry.doctor,
+            appointmentDate: selectedEntry.appointmentDate,
+            gender: selectedEntry.gender,
+            medicalCondition: selectedEntry.medicalCondition,
+            phone: selectedEntry.phone,
+            email: selectedEntry.email || '',
+            priorityLevel: selectedEntry.priorityLevel,
+            timeSlot: timeSlot,
+            queueNumber: queueNumber, // ✅ LAST position in queue
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            assignedFromWaitingList: true,
+            manuallyAssigned: true,
+            assignedBy: 'Staff',
+            originalWaitingListId: selectedEntry.id
+          };
+          
+          // Use the same ID for both collections
+          const appointmentId = doc(patientAppointmentsRef).id;
+          
+          const batch = writeBatch(db);
+          batch.set(doc(patientAppointmentsRef, appointmentId), appointmentData);
+          batch.set(doc(staffAppointmentsRef, appointmentId), appointmentData);
+          
+          await batch.commit();
+          
+          // Send email notification if email is available
+          if (selectedEntry.email) {
+            await sendAssignmentEmail(
+              selectedEntry.email,
+              selectedEntry.fullName,
+              selectedEntry.doctor,
+              selectedEntry.appointmentDate,
+              timeSlot,
+              queueNumber
+            );
+          }
+          
+          // Remove from waiting list
+          const waitingListRef = doc(db, 'waitingList', selectedEntry.id);
+          await deleteDoc(waitingListRef);
+          
+          toast.success(`✅ ${selectedEntry.fullName} has been assigned to ${timeSlot} (Last in Queue: #${queueNumber})`, {
+            autoClose: 5000,
+            position: 'top-right'
+          });
+          
+          console.log('✅ Successfully manually assigned patient to last queue position');
+          
+          setIsModalOpen(false);
+          setSelectedEntry(null);
+        } catch (error) {
+          console.error('❌ Error manually assigning:', error);
+          toast.error('Failed to assign patient: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        } finally {
+          setIsProcessing(false);
+        }
       };
-      
-      // Use the same ID for both collections
-      const appointmentId = doc(patientAppointmentsRef).id;
-      
-      const batch = writeBatch(db);
-      batch.set(doc(patientAppointmentsRef, appointmentId), appointmentData);
-      batch.set(doc(staffAppointmentsRef, appointmentId), appointmentData);
-      
-      await batch.commit();
-      
-      // Send email notification if email is available
-      if (selectedEntry.email) {
-        await sendAssignmentEmail(
-          selectedEntry.email,
-          selectedEntry.fullName,
-          selectedEntry.doctor,
-          selectedEntry.appointmentDate,
-          timeSlot,
-          queueNumber
-        );
-      }
-      
-      // Remove from waiting list
-      const waitingListRef = doc(db, 'waitingList', selectedEntry.id);
-      await deleteDoc(waitingListRef);
-      
-      toast.success(`✅ ${selectedEntry.fullName} has been assigned to ${timeSlot} (Last in Queue: #${queueNumber})`, {
-        autoClose: 5000,
-        position: 'top-right'
-      });
-      
-      console.log('✅ Successfully manually assigned patient to last queue position');
-      
-      setIsModalOpen(false);
-      setSelectedEntry(null);
-    } catch (error) {
-      console.error('❌ Error manually assigning:', error);
-      toast.error('Failed to assign patient: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    } finally {
-      setIsProcessing(false);
-    }
-  };
   // NEW: Handle reschedule appointment
   const handleRescheduleAppointment = async (appointmentId: string, updatedData: { appointmentDate: string; timeSlot: string }) => {
     setIsProcessing(true);
@@ -927,7 +978,7 @@ const WaitingList = () => {
         {/* Info Banner - Mobile Responsive */}
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-xs sm:text-sm text-blue-800">
-            <strong>✅ Queue Assignment Logic:</strong> When an appointment is cancelled, subsequent appointments shift up automatically. Waiting list patients are assigned to the LAST position in the queue.
+            <strong>Queue Assignment Logic:</strong> When an appointment is cancelled, subsequent appointments shift up automatically. Waiting list patients are assigned to the LAST position in the queue.
           </p>
         </div>
 
