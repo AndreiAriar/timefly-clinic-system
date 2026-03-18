@@ -251,11 +251,11 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
               className="flex items-center space-x-2 hover:opacity-80 transition"
             >
               <img 
-                src="/timefly_logo.png" 
-                alt="TimeFly Logo" 
+                src="/cliniqueue.jpg" 
+                alt="CliniQueue Logo" 
                 className="h-12 w-auto"
               />
-              <span className="text-2xl font-bold text-blue-500">TimeFly</span>
+              <span className="text-2xl font-bold text-indigo-600">CliniQueue</span>
             </button>
             <div className="hidden md:flex items-center space-x-8">
               <button
@@ -662,18 +662,18 @@ const Dashboard = ({ userEmail, userName, userPhoto, onLogout }: DashboardProps)
             <div className="flex flex-col items-center mb-4">
               <div className="flex items-center justify-center space-x-3 mb-2">
                 <img 
-                  src="/timefly_logo.png" 
-                  alt="TimeFly Logo" 
+                  src="/cliniqueue.jpg" 
+                  alt="CliniQuue Logo" 
                   className="h-8 w-auto brightness-0 invert"
                 />
-                <span className="text-xl font-bold text-white">TimeFly</span>
+                <span className="text-xl font-bold text-white">CliniQueue</span>
               </div>
               <p className="text-gray-400 text-sm text-center">
                 Clinic Scheduling and Queue Management
               </p>
             </div>
             <p className="text-gray-400 text-sm">
-              ©2025 TimeFly. All rights reserved.
+              ©2025 CliniQueue. All rights reserved.
             </p>
           </div>
         </div>

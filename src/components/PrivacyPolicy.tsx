@@ -35,11 +35,11 @@ const PrivacyPolicy = () => {
           <div className="flex items-center justify-center flex-1">
             <div className="flex items-center space-x-3">
               <img 
-                src="/timefly_logo.png" 
-                alt="TimeFly Logo" 
+                src="/cliniqueue.jpg" 
+                alt="CliniQueue Logo" 
                 className="h-10 w-10"
               />
-              <h1 className="text-3xl font-bold text-blue-600">TimeFly</h1>
+              <h1 className="text-3xl font-bold text-indigo-600">CliniQueue</h1>
             </div>
           </div>
           

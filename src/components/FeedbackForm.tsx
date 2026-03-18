@@ -217,13 +217,13 @@ const FeedbackForm = ({ onBack, currentUserName, currentUserPhoto, currentUserEm
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
               <img 
-                src="/timefly_logo.png" 
-                alt="TimeFly Clinic" 
+                src="/cliniqueue.jpg" 
+                alt="CliniQueue" 
                 className="h-16 w-auto"
               />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Share Your Feedback</h1>
-            <p className="text-gray-600">Help us improve TimeFly Clinic services</p>
+            <p className="text-gray-600">Help us improve CliniQueue clinic services</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">

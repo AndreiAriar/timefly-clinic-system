@@ -244,11 +244,11 @@ const DoctorHeader = ({
               className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
             >
               <img 
-                src="/timefly_logo.png" 
-                alt="TimeFly" 
+                src="/cliniqueue.jpg" 
+                alt="CliniQueue" 
                 className="h-10 w-auto filter brightness-0 invert"
               />
-              <span className="text-xl font-bold text-white">TimeFly</span>
+              <span className="text-xl font-bold text-white">CliniQueue</span>
             </button>
 
             {/* Desktop Navigation Links */}

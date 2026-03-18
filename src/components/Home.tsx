@@ -109,10 +109,10 @@ const Home = () => {
         <div className="absolute inset-0 bg-black/20"></div>
         <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto py-20">
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight drop-shadow-lg">
-            Welcome to <span className="text-white drop-shadow-none">TimeFly</span>
+            Welcome to <span className="text-white drop-shadow-none">CliniQueue</span>
           </h1>
           <p className="text-xl sm:text-3xl text-white mb-12 max-w-3xl mx-auto leading-relaxed drop-shadow-md">
-           Cliniqueue Scheduling and Queueing Management
+           Clinic Scheduling and Queueing Management
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
@@ -194,7 +194,7 @@ const Home = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
-              Why Choose TimeFly?
+              Why Choose CliniQueue?
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
               Experience seamless healthcare management with our innovative features

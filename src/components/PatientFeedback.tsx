@@ -87,7 +87,7 @@ const PatientFeedback = ({ currentUserName, currentUserPhoto, currentUserEmail }
           <div className="flex-1 text-center md:text-left">
             <h1 className="text-5xl font-bold text-gray-900 mb-6">We Value Your Feedback</h1>
             <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-              Your experience helps us improve our healthcare services. Please take a moment to share your thoughts and help us make TimeFly even better for everyone.
+              Your experience helps us improve our healthcare services. Please take a moment to share your thoughts and help us make CliniQueue even better for everyone.
             </p>
             <button
               onClick={handleShareFeedback}

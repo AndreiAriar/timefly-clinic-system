@@ -12,7 +12,7 @@ const AboutUs = () => {
           <div className="relative">
             <img
               src="/about-image.png"
-              alt="About TimeFly"
+              alt="About Cliniqueue"
               className="rounded-2xl shadow-2xl w-full h-auto"
             />
             <div className="absolute -bottom-6 -right-6 bg-indigo-600 text-white p-6 rounded-lg shadow-xl">
@@ -25,7 +25,7 @@ const AboutUs = () => {
               Your Vision, Our Priority
             </h3>
             <p className="text-gray-600 leading-relaxed">
-              TimeFly is a revolutionary healthcare platform designed to streamline eye care appointments 
+              CliniQueue is a revolutionary healthcare platform designed to streamline eye care appointments 
               and provide real-time queue updates. We understand that your time is valuable, which is why 
               we've created a system that keeps you informed every step of the way.
             </p>

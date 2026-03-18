@@ -18,18 +18,18 @@ const Footer = () => {
               className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
             >
               <img 
-                src="/timefly_logo.png" 
-                alt="TimeFly" 
+                src="/cliniqueue.jpg" 
+                alt="CliniQueue" 
                 className="h-8 w-auto filter brightness-0 invert"
               />
-              <span className="text-lg font-bold text-white">TimeFly</span>
+              <span className="text-lg font-bold text-white">CliniQueue</span>
             </button>
           </div>
           
           {/* Copyright Text - Reverted to original boldness */}
           <p className="text-white/90 text-sm">
-            TimeFly - Cliniqueue Scheduling and Queue Management<br />
-            © 2025 TimeFly. All rights reserved.
+            CliniQueue - Clinic Scheduling and Queue Management<br />
+            © 2025 CliniQueue. All rights reserved.
           </p>
         </div>
       </div>

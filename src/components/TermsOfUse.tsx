@@ -35,11 +35,11 @@ const TermsOfUse = () => {
           <div className="flex items-center justify-center flex-1">
             <div className="flex items-center space-x-3">
               <img 
-                src="/timefly_logo.png" 
-                alt="TimeFly Logo" 
+                src="/cliniqueue.jpg" 
+                alt="CliniQueue Logo" 
                 className="h-10 w-10"
               />
-              <h1 className="text-3xl font-bold text-blue-500">TimeFly</h1>
+              <h1 className="text-3xl font-bold text-indigo-600">CliniQueue</h1>
             </div>
           </div>
           
@@ -52,17 +52,17 @@ const TermsOfUse = () => {
           
           <div className="prose prose-lg max-w-none">
             <p className="text-lg text-gray-700 mb-6">
-              Welcome to TimeFly. By using our services, you agree to these terms and conditions.
+              Welcome to CliniQueue. By using our services, you agree to these terms and conditions.
             </p>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">Acceptance of Terms</h2>
             <p className="text-gray-700 mb-4">
-              By accessing and using TimeFly, you accept and agree to be bound by the terms and provision of this agreement.
+              By accessing and using CliniQueue, you accept and agree to be bound by the terms and provision of this agreement.
             </p>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">Use License</h2>
             <p className="text-gray-700 mb-4">
-              Permission is granted to temporarily use TimeFly's services for personal, non-commercial transitory viewing only.
+              Permission is granted to temporarily use CliniQueue's services for personal, non-commercial transitory viewing only.
             </p>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">User Account</h2>
@@ -74,12 +74,12 @@ const TermsOfUse = () => {
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">Medical Disclaimer</h2>
             <p className="text-gray-700 mb-4">
-            TimeFly provides health information for general wellness purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment from a qualified healthcare provider.
+            CliniQueue provides health information for general wellness purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment from a qualified healthcare provider.
             </p>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">Limitations</h2>
             <p className="text-gray-700 mb-4">
-              In no event shall TimeFly or its suppliers be liable for any damages arising out of the use or inability to use our services.
+              In no event shall CliniQueue or its suppliers be liable for any damages arising out of the use or inability to use our services.
             </p>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">Governing Law</h2>

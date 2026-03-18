@@ -199,14 +199,14 @@ const navItems = [
         <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
             <img 
-              src="/timefly_logo.png" 
-              alt="TimeFly Logo" 
+              src="/cliniqueue.jpg" 
+              alt="CliniQueue Logo" 
               className="h-8 w-auto flex-shrink-0"
             />
             <span className={`text-xl font-bold text-blue-600 transition-all duration-300 truncate ${
               isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
             }`}>
-              TimeFly
+              CliniQueue
             </span>
           </div>
           <button
@@ -311,11 +311,11 @@ const navItems = [
               className="flex items-center space-x-2"
             >
               <img 
-                src="/timefly_logo.png" 
-                alt="TimeFly Logo" 
+                src="/cliniqueue.jpg" 
+                alt="CliniQueue" 
                 className="h-8 w-auto"
               />
-              <span className="text-xl font-bold text-blue-600">TimeFly</span>
+              <span className="text-xl font-bold text-indigo-600">CliniQueue</span>
             </button>
             <div className="flex items-center space-x-3">
               {profilePhoto ? (
